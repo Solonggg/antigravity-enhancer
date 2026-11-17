@@ -9,8 +9,8 @@
       "bytes": 2936
     },
     "daemon/cdp-bridge.mjs": {
-      "sha256": "e91fcfb1fabf97d17a56914a19f8cfda85d5e6e1891e1b0db14ad8d3a7e4c539",
-      "bytes": 15422
+      "sha256": "08970071669a022a8bbbb2a23ce89ec2f658af15c498fd559f53e911f40f96bd",
+      "bytes": 15834
     },
     "daemon/ls-log.mjs": {
       "sha256": "bc81e76d861392490903eede432ecc64913acb8617835cc7aa01b74fb0509834",
@@ -65,12 +65,12 @@
       "bytes": 7244
     },
     "runtime/40-status-machine.js": {
-      "sha256": "32b3e89c815739a0089547622620f3b02fe634f099b465e0fe472057daeffc6a",
-      "bytes": 11650
+      "sha256": "faa7f9e8674a420c2bc56b0e42fb56be9f67346fbb0028cb1014835867b5bf2b",
+      "bytes": 11697
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "c705e2e911bb4a8ef8fb0ea50cb5fdbd466e8684b82915b847d9f64e934d49d7",
-      "bytes": 30743
+      "sha256": "3f253e9b7a81af04c0b95406db9834f5933b90df64dfc12f2d7d5e069330cced",
+      "bytes": 32057
     },
     "runtime/60-i18n-engine.js": {
       "sha256": "8aa3cee9aafe16b872e445735c9dba2f72fc083ff618bfeca34f11c16ab51872",

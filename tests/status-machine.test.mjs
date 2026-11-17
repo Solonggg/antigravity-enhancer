@@ -163,6 +163,10 @@ test('Unconnected stream escalates blue (<3s) -> amber (3s-11s) -> red (>=12s)',
   assert.equal(s14.visualState, 'error');
   assert.equal(s14.chipClass, 'is-error');
   assert.equal(s14.chipText, '未连接 · 14s');
+
+  const homeSplash = computeStatusSnapshot({ now: NOW, live, hasConversation: false, unconnSec: 14, lastHb: NOW });
+  assert.equal(homeSplash.visualState, 'idle');
+  assert.equal(homeSplash.isStreamUnconnected, false);
 });
 
 test('Offline, real terminal error, and daemon timeout turn red while user cancellation stays idle', () => {

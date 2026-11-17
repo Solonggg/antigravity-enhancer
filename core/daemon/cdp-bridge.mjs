@@ -164,16 +164,21 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
             const evalRes = await send('Runtime.evaluate', {
               expression: `(function(){
                 if (window.__ag_watched_cascade_id) return window.__ag_watched_cascade_id;
-                const m = window.location.href.match(/\\/c\\/([0-9a-f-]{36})/i);
+                const m = window.location.pathname.match(/\\/c\\/([0-9a-f-]{36})/i);
                 if (m) return m[1];
+                if (document.querySelector('[data-testid="home-greeting"], [data-testid="home-splash-content"]')) return '';
                 const el = document.querySelector('[data-testid=conversation-row-sidebar][data-selected=true]');
                 return el ? (el.getAttribute('data-cascade-id') || '') : '';
               })()`,
               returnByValue: true
             });
-            const detected = evalRes?.result?.result?.value;
-            if (detected && /^[0-9a-f-]{36}$/i.test(detected)) {
+            const detected = String(evalRes?.result?.result?.value || '').trim();
+            if (/^[0-9a-f-]{36}$/i.test(detected)) {
               activeCascadeId = detected;
+            } else {
+              activeCascadeId = '';
+              lastPushedHash = '';
+              lastPendingActive = false;
             }
           }
           if (!activeCascadeId) return;
@@ -260,6 +265,10 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
                 activeCascadeId = nextId;
                 lastPushedHash = '';
                 syncMetricsForSession(true);
+              } else {
+                activeCascadeId = '';
+                lastPushedHash = '';
+                lastPendingActive = false;
               }
               return;
             }

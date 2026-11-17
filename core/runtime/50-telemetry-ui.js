@@ -11,11 +11,14 @@
 
   function extractCascadeId() {
     try {
-      const href = String(window.location && window.location.href ? window.location.href : '');
-      const mRoute = href.match(/\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-zA-Z_-]{8,})/i);
+      const pathStr = String(window.location && window.location.pathname ? window.location.pathname : '');
+      const mRoute = pathStr.match(/\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-zA-Z_-]{8,})/i);
       if (mRoute && mRoute[1]) return mRoute[1];
-      const mUuid = href.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-      if (mUuid && mUuid[1]) return mUuid[1];
+      if (!document.querySelector('[data-testid="home-greeting"], [data-testid="home-splash-content"]')) {
+        const selRow = document.querySelector('[data-testid="conversation-row-sidebar"][data-selected="true"]');
+        const selCid = selRow ? selRow.getAttribute('data-cascade-id') || '' : '';
+        if (selCid) return selCid;
+      }
     } catch (e) {}
     return '';
   }
@@ -25,27 +28,30 @@
     if (curCid) return true;
     const box = document.getElementById(SELECTORS.inputBoxId);
     if (!box) return false;
-    if (m && m.cid && m.hasData) return true;
-    if (!navigator.onLine) return true;
-    return false;
+    return true;
   }
 
   function positionMetricsTooltip(pill, tt) {
     if (!pill || !tt) return;
     try {
       const rect = pill.getBoundingClientRect();
-      const ttW = tt.offsetWidth || 320;
-      const ttH = tt.offsetHeight || 180;
+      const box = document.getElementById(SELECTORS.inputBoxId);
+      const boxRect = box ? box.getBoundingClientRect() : null;
+      const anchorTop = rect.height > 0 ? rect.top : boxRect ? boxRect.top : 0;
+      const anchorLeft = rect.width > 0 ? rect.left + rect.width / 2 : boxRect ? boxRect.left + boxRect.width / 2 : 0;
+      const ttW = tt.offsetWidth || tt.getBoundingClientRect().width || 332;
       const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
       const vh = window.innerHeight || document.documentElement.clientHeight || 800;
-      let left = rect.left + rect.width / 2 - ttW / 2;
-      left = Math.max(12, Math.min(vw - ttW - 12, left));
-      let top = rect.top - ttH - 10;
-      if (top < 12) {
-        top = Math.min(vh - ttH - 12, rect.bottom + 10);
+      const left = Math.max(12, Math.min(Math.round(anchorLeft - ttW / 2), vw - ttW - 12));
+      const bottomPx = Math.max(12, Math.round(vh - anchorTop + 10));
+      const wrap = tt.querySelector('.ag-tt-wrap');
+      if (wrap) {
+        wrap.style.maxHeight = Math.max(180, Math.round(anchorTop - 24)) + 'px';
+        wrap.style.overflowY = 'auto';
       }
-      tt.style.left = Math.round(left) + 'px';
-      tt.style.top = Math.round(top) + 'px';
+      tt.style.top = 'auto';
+      tt.style.bottom = bottomPx + 'px';
+      tt.style.left = left + 'px';
     } catch (e) {}
   }
 
@@ -93,8 +99,8 @@
     }
     if (tt && !tt.innerHTML.trim()) {
       const curCid = extractCascadeId();
-      const cachedM = window.__ag_last_metrics;
-      if (cachedM && cachedM.tooltipHtml && (!curCid || !cachedM.cid || cachedM.cid === curCid)) {
+      const cachedM = curCid ? window.__ag_last_metrics : null;
+      if (cachedM && cachedM.tooltipHtml && (cachedM.cid === curCid || cachedM.cascadeId === curCid)) {
         tt.setAttribute('data-ag-raw-tt', cachedM.tooltipHtml);
         tt.innerHTML = cachedM.tooltipHtml;
       }
@@ -140,8 +146,8 @@
       pill.id = 'ag-live-metrics-pill';
       pill.innerHTML = '<span id="ag-live-metrics-text"><span class="ag-ctx-pending-dot ag-dot-idle"></span></span>';
       const curCid = extractCascadeId();
-      const cachedM = window.__ag_last_metrics;
-      if (cachedM && cachedM.inlineHtml && (!curCid || !cachedM.cid || cachedM.cid === curCid)) {
+      const cachedM = curCid ? window.__ag_last_metrics : null;
+      if (cachedM && cachedM.inlineHtml && (cachedM.cid === curCid || cachedM.cascadeId === curCid)) {
         const textEl = pill.querySelector('#ag-live-metrics-text');
         if (textEl) {
           textEl.setAttribute('data-ag-raw-html', cachedM.inlineHtml);
@@ -278,11 +284,14 @@
     if (!MODULES.metrics) return null;
     const now = Date.now();
     const curCid = extractCascadeId();
-    const m = window.__ag_last_metrics && (!curCid || window.__ag_last_metrics.cid === curCid)
-      ? window.__ag_last_metrics
-      : null;
+    const m =
+      curCid &&
+      window.__ag_last_metrics &&
+      (window.__ag_last_metrics.cid === curCid || window.__ag_last_metrics.cascadeId === curCid)
+        ? window.__ag_last_metrics
+        : null;
     const st = m && m.status ? m.status : null;
-    const expectedCid = curCid || (m && m.cid) || '';
+    const expectedCid = curCid;
     const live = typeof readLiveCascadeRuntimeState === 'function'
       ? readLiveCascadeRuntimeState(expectedCid)
       : null;
@@ -290,7 +299,9 @@
     if (!window.__ag_unconn_state || window.__ag_unconn_state.cid !== expectedCid) {
       window.__ag_unconn_state = { cid: expectedCid, startMs: 0 };
     }
-    const isUnconnNow = Boolean(live && live.matched && live.hasProvider && Number(live.aspStatus) === 0 && !live.hasTrajectory);
+    const isUnconnNow = Boolean(
+      curCid && live && live.matched && live.hasProvider && Number(live.aspStatus) === 0 && !live.hasTrajectory
+    );
     if (isUnconnNow) {
       if (!window.__ag_unconn_state.startMs) {
         window.__ag_unconn_state.startMs = now;
@@ -355,6 +366,7 @@
       visibleSince: window.__ag_visible_since || 0,
       documentHidden: Boolean(document.hidden),
       navigatorOnline: typeof navigator === 'undefined' ? true : navigator.onLine !== false,
+      hasConversation: Boolean(curCid),
       curModel: typeof getSelectedModelLabel === 'function' ? getSelectedModelLabel() : ''
     });
 
@@ -429,6 +441,9 @@
         if (noteEl.getAttribute('data-ag-note-html') !== snap.noteHtml) {
           noteEl.setAttribute('data-ag-note-html', snap.noteHtml);
           noteEl.innerHTML = snap.noteHtml;
+          if (pill && tt.getAttribute('data-visible') === '1') {
+            positionMetricsTooltip(pill, tt);
+          }
         }
       }
     }
@@ -656,7 +671,8 @@
     window.__ag_last_daemon_hb = Date.now();
     const curCid = extractCascadeId();
     if (!payload || typeof payload !== 'object') return;
-    if (curCid && payload.cid && payload.cid !== curCid) return;
+    const payloadCid = payload.cid || payload.cascadeId || '';
+    if (!curCid || (payloadCid && payloadCid !== curCid)) return;
 
     window.__ag_last_metrics = payload;
     if (!MODULES.metrics) return;
@@ -677,6 +693,9 @@
       if (tt && tt.getAttribute('data-ag-raw-tt') !== payload.tooltipHtml) {
         tt.setAttribute('data-ag-raw-tt', payload.tooltipHtml);
         tt.innerHTML = payload.tooltipHtml;
+        if (pill && tt.getAttribute('data-visible') === '1') {
+          positionMetricsTooltip(pill, tt);
+        }
       }
     }
 
@@ -688,31 +707,38 @@
   function checkRouteAndMountMetrics() {
     if (!MODULES.metrics) return;
     const curCid = extractCascadeId();
-    if (curCid) {
-      window.__ag_watched_cascade_id = curCid;
-    } else if (window.__ag_watched_cascade_id && window.location && window.location.pathname === '/') {
-      window.__ag_watched_cascade_id = '';
-    }
+    window.__ag_watched_cascade_id = curCid || '';
     if (window.__ag_last_route_cid !== curCid) {
       window.__ag_last_route_cid = curCid;
-      if (curCid && typeof window.__agRequestMetrics === 'function') {
-        try { window.__agRequestMetrics(curCid); } catch (e) {}
+      if (typeof window.__agRequestMetrics === 'function') {
+        try { window.__agRequestMetrics(curCid || ''); } catch (e) {}
       }
+      window.__ag_tt_pinned = false;
+      window.__ag_tt_hover_opened_at = 0;
       const tt = document.getElementById('ag-live-metrics-tooltip');
-      if (tt) tt.removeAttribute('data-visible');
-      if (window.__ag_last_metrics && curCid && window.__ag_last_metrics.cid !== curCid) {
-        window.__ag_last_metrics = null;
-        const pill = document.getElementById('ag-live-metrics-pill');
-        const textEl = pill && pill.querySelector('#ag-live-metrics-text');
-        if (textEl) {
-          textEl.removeAttribute('data-ag-raw-html');
-          textEl.innerHTML = '<span class="ag-ctx-pending-dot ag-dot-idle"></span><span>读取中...</span>';
-        }
+      if (tt) {
+        tt.removeAttribute('data-visible');
+        tt.removeAttribute('data-expanded');
+        tt.removeAttribute('data-ag-raw-tt');
+        tt.innerHTML = '';
+      }
+      window.__ag_last_metrics = null;
+      window.__ag_unconn_state = { cid: curCid, startMs: 0 };
+      window.__ag_pending_wait_state = { cid: curCid, kind: 'idle', startMs: 0, lastSteps: 0, lastGens: 0, lastStreamLen: 0 };
+      document.querySelectorAll('.ag-turn-metrics').forEach((el) => el.remove());
+      const pill = document.getElementById('ag-live-metrics-pill');
+      const textEl = pill && pill.querySelector('#ag-live-metrics-text');
+      if (textEl) {
+        textEl.removeAttribute('data-ag-raw-html');
+        textEl.innerHTML =
+          '<span class="ag-ctx-pending-dot ag-dot-idle"></span><span>' +
+          (curCid ? '读取中...' : '就绪') +
+          '</span>';
       }
     }
     ensureMetricsPill(false, false);
     ensureTurnMetricsObserver();
-    if (window.__ag_last_metrics && (!curCid || (window.__ag_last_metrics.cid || window.__ag_last_metrics.cascadeId) === curCid)) {
+    if (curCid && window.__ag_last_metrics && (window.__ag_last_metrics.cid === curCid || window.__ag_last_metrics.cascadeId === curCid)) {
       if (window.__ag_last_metrics.tooltipHtml) {
         ensureMetricsTooltipEl();
       }

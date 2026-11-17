@@ -60,6 +60,7 @@
     visibleSince = 0,
     documentHidden = false,
     navigatorOnline = true,
+    hasConversation = true,
     curModel = '',
     limits = WAIT_DEFAULTS
   } = {}) {
@@ -118,7 +119,7 @@
     );
     const isRetrying = Boolean(isExecuting && !liveDefinitelyStopped && (stRetrying || liveRetrying));
 
-    const isStreamUnconnected = Boolean(hasProvider && aspStatus === 0 && !hasTrajectory);
+    const isStreamUnconnected = Boolean(hasConversation && hasProvider && aspStatus === 0 && !hasTrajectory);
     const unconnDurSec = Math.max(0, Math.floor(Number(unconnSec) || 0));
     const waitDurSec = Math.max(0, Math.floor(Number(waitSec) || 0));
 
