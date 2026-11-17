@@ -8,12 +8,12 @@
     modules: Object.assign({}, MODULES),
     telemetryLayout: boot.telemetryLayout || 'compact',
     themeVars: Object.assign({}, THEME_VARS),
-    dict: DICT,
+    dict: typeof DICT !== 'undefined' ? DICT : {},
     get metrics() {
       return window.__ag_last_metrics || null;
     },
-    syncPreset: syncThemePreset,
-    ensureMetricsPill,
+    syncPreset: typeof syncThemePreset === 'function' ? syncThemePreset : () => {},
+    ensureMetricsPill: typeof ensureMetricsPill === 'function' ? ensureMetricsPill : () => null,
     onCleanup(fn) {
       if (typeof fn === 'function' && Array.isArray(window.__ag_cleanup_fns)) {
         window.__ag_cleanup_fns.push(fn);
@@ -34,18 +34,23 @@
   }
 
   function finishDomMount() {
-    syncThemePreset();
-    if (window.__ag_theme_mode_observer && document.body) {
-      try {
-        window.__ag_theme_mode_observer.observe(document.body, {
-          attributes: true,
-          attributeFilter: ['class']
-        });
-      } catch (e) {}
+    if (MODULES.theme !== false && typeof syncThemePreset === 'function') {
+      syncThemePreset();
+      if (window.__ag_theme_mode_observer && document.body) {
+        try {
+          window.__ag_theme_mode_observer.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class']
+          });
+        } catch (e) {}
+      }
+    } else {
+      document.documentElement.removeAttribute('data-ag-preset');
+      document.documentElement.removeAttribute('data-ag-theme-mode');
     }
-    if (MODULES.i18n && document.body) {
-      if (typeof scanBodyFn === 'function') scanBodyFn(document.body);
-      if (window.__ag_i18n_observer) {
+    if (MODULES.i18n && document.body && typeof scanBodyFn === 'function') {
+      scanBodyFn(document.body);
+      if (window.__ag_i18n_observer && typeof I18N_OBS_OPTS !== 'undefined') {
         try {
           window.__ag_i18n_observer.observe(document.body, I18N_OBS_OPTS);
         } catch (e) {}
@@ -53,7 +58,9 @@
     } else if (document.body) {
       restoreAllTranslations(document.body);
     }
-    checkRouteAndMountMetrics();
+    if (typeof checkRouteAndMountMetrics === 'function') {
+      checkRouteAndMountMetrics();
+    }
     ensureStylesAtEndOfHead();
   }
 

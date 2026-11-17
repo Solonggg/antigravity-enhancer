@@ -6,6 +6,7 @@
   "telemetryCacheMode": "session",
   "contextLimit": "auto",
   "modules": {
+    "theme": true,
     "i18n": true,
     "metrics": true,
     "deadlockHealer": true,

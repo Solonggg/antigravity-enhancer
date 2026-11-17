@@ -103,4 +103,10 @@ test('Repository contains zero upstream branding, removed warm presets, or Drive
     }
   }
   assert.deepEqual(violations, []);
+
+  const readme = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8');
+  assert.ok(readme.includes('https://github.com/nkjDSLcvanv/antigravity-codex-theme.git'));
+  assert.ok(!readme.includes('<your-username>'));
+  assert.ok(!readme.includes('状态灯'));
+  assert.ok(!readme.includes('琥珀'));
 });

@@ -59,7 +59,7 @@ export function buildManifest(baseDir) {
   const manifest = {
     name: meta.name,
     version: meta.version,
-    minNodeVersion: '22.0.0',
+    minNodeVersion: '22.13.0',
     fullMetricsNodeVersion: '22.13.0',
     files: entries
   };

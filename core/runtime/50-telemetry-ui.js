@@ -812,6 +812,17 @@
     window.__ag_live_probe_timer = setInterval(() => {
       if (!document.hidden) applyPendingWaitVisuals();
     }, 1000);
+  } else {
+    try {
+      document.querySelectorAll('.ag-turn-metrics').forEach((el) => el.remove());
+      if (window.__ag_metrics_ro) {
+        window.__ag_metrics_ro.disconnect();
+        window.__ag_metrics_ro = null;
+        window.__ag_metrics_ro_target = null;
+        window.__ag_metrics_ro_observed = null;
+        window.__ag_last_metrics_layout_sig = '';
+      }
+    } catch (e) {}
   }
 
   window.__ag_cleanup_fns.push(() => {

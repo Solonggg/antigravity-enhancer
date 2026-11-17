@@ -13,6 +13,7 @@
   const THEME_VARS = boot.themeVars && typeof boot.themeVars === 'object' ? boot.themeVars : {};
   const MODULES = Object.assign(
     {
+      theme: true,
       i18n: true,
       metrics: true,
       deadlockHealer: true,
@@ -234,14 +235,22 @@
     style.id = 'ag-codex-theme';
     if (headTarget) headTarget.appendChild(style);
   }
-  if (style && style.textContent !== CSS_TEXT) {
-    style.textContent = CSS_TEXT;
+  const nextCssText = CSS_TEXT || '/* antigravity-codex-theme active */';
+  if (style && style.textContent !== nextCssText) {
+    style.textContent = nextCssText;
   }
 
   const detectedOs =
     boot.platform || (/Win/i.test(navigator.platform || '') ? 'win32' : /Mac/i.test(navigator.platform || '') ? 'darwin' : 'linux');
   document.documentElement.setAttribute('data-ag-os', detectedOs);
-  applyThemeVars(THEME_VARS);
+  if (MODULES.theme !== false) {
+    applyThemeVars(THEME_VARS);
+  } else {
+    applyThemeVars({});
+    for (const attr of ['data-ag-preset', 'data-ag-theme-mode', 'data-ag-custom-font-size']) {
+      document.documentElement.removeAttribute(attr);
+    }
+  }
 
   let userStyle = document.getElementById('ag-user-custom-style');
   if (MODULES.customCss && CUSTOM_CSS_TEXT.trim()) {

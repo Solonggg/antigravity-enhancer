@@ -163,6 +163,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     manualContextLimit: 0,
     fallbackContextLimit: 256000,
     modules: {
+      theme: true,
       i18n: true,
       metrics: Boolean(hasSqlite),
       deadlockHealer: true,
@@ -224,6 +225,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     }
     const modules = Object.assign(
       {
+        theme: true,
         i18n: true,
         metrics: true,
         deadlockHealer: true,
@@ -233,8 +235,22 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       },
       rawModules
     );
-    if (!hasSqlite) {
-      modules.metrics = false;
+    const hasThemeFiles =
+      fs.existsSync(path.join(STYLES_DIR, '10-light-codex.css')) ||
+      fs.existsSync(path.join(STYLES_DIR, '00-base.css'));
+    const hasI18nFiles =
+      fs.existsSync(path.join(CORE_DIR, 'i18n.json')) &&
+      fs.existsSync(path.join(RUNTIME_DIR, '60-i18n-engine.js'));
+    const hasMetricsFiles =
+      fs.existsSync(path.join(RUNTIME_DIR, '50-telemetry-ui.js')) &&
+      fs.existsSync(path.join(CORE_DIR, 'daemon', 'sqlite-metrics.mjs'));
+    const hasGuardsFile = fs.existsSync(path.join(RUNTIME_DIR, '10-guards.js'));
+    if (!hasThemeFiles) modules.theme = false;
+    if (!hasI18nFiles) modules.i18n = false;
+    if (!hasSqlite || !hasMetricsFiles) modules.metrics = false;
+    if (!hasGuardsFile) {
+      modules.deadlockHealer = false;
+      modules.zoomShortcuts = false;
     }
 
     const themeVars = !safeMode && userCfg.themeVars && typeof userCfg.themeVars === 'object' ? userCfg.themeVars : {};
@@ -275,11 +291,17 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       endpoints
     };
 
-    const baseCss = styleFiles.map((f) => readTextSafe(f, '')).join('\n\n');
+    const activeStyleFiles = styleFiles.filter((filePath) => {
+      const base = path.basename(filePath);
+      if (base === '30-telemetry.css') return Boolean(modules.metrics);
+      return modules.theme !== false;
+    });
+    const baseCss = activeStyleFiles.map((f) => readTextSafe(f, '')).join('\n\n');
     const customCss = !safeMode && modules.customCss ? readTextSafe(path.join(USER_DIR, 'custom.css'), '') : '';
-    const baseDict = readJsonSafe(path.join(CORE_DIR, 'i18n.json'), {});
-    const rawOverrideDict = !safeMode ? readJsonSafe(path.join(USER_DIR, 'i18n.override.json'), {}) : {};
-    const mergedDict = Object.assign({}, baseDict, normalizeOverrideDict(rawOverrideDict));
+    const baseDict = modules.i18n ? readJsonSafe(path.join(CORE_DIR, 'i18n.json'), {}) : {};
+    const rawOverrideDict =
+      modules.i18n && !safeMode ? readJsonSafe(path.join(USER_DIR, 'i18n.override.json'), {}) : {};
+    const mergedDict = modules.i18n ? Object.assign({}, baseDict, normalizeOverrideDict(rawOverrideDict)) : {};
     const customJs = !safeMode && modules.customJs ? readTextSafe(path.join(USER_DIR, 'custom.js'), '') : '';
     const runtimeTemplate = runtimeFiles.map((f) => readTextSafe(f, '')).join('\n');
 

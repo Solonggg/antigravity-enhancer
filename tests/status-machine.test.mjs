@@ -85,6 +85,7 @@ test('Idle state stays steady blue even when fullyIdle is false after DONE turn'
   assert.equal(snap.visualState, 'idle');
   assert.equal(snap.isExecuting, false);
   assert.equal(snap.chipText, '');
+  assert.ok(snap.dotTitle.startsWith('会话状态：就绪'));
 });
 
 test('Active execution pulses blue during normal generation and compacting', () => {
@@ -97,6 +98,7 @@ test('Active execution pulses blue during normal generation and compacting', () 
   });
   assert.equal(runSnap.visualState, 'running');
   assert.equal(runSnap.chipText, '新步执行中...');
+  assert.ok(runSnap.dotTitle.startsWith('会话状态：执行中'));
 
   const compactSnap = computeStatusSnapshot({
     now: NOW,

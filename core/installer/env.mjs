@@ -13,7 +13,8 @@ import {
 export async function detectEnvironment(channel = 'auto') {
   const nodeVer = process.versions.node;
   const [major, minor] = nodeVer.split('.').map((n) => parseInt(n, 10));
-  const nodeBasicOk = major >= 22;
+  const nodeMinOk = major > 22 || (major === 22 && minor >= 13);
+  const nodeBasicOk = nodeMinOk;
 
   let sqliteAvailable = false;
   try {
@@ -62,13 +63,15 @@ export async function detectEnvironment(channel = 'auto') {
     nodeVer,
     major,
     minor,
+    nodeMinOk,
     nodeBasicOk,
     sqliteAvailable,
-    tier: sqliteAvailable
-      ? 'FULL (>= 22.13, Codex Theme + i18n + 4-State Telemetry LED)'
-      : nodeBasicOk
-      ? 'STANDARD (22.0~22.12, Codex Theme + i18n; SQLite Telemetry disabled)'
-      : 'UNSUPPORTED (< 22.0, requires Node 22+)',
+    tier:
+      nodeMinOk && sqliteAvailable
+        ? 'FULL (>= 22.13.0, Codex Theme + i18n + Session Status & Telemetry)'
+        : nodeMinOk
+        ? 'STANDARD (>= 22.13.0, Codex Theme + i18n; node:sqlite unavailable)'
+        : 'UNSUPPORTED (< 22.13.0, requires Node >= 22.13.0)',
     channel,
     appExists: chInfo.appExists || insidersInfo.appExists,
     portFile: chInfo.portFileExists ? chInfo.portFile : insidersInfo.portFileExists ? insidersInfo.portFile : chInfo.portFile,
@@ -218,6 +221,7 @@ export async function inspectLiveWindow(portFileOrEnv, fallbackPort = 9222) {
               pageType: document.documentElement.getAttribute('data-ag-page-type'),
               dictCount: window.__ag_i18n_dict ? Object.keys(window.__ag_i18n_dict).length : 0,
               protoSafe: window.__ag_i18n_dict ? Object.getPrototypeOf(window.__ag_i18n_dict) === null : false,
+              modules: window.__AG_CODEX_CTX__ ? window.__AG_CODEX_CTX__.modules : null,
               pillMounted: !!document.getElementById('ag-live-metrics-pill'),
               pillText: document.getElementById('ag-live-metrics-pill')?.textContent || null
             })`,

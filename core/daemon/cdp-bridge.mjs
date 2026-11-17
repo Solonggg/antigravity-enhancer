@@ -4,14 +4,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import {
   isAllowedOrigin as sharedIsAllowedOrigin,
   readPortFromFile,
   fetchTargetsFromPort,
   isConfirmedDaemonPid
 } from '../shared.mjs';
-import { getLsLogSig } from './ls-log.mjs';
-import { getDbSignature } from './sqlite-metrics.mjs';
+
+const __bridgeDir = path.dirname(fileURLToPath(import.meta.url));
+let getLsLogSig = () => '';
+let getDbSignature = () => null;
+if (fs.existsSync(path.join(__bridgeDir, 'ls-log.mjs'))) {
+  try {
+    const lsMod = await import('./ls-log.mjs');
+    if (typeof lsMod.getLsLogSig === 'function') getLsLogSig = lsMod.getLsLogSig;
+  } catch {}
+}
+if (fs.existsSync(path.join(__bridgeDir, 'sqlite-metrics.mjs'))) {
+  try {
+    const sqMod = await import('./sqlite-metrics.mjs');
+    if (typeof sqMod.getDbSignature === 'function') getDbSignature = sqMod.getDbSignature;
+  } catch {}
+}
 
 export function acquireDaemonPidLock(cliChannel = null, runOnce = false) {
   if (runOnce) return;

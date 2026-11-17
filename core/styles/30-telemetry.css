@@ -1,6 +1,6 @@
 /* ============================================================================
- * core/styles/30-telemetry.css — Centered Inline Telemetry Pill, 4-State LED,
- * Hover Bento Card, and Per-Turn Badges
+ * core/styles/30-telemetry.css — Centered Inline Status Bar, 4-State Session
+ * Status Indicator, Hover Bento Card, and Per-Turn Badges
  * ============================================================================ */
 
 #antigravity\.agentSidePanelInputBox div[data-ag-row-mode] > div:first-child {
@@ -36,7 +36,7 @@
   padding: 0 12px;
   border-left: none;
   justify-content: center;
-  font-family: var(--font-mono) !important;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, ui-monospace, SFMono-Regular, "PingFang SC", Consolas, monospace) !important;
   font-variant-numeric: tabular-nums;
   font-size: 10.5px !important;
   font-weight: 500 !important;
@@ -80,7 +80,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--font-mono) !important;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, ui-monospace, SFMono-Regular, "PingFang SC", Consolas, monospace) !important;
   font-size: 10.5px !important;
   font-weight: 500 !important;
   letter-spacing: -0.025em !important;
@@ -111,7 +111,7 @@
   font-weight: 600 !important;
 }
 
-/* 4-State Connection & Execution Status LED */
+/* 4-State Session Status Indicator */
 #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot,
 #ag-live-metrics-pill .ag-ctx-pending-dot {
   display: inline-block;
@@ -368,7 +368,7 @@
 }
 
 #ag-live-metrics-tooltip .ag-tt-gen-chip {
-  font-family: var(--font-mono) !important;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, ui-monospace, SFMono-Regular, "PingFang SC", Consolas, monospace) !important;
   font-size: 9.5px !important;
   font-weight: 550 !important;
   color: var(--ag-tt-ink-2) !important;
@@ -714,7 +714,7 @@
   gap: 0;
   min-width: 0;
   max-width: 100%;
-  font-family: var(--font-mono) !important;
+  font-family: var(--font-mono, "SF Mono", Menlo, Monaco, ui-monospace, SFMono-Regular, "PingFang SC", Consolas, monospace) !important;
   font-variant-numeric: tabular-nums;
   font-size: 11px !important;
   font-weight: 450 !important;
@@ -735,7 +735,7 @@
 }
 
 .ag-turn-metrics .ag-turn-model {
-  font-family: var(--font-sans) !important;
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Inter", "PingFang SC", sans-serif) !important;
   font-weight: 500 !important;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -2,22 +2,13 @@
 /**
  * antigravity-codex-theme · CDP Theme, Localization & Live Telemetry Daemon (core/daemon.mjs)
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   parseDaemonCliArgs,
   createBundleController
 } from './daemon/paths.mjs';
-import {
-  parseProto,
-  parseGenMetadataRow,
-  extractMaxStepIdx,
-  extractProtoLeafStrings,
-  extractStep17Message,
-  isCancelText
-} from './daemon/protobuf.mjs';
-import { readRecentLsRetryInfo } from './daemon/ls-log.mjs';
-import { createMetricsReader } from './daemon/sqlite-metrics.mjs';
 import {
   acquireDaemonPidLock,
   trimLogFileIfOversized,
@@ -26,6 +17,29 @@ import {
 } from './daemon/cdp-bridge.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const loadOptionalModule = async (relPath) => {
+  const fullPath = path.join(__dirname, relPath);
+  if (!fs.existsSync(fullPath)) return null;
+  try {
+    return await import(`./${relPath}`);
+  } catch {
+    return null;
+  }
+};
+
+const protoMod = await loadOptionalModule('daemon/protobuf.mjs');
+const lsLogMod = await loadOptionalModule('daemon/ls-log.mjs');
+const sqliteMetricsMod = await loadOptionalModule('daemon/sqlite-metrics.mjs');
+
+const parseProto = protoMod?.parseProto || null;
+const parseGenMetadataRow = protoMod?.parseGenMetadataRow || null;
+const extractMaxStepIdx = protoMod?.extractMaxStepIdx || null;
+const extractProtoLeafStrings = protoMod?.extractProtoLeafStrings || null;
+const extractStep17Message = protoMod?.extractStep17Message || null;
+const isCancelText = protoMod?.isCancelText || null;
+const readRecentLsRetryInfo = lsLogMod?.readRecentLsRetryInfo || null;
 
 let DatabaseSync = null;
 try {
@@ -41,19 +55,21 @@ const cliOpts = parseDaemonCliArgs(process.argv.slice(2));
 const bundleCtrl = createBundleController({
   safeMode: cliOpts.safeMode,
   cliChannel: cliOpts.cliChannel,
-  hasSqlite: Boolean(DatabaseSync),
+  hasSqlite: Boolean(DatabaseSync && sqliteMetricsMod),
   cliOpts
 });
 
-const metricsReader = createMetricsReader({
-  getDatabaseSync: () => DatabaseSync,
-  getConfig: () => bundleCtrl.getState().activeConfig
-});
+const metricsReader = sqliteMetricsMod
+  ? sqliteMetricsMod.createMetricsReader({
+      getDatabaseSync: () => DatabaseSync,
+      getConfig: () => bundleCtrl.getState().activeConfig
+    })
+  : { parseConversationMetrics: () => null };
 
 const cdpManager = createCdpManager({
   bundleCtrl,
   metricsReader,
-  hasSqlite: () => Boolean(DatabaseSync),
+  hasSqlite: () => Boolean(DatabaseSync && sqliteMetricsMod),
   runOnce: cliOpts.runOnce
 });
 

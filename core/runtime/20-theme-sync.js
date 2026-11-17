@@ -7,14 +7,17 @@
   };
   const ALL_CUSTOM_PRESET_NAMES = new Set([...Object.values(PRESETS), 'onyx-dark']);
 
-  if (DEFAULT_PRESET && window.__ag_last_boot_preset !== DEFAULT_PRESET) {
-    window.__ag_last_boot_preset = DEFAULT_PRESET;
-    try {
-      Storage.prototype.setItem.call(localStorage, 'theme-color-flavor', DEFAULT_PRESET);
-    } catch (e) {}
+  if (window.__ag_theme_mode_observer) {
+    try { window.__ag_theme_mode_observer.disconnect(); } catch (e) {}
+    window.__ag_theme_mode_observer = null;
   }
 
   function syncThemePreset() {
+    if (MODULES.theme === false) {
+      document.documentElement.removeAttribute('data-ag-preset');
+      document.documentElement.removeAttribute('data-ag-theme-mode');
+      return;
+    }
     try {
       const storedLight = Storage.prototype.getItem.call(localStorage, 'theme-preset-light');
       if (ALL_CUSTOM_PRESET_NAMES.has(storedLight)) {
@@ -75,51 +78,56 @@
 
   window.__ag_sync_preset_fn = syncThemePreset;
 
-  if (!window.__ag_preset_hook_installed) {
-    window.__ag_preset_hook_installed = true;
-    try {
-      const origGetItem = localStorage.getItem.bind(localStorage);
-      localStorage.getItem = function (key) {
-        const val = origGetItem(key);
-        if (key === 'theme-preset-light' && ALL_CUSTOM_PRESET_NAMES.has(val)) return 'Default Light';
-        if (key === 'theme-preset-dark' && ALL_CUSTOM_PRESET_NAMES.has(val)) return 'Default Dark';
-        return val;
-      };
+  if (MODULES.theme !== false) {
+    if (DEFAULT_PRESET && window.__ag_last_boot_preset !== DEFAULT_PRESET) {
+      window.__ag_last_boot_preset = DEFAULT_PRESET;
+      try {
+        Storage.prototype.setItem.call(localStorage, 'theme-color-flavor', DEFAULT_PRESET);
+      } catch (e) {}
+    }
 
-      const origSetItem = localStorage.setItem.bind(localStorage);
-      localStorage.setItem = function (key, val) {
-        if (key === 'theme-preset-light' && ALL_CUSTOM_PRESET_NAMES.has(val)) val = 'Default Light';
-        if (key === 'theme-preset-dark' && ALL_CUSTOM_PRESET_NAMES.has(val)) val = 'Default Dark';
-        origSetItem(key, val);
-        if (
-          key === 'theme-preset-light' ||
-          key === 'theme-preset-dark' ||
-          key === 'theme-mode' ||
-          key === 'theme-color-flavor'
-        ) {
-          setTimeout(() => {
-            if (typeof window.__ag_sync_preset_fn === 'function') window.__ag_sync_preset_fn();
-          }, 50);
-        }
-      };
-    } catch (e) {}
-  }
+    if (!window.__ag_preset_hook_installed) {
+      window.__ag_preset_hook_installed = true;
+      try {
+        const origGetItem = localStorage.getItem.bind(localStorage);
+        localStorage.getItem = function (key) {
+          const val = origGetItem(key);
+          if (key === 'theme-preset-light' && ALL_CUSTOM_PRESET_NAMES.has(val)) return 'Default Light';
+          if (key === 'theme-preset-dark' && ALL_CUSTOM_PRESET_NAMES.has(val)) return 'Default Dark';
+          return val;
+        };
 
-  if (window.__ag_theme_mode_observer) {
-    try { window.__ag_theme_mode_observer.disconnect(); } catch (e) {}
-    window.__ag_theme_mode_observer = null;
-  }
-  if (typeof MutationObserver !== 'undefined') {
-    try {
-      const modeObs = new MutationObserver(() => {
-        if (typeof window.__ag_sync_preset_fn === 'function') {
-          window.__ag_sync_preset_fn();
-        }
-      });
-      if (document.body) modeObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-      if (document.documentElement) modeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
-      window.__ag_theme_mode_observer = modeObs;
-    } catch (e) {}
+        const origSetItem = localStorage.setItem.bind(localStorage);
+        localStorage.setItem = function (key, val) {
+          if (key === 'theme-preset-light' && ALL_CUSTOM_PRESET_NAMES.has(val)) val = 'Default Light';
+          if (key === 'theme-preset-dark' && ALL_CUSTOM_PRESET_NAMES.has(val)) val = 'Default Dark';
+          origSetItem(key, val);
+          if (
+            key === 'theme-preset-light' ||
+            key === 'theme-preset-dark' ||
+            key === 'theme-mode' ||
+            key === 'theme-color-flavor'
+          ) {
+            setTimeout(() => {
+              if (typeof window.__ag_sync_preset_fn === 'function') window.__ag_sync_preset_fn();
+            }, 50);
+          }
+        };
+      } catch (e) {}
+    }
+
+    if (typeof MutationObserver !== 'undefined') {
+      try {
+        const modeObs = new MutationObserver(() => {
+          if (typeof window.__ag_sync_preset_fn === 'function') {
+            window.__ag_sync_preset_fn();
+          }
+        });
+        if (document.body) modeObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        if (document.documentElement) modeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
+        window.__ag_theme_mode_observer = modeObs;
+      } catch (e) {}
+    }
   }
 
   syncThemePreset();

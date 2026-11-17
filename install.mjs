@@ -3,11 +3,12 @@
  * antigravity-codex-theme · Cross-Platform Installer, Doctor, Verify & Rollback CLI
  *
  * Subcommands:
- *   node install.mjs install [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--target-dir <dir>] [--sync-user]
- *   node install.mjs doctor  [--channel auto|stable|insiders] [--target-dir <dir>]
- *   node install.mjs verify  [--safe-mode] [--channel auto|stable|insiders] [--target-dir <dir>]
- *   node install.mjs rollback [--target-dir <dir>]
- *   node install.mjs uninstall [--target-dir <dir>]
+ *   node install.mjs install      [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only <features>] [--without <features>] [--minimal] [--target-dir <dir>] [--sync-user]
+ *   node install.mjs doctor       [--channel auto|stable|insiders] [--target-dir <dir>]
+ *   node install.mjs verify       [--safe-mode] [--channel auto|stable|insiders] [--target-dir <dir>]
+ *   node install.mjs rollback     [--target-dir <dir>]
+ *   node install.mjs uninstall    [--target-dir <dir>]
+ *   node install.mjs sparse-paths [--only <features>] [--without <features>] [--json]
  *   node install.mjs build-manifest
  *   node install.mjs pack
  */
@@ -18,6 +19,11 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { sha256File, buildManifest, verifyCoreIntegrity, buildDistZip } from './core/installer/manifest.mjs';
 import { detectEnvironment, ensureArgvRemoteDebugging, inspectLiveWindow } from './core/installer/env.mjs';
+import {
+  parseFeatureSelection,
+  getSparseCheckoutPaths,
+  getExcludedCoreRelPaths
+} from './core/installer/features.mjs';
 import {
   SERVICE_IDS,
   registerSystemService,
@@ -91,8 +97,8 @@ async function runDoctor() {
   };
 
   console.log(JSON.stringify(report, null, 2));
-  if (!env.nodeBasicOk) {
-    console.error('\n[ERROR] Node.js >= 22.0.0 is required. Current:', env.nodeVer);
+  if (!env.nodeMinOk) {
+    console.error('\n[ERROR] Node.js >= 22.13.0 is required. Current:', env.nodeVer);
     process.exit(1);
   }
 }
@@ -101,13 +107,18 @@ async function runInstall() {
   const cliChannel = getArg('--channel', null);
   const channel = cliChannel || 'auto';
   const presetArg = getArg('--preset', null);
+  const onlyArg = getArg('--only', getArg('--features', null));
+  const withoutArg = getArg('--without', getArg('--skip', null));
+  const minimalMode = hasFlag('--minimal');
   const syncUser = hasFlag('--sync-user');
   const defaultTarget = path.join(os.homedir(), '.gemini', 'antigravity', SERVICE_IDS.installDirName);
   const targetDir = path.resolve(getArg('--target-dir', defaultTarget));
 
+  const featureSel = parseFeatureSelection({ onlyArg, withoutArg });
+
   const env = await detectEnvironment(channel);
-  if (!env.nodeBasicOk) {
-    console.error(`[ERROR] Node.js >= 22.0.0 is required (current: ${env.nodeVer}).`);
+  if (!env.nodeMinOk) {
+    console.error(`[ERROR] Node.js >= 22.13.0 is required (current: ${env.nodeVer}).`);
     process.exit(1);
   }
 
@@ -146,6 +157,15 @@ async function runInstall() {
     fs.rmSync(targetCore, { recursive: true, force: true });
     copyDirRecursive(srcCore, targetCore);
 
+    if (minimalMode && featureSel.explicit) {
+      for (const rel of getExcludedCoreRelPaths(featureSel.selected)) {
+        const prunePath = path.join(targetCore, rel);
+        if (fs.existsSync(prunePath)) {
+          fs.rmSync(prunePath, { force: true });
+        }
+      }
+    }
+
     fs.mkdirSync(targetUser, { recursive: true });
     for (const item of fs.readdirSync(srcUser)) {
       const s = path.join(srcUser, item);
@@ -159,6 +179,10 @@ async function runInstall() {
       const s = path.join(__dirname, docFile);
       const d = path.join(targetDir, docFile);
       if (fs.existsSync(s)) fs.copyFileSync(s, d);
+    }
+
+    if (minimalMode && featureSel.explicit) {
+      buildManifest(targetDir);
     }
   }
 
@@ -179,11 +203,31 @@ async function runInstall() {
   }
   if (!currentCfg.telemetryLayout) currentCfg.telemetryLayout = 'compact';
   if (!currentCfg.telemetryCacheMode) currentCfg.telemetryCacheMode = 'session';
-  if (currentCfg.modules && typeof currentCfg.modules === 'object') {
-    const allowedModules = new Set(['i18n', 'metrics', 'deadlockHealer', 'zoomShortcuts', 'customCss', 'customJs']);
-    for (const k of Object.keys(currentCfg.modules)) {
-      if (!allowedModules.has(k)) delete currentCfg.modules[k];
-    }
+  if (!currentCfg.modules || typeof currentCfg.modules !== 'object') {
+    currentCfg.modules = {};
+  }
+  const allowedModules = new Set(['theme', 'i18n', 'metrics', 'deadlockHealer', 'zoomShortcuts', 'customCss', 'customJs']);
+  for (const k of Object.keys(currentCfg.modules)) {
+    if (!allowedModules.has(k)) delete currentCfg.modules[k];
+  }
+  if (featureSel.explicit) {
+    Object.assign(currentCfg.modules, featureSel.modulesPatch);
+  }
+  // Automatically disable modules whose optional files were omitted by sparse checkout or --minimal
+  if (!fs.existsSync(path.join(targetCore, 'styles', '10-light-codex.css'))) {
+    currentCfg.modules.theme = false;
+  } else if (typeof currentCfg.modules.theme !== 'boolean') {
+    currentCfg.modules.theme = true;
+  }
+  if (!fs.existsSync(path.join(targetCore, 'i18n.json'))) {
+    currentCfg.modules.i18n = false;
+  }
+  if (!fs.existsSync(path.join(targetCore, 'runtime', '50-telemetry-ui.js'))) {
+    currentCfg.modules.metrics = false;
+  }
+  if (!fs.existsSync(path.join(targetCore, 'runtime', '10-guards.js'))) {
+    currentCfg.modules.deadlockHealer = false;
+    currentCfg.modules.zoomShortcuts = false;
   }
 
   fs.writeFileSync(userConfigPath, JSON.stringify(currentCfg, null, 2) + '\n', 'utf8');
@@ -359,13 +403,26 @@ switch (subcommand) {
   case 'uninstall':
     await runUninstall();
     break;
+  case 'sparse-paths': {
+    const onlyArg = getArg('--only', getArg('--features', null));
+    const withoutArg = getArg('--without', getArg('--skip', null));
+    const sel = parseFeatureSelection({ onlyArg, withoutArg });
+    const paths = getSparseCheckoutPaths(sel.selected);
+    if (hasFlag('--json')) {
+      console.log(JSON.stringify({ selected: sel.selected, paths }, null, 2));
+    } else {
+      console.log(paths.join(' '));
+    }
+    break;
+  }
   default:
     console.log(`antigravity-codex-theme CLI Usage:
-  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--sync-user]
+  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only theme,i18n,metrics,fixes] [--without <list>] [--minimal] [--sync-user]
   node install.mjs doctor         [--channel auto|stable|insiders]
   node install.mjs verify         [--safe-mode] [--channel auto|stable|insiders]
   node install.mjs rollback
   node install.mjs uninstall
+  node install.mjs sparse-paths   [--only theme,i18n,metrics,fixes] [--without <list>] [--json]
   node install.mjs build-manifest
   node install.mjs pack`);
     break;

@@ -1,14 +1,14 @@
 /**
- * Part 40: 4-State Connection & Execution Status State Machine (Pure / Testable)
+ * Part 40: 4-State Session Status State Machine (Pure / Testable)
  *
  * ZERO DOM/window dependencies so Node unit tests can evaluate this file directly via `node:vm`.
  * Depends optionally on `normalizeModelMatchKey` from Part 30 (provides local fallback if absent).
  *
  * Visual States:
- *   - 'idle'    : Connected & ready (steady blue LED)
- *   - 'running' : Active LLM / Compact / Tool step progressing (pulsing blue LED)
- *   - 'slow'    : Waiting >= 60s without first byte/progress, model retry, or brief disconnect (3s-11s) (pulsing yellow LED)
- *   - 'error'   : Offline, disconnect >= 12s, API/step failure, or telemetry daemon timeout (pulsing red LED)
+ *   - 'idle'    : Session ready (steady blue indicator)
+ *   - 'running' : Active LLM / Compact / Tool step progressing (pulsing blue indicator)
+ *   - 'slow'    : Waiting >= 60s without first byte/progress, model retry, or brief disconnect (3s-11s) (pulsing yellow indicator)
+ *   - 'error'   : Offline, disconnect >= 12s, API/step failure, or background service timeout (pulsing red indicator)
  */
   const WAIT_DEFAULTS = Object.freeze({
     SLOW_WAIT_SEC: 60,
@@ -166,7 +166,7 @@
 
     let chipText = '';
     let chipClass = '';
-    let dotTitle = '状态正常：已连接并就绪';
+    let dotTitle = '会话状态：就绪';
     let noteHtml = '';
     let noteClass = '';
 
@@ -182,14 +182,14 @@
       } else {
         chipText = '后台断连';
       }
-      dotTitle = '异常：' + errDetail;
+      dotTitle = '会话状态：异常 · ' + errDetail;
       noteClass = 'is-visible is-error';
       noteHtml = '<strong>连接 / 执行异常</strong><br/>' + escapeStatusHtml(errDetail);
     } else if (visualState === 'slow') {
       chipClass = 'is-slow';
       if (unconnSlow) {
         chipText = '重连中 · ' + fmtWaitDuration(unconnDurSec);
-        dotTitle = '正在尝试建立会话流连接（已等待 ' + fmtWaitDuration(unconnDurSec) + '）';
+        dotTitle = '会话状态：等待或重试 · 正在建立会话流连接（已等待 ' + fmtWaitDuration(unconnDurSec) + '）';
         noteClass = 'is-visible';
         noteHtml =
           '<strong>会话连接中 (' +
@@ -208,14 +208,14 @@
           countdownSuffix = ' · ' + leftSec + 's';
         }
         chipText = '重试连接中' + countdownSuffix;
-        dotTitle = '模型连接异常重试：' + retryBrief;
+        dotTitle = '会话状态：等待或重试 · ' + retryBrief;
         noteClass = 'is-visible';
         noteHtml = '<strong>模型自动重试中</strong><br/>' + escapeStatusHtml(retryBrief);
       } else {
         const waitStr = fmtWaitDuration(waitDurSec);
         if (effKind === 'compact') {
           chipText = '压缩中 · ' + waitStr;
-          dotTitle = '上下文压缩生成摘要中（已等待 ' + waitStr + '）';
+          dotTitle = '会话状态：等待或重试 · 上下文压缩中（已等待 ' + waitStr + '）';
           noteClass = 'is-visible';
           noteHtml =
             '<strong>正在执行 /compact 上下文压缩（' +
@@ -230,7 +230,7 @@
               : '<br/>系统正在汇总长对话历史，生成检查点后将自动恢复蓝色常亮。');
         } else if (effKind === 'tool') {
           chipText = '工具等待 · ' + waitStr;
-          dotTitle = '工具调用执行中（已等待 ' + waitStr + '）';
+          dotTitle = '会话状态：等待或重试 · 工具执行等待中（已等待 ' + waitStr + '）';
           noteClass = 'is-visible';
           noteHtml =
             '<strong>工具步执行等待中（' +
@@ -238,7 +238,7 @@
             '）</strong><br/>本地命令、文件检索或子任务尚未返回结果，请稍候。';
         } else {
           chipText = '首字等待 · ' + waitStr;
-          dotTitle = '模型响应等待中（已等待 ' + waitStr + '）';
+          dotTitle = '会话状态：等待或重试 · 等待模型响应（已等待 ' + waitStr + '）';
           noteClass = 'is-visible';
           noteHtml =
             '<strong>等待模型首字输出（' +
@@ -256,17 +256,17 @@
     } else if (visualState === 'running') {
       if (effKind === 'compact') {
         chipText = '正在压缩...';
-        dotTitle = '正在压缩上下文历史';
+        dotTitle = '会话状态：执行中 · 正在压缩上下文历史';
       } else if (effKind === 'tool') {
         chipText = '工具执行中...';
-        dotTitle = '正在执行工具调用';
+        dotTitle = '会话状态：执行中 · 正在执行工具调用';
       } else {
         chipText = '新步执行中...';
-        dotTitle = '模型推理与输出中';
+        dotTitle = '会话状态：执行中 · 模型推理与输出中';
       }
     } else {
       chipText = '';
-      dotTitle = '状态正常：已连接并就绪';
+      dotTitle = '会话状态：就绪';
     }
 
     return {

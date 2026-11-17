@@ -421,14 +421,14 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
           : 'ag-ctx-pending-dot ag-dot-idle';
       const statusTitle =
         statusLevel === 'error'
-          ? `调用报错：${lastErrorMsg.slice(0, 120)}`
+          ? `会话状态：异常 · ${lastErrorMsg.slice(0, 120)}`
           : statusLevel === 'retrying'
-          ? `重试连接中（第 ${pendingRetryCount} 次${pendingRetryReason ? `：${pendingRetryReason.slice(0, 100)}` : ''}）`
+          ? `会话状态：等待或重试（第 ${pendingRetryCount} 次${pendingRetryReason ? `：${pendingRetryReason.slice(0, 100)}` : ''}）`
           : compactingNow
-          ? '上下文压缩中…'
+          ? '会话状态：执行中 · 上下文压缩中…'
           : generatingPending
-          ? '新一步执行中，落盘后自动更新'
-          : '连接正常 · 点击或悬停查看明细';
+          ? '会话状态：执行中 · 新一步执行中'
+          : '会话状态：就绪 · 悬停或点击查看统计';
       const safeDotTitle = statusTitle.replace(/"/g, '&quot;');
       const statusDotHtml = `<span class="${statusDotClass}" title="${safeDotTitle}"></span>`;
 
