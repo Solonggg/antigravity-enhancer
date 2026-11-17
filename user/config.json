@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "channel": "auto",
+  "preset": "codex-pure-white",
+  "telemetryLayout": "compact",
+  "telemetryCacheMode": "session",
+  "contextLimit": "auto",
+  "modules": {
+    "i18n": true,
+    "metrics": true,
+    "deadlockHealer": true,
+    "zoomShortcuts": true,
+    "customCss": true,
+    "customJs": true
+  },
+  "themeVars": {}
+}

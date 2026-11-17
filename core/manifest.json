@@ -1,0 +1,104 @@
+{
+  "name": "antigravity-codex-theme",
+  "version": "1.0.0",
+  "minNodeVersion": "22.0.0",
+  "fullMetricsNodeVersion": "22.13.0",
+  "files": {
+    "daemon.mjs": {
+      "sha256": "0b4a5a45b77d673f85e38abdb965c57ca533f2fa1a7f330a4e273359d699cd0c",
+      "bytes": 2936
+    },
+    "daemon/cdp-bridge.mjs": {
+      "sha256": "e91fcfb1fabf97d17a56914a19f8cfda85d5e6e1891e1b0db14ad8d3a7e4c539",
+      "bytes": 15422
+    },
+    "daemon/ls-log.mjs": {
+      "sha256": "bc81e76d861392490903eede432ecc64913acb8617835cc7aa01b74fb0509834",
+      "bytes": 2123
+    },
+    "daemon/paths.mjs": {
+      "sha256": "7f97487c559238f300828822b2c9ccefa3a32b31af24b13614012acb882333cf",
+      "bytes": 12169
+    },
+    "daemon/protobuf.mjs": {
+      "sha256": "9e1cff0e22d8361fc80a9b7d4076a0071b64bbab036386d644713e2d82cf3367",
+      "bytes": 7375
+    },
+    "daemon/sqlite-metrics.mjs": {
+      "sha256": "04a4747c573f77c95d6db9efe4d7fe2a66189b2b0d796e34109d5375d9ba7445",
+      "bytes": 21543
+    },
+    "daemon/telemetry-renderer.mjs": {
+      "sha256": "186e438512a681e2eccbbdbc15f771ce30f7602af6a27f5d56ee6dda1d636ef7",
+      "bytes": 19694
+    },
+    "i18n.json": {
+      "sha256": "664ebdb72c2da7348a3badd492da912bd0cca471d5862560d8f6e9c53cd1616d",
+      "bytes": 57028
+    },
+    "installer/env.mjs": {
+      "sha256": "891689ef44529df60eb9de4737acce31ad5b762395a0d114132bdd8d916ea3f8",
+      "bytes": 9025
+    },
+    "installer/manifest.mjs": {
+      "sha256": "a34dc22825a0869607045c4d7f2b1d42b8d1c72d5fca5f77f2f9cf5a4f379428",
+      "bytes": 5730
+    },
+    "installer/service.mjs": {
+      "sha256": "a42491d4c07b98493bd7d4ea82b274fed7e827c1358717c89a8bf33211f6f5eb",
+      "bytes": 13336
+    },
+    "runtime/00-head.js": {
+      "sha256": "bdfb017bbc555ae0e0a6ed95e154c2b8c8562572077bc535036f6915da6d1811",
+      "bytes": 11280
+    },
+    "runtime/10-guards.js": {
+      "sha256": "f4aedd3e4c615f638fe213c3c9304e51467dd6eceb4ae57b7085db47f6155087",
+      "bytes": 2542
+    },
+    "runtime/20-theme-sync.js": {
+      "sha256": "743167f88b86e69d59062013d8715f192d7d1f2c9d484ee68581dbd3e4eda09b",
+      "bytes": 5070
+    },
+    "runtime/30-antigravity-probe.js": {
+      "sha256": "dce13709f4ae44626298ece4a1f5b66c97792ec42466b53bcd577743949d4122",
+      "bytes": 7244
+    },
+    "runtime/40-status-machine.js": {
+      "sha256": "0645b5ccd8e7b7a80688d87ffdb5e0b76a5f08651618d25a987475060c3f03a9",
+      "bytes": 11649
+    },
+    "runtime/50-telemetry-ui.js": {
+      "sha256": "32ee2bbfefb16b429b81ae5b16af70b2aa660c5bc717cf4dd542365ec0d74b3b",
+      "bytes": 22845
+    },
+    "runtime/60-i18n-engine.js": {
+      "sha256": "8aa3cee9aafe16b872e445735c9dba2f72fc083ff618bfeca34f11c16ab51872",
+      "bytes": 36630
+    },
+    "runtime/90-tail.js": {
+      "sha256": "fb887fe7e868adab3ee5e8f38c0e17a2544c2a6200db87c56110e6220ca65a26",
+      "bytes": 2258
+    },
+    "shared.mjs": {
+      "sha256": "c6ab51c60678102d78ab09a0c17f0d9939da6a4f86bdcc039d0fef3beff74995",
+      "bytes": 5708
+    },
+    "styles/00-base.css": {
+      "sha256": "28fc6c55d279a366837ac5db00eb6cd4e643b301113003cf8ab71cad3b01d17b",
+      "bytes": 14764
+    },
+    "styles/10-light-codex.css": {
+      "sha256": "0a53301cd22e26dee289cd42a22839296f15a6cda0f5cb1efe3e7f478eaad2f5",
+      "bytes": 3435
+    },
+    "styles/20-dark-onyx.css": {
+      "sha256": "0bd5df834321b71d680d6769fadb0cc709ba8aea350019209e4b3958131e7471",
+      "bytes": 6101
+    },
+    "styles/30-telemetry.css": {
+      "sha256": "7bce8a88847c5c217decea46ecbc1c644f9a71007407586ec11657e12f58d91b",
+      "bytes": 21895
+    }
+  }
+}
