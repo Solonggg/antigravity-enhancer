@@ -196,11 +196,9 @@
         if (!tt || !tt.innerHTML.trim()) return;
         const isVisible = tt.getAttribute('data-visible') === '1';
         const isExpanded = tt.getAttribute('data-expanded') === '1';
-        const justHoveredIn =
-          Boolean(window.__ag_tt_hover_opened_at) && Date.now() - window.__ag_tt_hover_opened_at < 260;
 
-        if (!isVisible || (!window.__ag_tt_pinned && justHoveredIn && !isExpanded)) {
-          // 1st click: open L1 summary panel
+        if (!isVisible || !window.__ag_tt_pinned) {
+          // 1st click: open & pin L1 summary panel reliably even if hover preview just showed
           tt.removeAttribute('data-expanded');
           tt.setAttribute('data-visible', '1');
           window.__ag_tt_pinned = true;
