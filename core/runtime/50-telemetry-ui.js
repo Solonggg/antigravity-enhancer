@@ -715,6 +715,9 @@
     ensureMetricsPill(false, false);
     ensureTurnMetricsObserver();
     if (window.__ag_last_metrics && (!curCid || (window.__ag_last_metrics.cid || window.__ag_last_metrics.cascadeId) === curCid)) {
+      if (window.__ag_last_metrics.tooltipHtml) {
+        ensureMetricsTooltipEl();
+      }
       renderTurnMetrics(window.__ag_last_metrics, curCid);
     }
     applyPendingWaitVisuals();

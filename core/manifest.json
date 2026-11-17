@@ -69,8 +69,8 @@
       "bytes": 11650
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "66e8fab9db52711314ceb6bdcd606c92de0ef9302e9ceb07d4b64b15974a59ba",
-      "bytes": 30770
+      "sha256": "db7fcd77695b36c34b78d45ad6a8b7ccd0248d81bfc762eda6460d7a50939ee6",
+      "bytes": 30862
     },
     "runtime/60-i18n-engine.js": {
       "sha256": "8aa3cee9aafe16b872e445735c9dba2f72fc083ff618bfeca34f11c16ab51872",
