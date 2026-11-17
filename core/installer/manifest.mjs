@@ -130,6 +130,7 @@ export function buildDistZip(baseDir) {
     '.gitignore',
     'core',
     'user',
+    'assets',
     'tests'
   ].filter((item) => fs.existsSync(path.join(baseDir, item)));
 

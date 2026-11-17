@@ -139,8 +139,8 @@
 
 #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-slow,
 #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-slow {
-  background-color: #D97706 !important;
-  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.24);
+  background-color: #F59E0B !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.26);
   animation: ag-pulse-dot 1.25s ease-in-out infinite;
 }
 
@@ -646,26 +646,26 @@
 }
 
 :is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-tooltip {
-  --ag-tt-bg: #15161A;
-  --ag-tt-border: rgba(255, 255, 255, 0.11);
-  --ag-tt-shadow: 0 20px 44px -6px rgba(0, 0, 0, 0.72), 0 4px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --ag-tt-surface: #1D1E24;
-  --ag-tt-hairline: rgba(255, 255, 255, 0.085);
-  --ag-tt-ink: #F3F4F6;
-  --ag-tt-ink-2: #A1A7B3;
-  --ag-tt-ink-3: #717886;
-  --ag-tt-track: rgba(255, 255, 255, 0.095);
+  --ag-tt-bg: #232323;
+  --ag-tt-border: rgba(255, 255, 255, 0.10);
+  --ag-tt-shadow: 0 20px 44px -6px rgba(0, 0, 0, 0.68), 0 4px 12px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --ag-tt-surface: #2C2C2C;
+  --ag-tt-hairline: rgba(255, 255, 255, 0.08);
+  --ag-tt-ink: #F5F5F5;
+  --ag-tt-ink-2: #B0B0B0;
+  --ag-tt-ink-3: #808080;
+  --ag-tt-track: rgba(255, 255, 255, 0.09);
   --ag-tt-chip-bg: rgba(255, 255, 255, 0.075);
-  --ag-tt-brand: #60A5FA;
-  --ag-tt-brand-bg: rgba(96, 165, 250, 0.15);
+  --ag-tt-brand: #4D8DF6;
+  --ag-tt-brand-bg: rgba(77, 141, 246, 0.16);
   --ag-tt-indigo: #818CF8;
   --ag-tt-emerald: #34D399;
-  --ag-tt-mist: #6B7280;
+  --ag-tt-mist: #737373;
   --ag-tt-slate: #64748B;
-  --ag-tt-lvl-color: #60A5FA;
+  --ag-tt-lvl-color: #4D8DF6;
   --ag-tt-lvl-new: #93C5FD;
-  --ag-tt-lvl-cache: #2563EB;
-  --ag-tt-lvl-bg: rgba(96, 165, 250, 0.15);
+  --ag-tt-lvl-cache: #2C67C5;
+  --ag-tt-lvl-bg: rgba(77, 141, 246, 0.16);
 }
 
 :is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-tooltip .ag-tt-wrap.ag-tt-warn {
@@ -748,9 +748,9 @@
 }
 
 :is(html[data-ag-theme-mode="dark"] body, body.dark) .ag-turn-metrics {
-  color: #9EA0AC !important;
+  color: #959595 !important;
 }
 
 :is(html[data-ag-theme-mode="dark"] body, body.dark) .ag-turn-metrics:hover {
-  color: #EAEBF1 !important;
+  color: #F5F5F5 !important;
 }

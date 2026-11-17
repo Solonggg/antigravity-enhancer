@@ -62,10 +62,14 @@
         }
       });
       tt.addEventListener('mouseleave', () => {
+        if (window.__ag_tt_pinned) return;
         if (window.__ag_tt_hide_timer) clearTimeout(window.__ag_tt_hide_timer);
         window.__ag_tt_hide_timer = setTimeout(() => {
           const curTt = document.getElementById('ag-live-metrics-tooltip');
-          if (curTt) curTt.removeAttribute('data-visible');
+          if (curTt && !window.__ag_tt_pinned) {
+            curTt.removeAttribute('data-visible');
+            window.__ag_tt_hover_opened_at = 0;
+          }
         }, 180);
       });
       tt.addEventListener('click', (e) => {
@@ -154,6 +158,9 @@
         window.__ag_tt_show_timer = setTimeout(() => {
           const tt = ensureMetricsTooltipEl();
           if (!tt || !tt.innerHTML.trim()) return;
+          if (tt.getAttribute('data-visible') !== '1') {
+            window.__ag_tt_hover_opened_at = Date.now();
+          }
           positionMetricsTooltip(pill, tt);
           tt.setAttribute('data-visible', '1');
         }, 85);
@@ -164,22 +171,54 @@
           clearTimeout(window.__ag_tt_show_timer);
           window.__ag_tt_show_timer = null;
         }
+        if (window.__ag_tt_pinned) return;
         if (window.__ag_tt_hide_timer) clearTimeout(window.__ag_tt_hide_timer);
         window.__ag_tt_hide_timer = setTimeout(() => {
           const tt = document.getElementById('ag-live-metrics-tooltip');
-          if (tt) tt.removeAttribute('data-visible');
+          if (tt && !window.__ag_tt_pinned) {
+            tt.removeAttribute('data-visible');
+            window.__ag_tt_hover_opened_at = 0;
+          }
         }, 180);
       });
 
       pill.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (window.__ag_tt_show_timer) {
+          clearTimeout(window.__ag_tt_show_timer);
+          window.__ag_tt_show_timer = null;
+        }
+        if (window.__ag_tt_hide_timer) {
+          clearTimeout(window.__ag_tt_hide_timer);
+          window.__ag_tt_hide_timer = null;
+        }
         const tt = ensureMetricsTooltipEl();
         if (!tt || !tt.innerHTML.trim()) return;
-        if (tt.getAttribute('data-visible') === '1') {
-          tt.removeAttribute('data-visible');
-        } else {
-          positionMetricsTooltip(pill, tt);
+        const isVisible = tt.getAttribute('data-visible') === '1';
+        const isExpanded = tt.getAttribute('data-expanded') === '1';
+        const justHoveredIn =
+          Boolean(window.__ag_tt_hover_opened_at) && Date.now() - window.__ag_tt_hover_opened_at < 260;
+
+        if (!isVisible || (!window.__ag_tt_pinned && justHoveredIn && !isExpanded)) {
+          // 1st click: open L1 summary panel
+          tt.removeAttribute('data-expanded');
           tt.setAttribute('data-visible', '1');
+          window.__ag_tt_pinned = true;
+          window.__ag_tt_hover_opened_at = 0;
+        } else if (!isExpanded) {
+          // 2nd click: expand L2 detail breakdown
+          tt.setAttribute('data-expanded', '1');
+          tt.setAttribute('data-visible', '1');
+          window.__ag_tt_pinned = true;
+        } else {
+          // 3rd click: close panel
+          tt.removeAttribute('data-expanded');
+          tt.removeAttribute('data-visible');
+          window.__ag_tt_pinned = false;
+          window.__ag_tt_hover_opened_at = 0;
+        }
+        if (tt.getAttribute('data-visible') === '1') {
+          positionMetricsTooltip(pill, tt);
         }
       });
     }
@@ -401,50 +440,190 @@
 
   window.__ag_refresh_wait_ui = applyPendingWaitVisuals;
 
-  function renderTurnMetrics(payload, currentId) {
-    if (!MODULES.metrics || !document.body) return;
-    const cid = currentId || extractCascadeId();
-    const list = payload && payload.cid === cid && Array.isArray(payload.turns) ? payload.turns : [];
-    const existing = document.querySelectorAll('.ag-turn-metrics');
-    if (list.length === 0) {
-      for (let i = 0; i < existing.length; i++) existing[i].remove();
-      return;
-    }
-
-    const msgNodes = document.querySelectorAll(
-      '[data-testid="agent-message"], [data-testid="assistant-message"], [data-message-author-role="assistant"]'
-    );
-    if (!msgNodes.length) return;
-
-    const count = Math.min(msgNodes.length, list.length);
-    for (let i = 0; i < count; i++) {
-      const msgEl = msgNodes[msgNodes.length - 1 - i];
-      const turn = list[list.length - 1 - i];
-      if (!msgEl || !turn || (!turn.badgeHtml && !turn.badgeText)) continue;
-      let badge = msgEl.querySelector(':scope > .ag-turn-metrics');
-      if (!badge) {
-        badge = document.createElement('div');
-        badge.className = 'ag-turn-metrics';
-        msgEl.appendChild(badge);
-      }
-      if (turn.badgeHtml) {
-        if (badge.getAttribute('data-ag-turn-html') !== turn.badgeHtml) {
-          badge.setAttribute('data-ag-turn-html', turn.badgeHtml);
-          badge.innerHTML = turn.badgeHtml;
+  function extractToolbarStepMeta(tb) {
+    try {
+      const fk = Object.keys(tb).find(
+        (k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
+      );
+      if (!fk) return null;
+      let f = tb[fk];
+      let nrcProps = null;
+      let iEcProps = null;
+      for (let i = 0; i < 14 && f; i++) {
+        const p = f.memoizedProps;
+        if (p) {
+          if (!nrcProps && Array.isArray(p.steps) && 'showThumbsUpDown' in p) nrcProps = p;
+          if (!iEcProps && p.cascadeId && Array.isArray(p.trajectorySteps) && typeof p.trajectoryLength === 'number') {
+            iEcProps = p;
+          }
         }
-      } else if (badge.textContent !== turn.badgeText) {
-        badge.textContent = turn.badgeText;
+        if (nrcProps && iEcProps) break;
+        f = f.return;
       }
-      if (turn.badgeTitle && badge.title !== turn.badgeTitle) {
-        badge.title = turn.badgeTitle;
+      if (!nrcProps || !iEcProps) return null;
+      const tSteps = iEcProps.trajectorySteps;
+      const base = iEcProps.trajectoryLength - tSteps.length;
+      let maxStep = -1;
+      let maxMeta = -1;
+      for (let i = 0; i < nrcProps.steps.length; i++) {
+        const s = nrcProps.steps[i];
+        if (!s) continue;
+        const srcInfo = s.metadata && s.metadata.sourceTrajectoryStepInfo;
+        let si = srcInfo && typeof srcInfo.stepIndex === 'number' ? srcInfo.stepIndex : -1;
+        if (si < 0) {
+          const pos = tSteps.indexOf(s);
+          if (pos >= 0) si = base + pos;
+        }
+        if (si > maxStep) maxStep = si;
+        if (srcInfo && typeof srcInfo.metadataIndex === 'number' && srcInfo.metadataIndex > maxMeta) {
+          maxMeta = srcInfo.metadataIndex;
+        }
       }
+      return {
+        cascadeId: iEcProps.cascadeId || '',
+        maxStep,
+        maxMeta
+      };
+    } catch {
+      return null;
     }
   }
 
+  function matchTurnForToolbar(turns, meta) {
+    if (!turns || turns.length === 0 || !meta) return null;
+    if (meta.maxStep >= 0) {
+      for (let i = 0; i < turns.length; i++) {
+        const t = turns[i];
+        if (meta.maxStep >= t.startStepIdx && (t.endStepIdx < 0 || meta.maxStep <= t.endStepIdx)) {
+          return t;
+        }
+      }
+    }
+    if (meta.maxMeta >= 0) {
+      for (let i = 0; i < turns.length; i++) {
+        const t = turns[i];
+        if (meta.maxMeta >= t.minGenIdx && meta.maxMeta <= t.maxGenIdx) {
+          return t;
+        }
+      }
+    }
+    return null;
+  }
+
+  function formatTurnBadgeData(t) {
+    const parts = [];
+    if (t.model) parts.push('<span class="ag-turn-model">' + escapeStatusHtml(t.model) + '</span>');
+    const promptTok = typeof t.promptTok === 'number' ? t.promptTok : t.inTok + t.cacheWrite + t.cacheRead;
+    const promptStr = t.promptStr || '';
+    if (promptTok > 0 && promptStr) {
+      parts.push('<span>In ' + escapeStatusHtml(promptStr) + '</span>');
+    }
+    if (t.outTok > 0) parts.push('<span>Out ' + escapeStatusHtml(t.outStr) + '</span>');
+    if (promptTok > 0 && t.cacheRate) {
+      parts.push('<span>Cache ' + escapeStatusHtml(t.cacheRate) + '</span>');
+    }
+    if (t.tps > 0) parts.push('<span>' + t.tps + ' tok/s</span>');
+    const html = parts.join('<span class="ag-sep"> · </span>');
+
+    const lines = [];
+    if (t.model) lines.push('模型: ' + t.model + ' (' + t.steps + '步)');
+    if (t.lastCtx > 0) {
+      lines.push('当前上下文: ' + t.lastCtx.toLocaleString('en-US') + ' / ' + t.limitStr + ' (' + t.ctxPct + '%)');
+    }
+    if (t.outTok > 0) {
+      lines.push(
+        '本轮输出: ' +
+          t.outTok.toLocaleString('en-US') +
+          ' (思考 ' +
+          t.thinkTok.toLocaleString('en-US') +
+          ' + 正文/工具 ' +
+          t.respTok.toLocaleString('en-US') +
+          ')'
+      );
+    }
+    const promptSum = t.inTok + t.cacheWrite + t.cacheRead;
+    if (promptSum > 0) {
+      lines.push(
+        '本轮累计输入: 新增 ' +
+          t.inTok.toLocaleString('en-US') +
+          (t.cacheWrite > 0 ? ' + 写缓存 ' + t.cacheWrite.toLocaleString('en-US') : '') +
+          ' + 读缓存 ' +
+          t.cacheRead.toLocaleString('en-US') +
+          ' (命中率 ' +
+          t.cacheRate +
+          ')'
+      );
+    }
+    if (t.tps > 0 || t.totDur > 0) {
+      lines.push(
+        '速度与耗时: ' +
+          (t.tps > 0 ? t.tps + ' tok/s (端到端 ' + t.e2eTps + ' tok/s) · ' : '') +
+          '流式 ' +
+          t.streamDur +
+          's / 总计 ' +
+          t.totDur +
+          's'
+      );
+    }
+    return { html, title: lines.join('\n') };
+  }
+
+  function renderTurnMetrics(payload, currentId) {
+    try {
+      const toolbars = document.querySelectorAll('[data-testid="cascade-system-message-toolbar"]');
+      if (!toolbars || toolbars.length === 0) return;
+      const cid = currentId || extractCascadeId();
+      const payloadCid = payload ? payload.cid || payload.cascadeId || '' : '';
+      const turns =
+        MODULES.metrics && payload && payload.hasData && (!cid || payloadCid === cid) && Array.isArray(payload.turns)
+          ? payload.turns
+          : null;
+
+      for (let i = 0; i < toolbars.length; i++) {
+        const tb = toolbars[i];
+        const row = tb.firstElementChild;
+        if (!row) continue;
+        let badge = row.querySelector(':scope > .ag-turn-metrics');
+        if (!turns || turns.length === 0) {
+          if (badge) badge.remove();
+          continue;
+        }
+        const meta = extractToolbarStepMeta(tb);
+        if (!meta || (cid && meta.cascadeId && meta.cascadeId !== cid)) {
+          if (badge) badge.remove();
+          continue;
+        }
+        const turn = matchTurnForToolbar(turns, meta);
+        if (!turn) {
+          if (badge) badge.remove();
+          continue;
+        }
+        const { html, title } = formatTurnBadgeData(turn);
+        if (!html) {
+          if (badge) badge.remove();
+          continue;
+        }
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'ag-turn-metrics';
+          badge.setAttribute('data-ag-turn-metrics', '1');
+          row.prepend(badge);
+        } else if (row.firstElementChild !== badge) {
+          row.prepend(badge);
+        }
+        if (badge.getAttribute('data-ag-turn-html') !== html) {
+          badge.setAttribute('data-ag-turn-html', html);
+          badge.innerHTML = html;
+        }
+        if (badge.getAttribute('title') !== title) badge.setAttribute('title', title);
+      }
+    } catch (e) {}
+  }
+
   function ensureTurnMetricsObserver() {
-    if (!MODULES.metrics || !document.body) return;
+    if (!MODULES.metrics || !document.body || typeof MutationObserver === 'undefined') return;
     if (window.__ag_turn_metrics_observer) return;
-    window.__ag_turn_metrics_observer = new MutationObserver(() => {
+    const scheduleSync = () => {
       if (window.__ag_turn_sync_raf) return;
       window.__ag_turn_sync_raf = requestAnimationFrame(() => {
         window.__ag_turn_sync_raf = null;
@@ -452,6 +631,23 @@
           renderTurnMetrics(window.__ag_last_metrics, extractCascadeId());
         }
       });
+    };
+    window.__ag_turn_metrics_observer = new MutationObserver((mutations) => {
+      for (let i = 0; i < mutations.length; i++) {
+        const added = mutations[i].addedNodes;
+        if (!added || added.length === 0) continue;
+        for (let j = 0; j < added.length; j++) {
+          const n = added[j];
+          if (n.nodeType !== 1) continue;
+          if (
+            (n.getAttribute && n.getAttribute('data-testid') === 'cascade-system-message-toolbar') ||
+            (n.querySelector && n.querySelector('[data-testid="cascade-system-message-toolbar"]'))
+          ) {
+            scheduleSync();
+            return;
+          }
+        }
+      }
     });
     try {
       window.__ag_turn_metrics_observer.observe(document.body, { childList: true, subtree: true });
@@ -517,6 +713,10 @@
       }
     }
     ensureMetricsPill(false, false);
+    ensureTurnMetricsObserver();
+    if (window.__ag_last_metrics && (!curCid || (window.__ag_last_metrics.cid || window.__ag_last_metrics.cascadeId) === curCid)) {
+      renderTurnMetrics(window.__ag_last_metrics, curCid);
+    }
     applyPendingWaitVisuals();
   }
 
@@ -546,18 +746,36 @@
     }
   };
   const _onNetworkChange = () => applyPendingWaitVisuals();
-  const _onEscapeKey = (e) => {
-    if (e && e.key === 'Escape') {
-      const tt = document.getElementById('ag-live-metrics-tooltip');
-      if (tt) tt.removeAttribute('data-visible');
+  const _closeMetricsTooltip = () => {
+    window.__ag_tt_pinned = false;
+    window.__ag_tt_hover_opened_at = 0;
+    const tt = document.getElementById('ag-live-metrics-tooltip');
+    if (tt) {
+      tt.removeAttribute('data-expanded');
+      tt.removeAttribute('data-visible');
     }
   };
+  const _onEscapeKey = (e) => {
+    if (e && e.key === 'Escape') {
+      _closeMetricsTooltip();
+    }
+  };
+  const _onDocClick = (e) => {
+    const t = e && e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('#ag-live-metrics-pill') || t.closest('#ag-live-metrics-tooltip')) return;
+    _closeMetricsTooltip();
+  };
+
+  window.__ag_tt_pinned = false;
+  window.__ag_tt_hover_opened_at = 0;
 
   window.addEventListener('popstate', _onPopState);
   document.addEventListener('visibilitychange', _onVisibility);
   window.addEventListener('online', _onNetworkChange);
   window.addEventListener('offline', _onNetworkChange);
   window.addEventListener('keydown', _onEscapeKey, true);
+  document.addEventListener('click', _onDocClick, true);
 
   if (MODULES.metrics) {
     if (!window.__ag_visible_since) window.__ag_visible_since = Date.now();
@@ -575,6 +793,9 @@
     window.removeEventListener('online', _onNetworkChange);
     window.removeEventListener('offline', _onNetworkChange);
     window.removeEventListener('keydown', _onEscapeKey, true);
+    document.removeEventListener('click', _onDocClick, true);
+    window.__ag_tt_pinned = false;
+    window.__ag_tt_hover_opened_at = 0;
     if (window.__ag_metrics_route_watcher) {
       clearInterval(window.__ag_metrics_route_watcher);
       window.__ag_metrics_route_watcher = null;

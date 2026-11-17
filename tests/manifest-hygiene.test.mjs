@@ -58,10 +58,12 @@ test('Assembled runtime JS and CSS parts pass syntax validation and define Codex
     .join('\n');
 
   assert.ok(css.includes('#2B7FFF'));
-  assert.ok(css.includes('#070708'));
+  assert.ok(css.includes('#181818'));
+  assert.ok(css.includes('#363636'));
   assert.ok(css.includes('.ag-dot-slow'));
   assert.ok(js.includes('codex-pure-white'));
-  assert.ok(js.includes('onyx-dark'));
+  assert.ok(js.includes('codex-dark'));
+  assert.ok(js.includes('cascade-system-message-toolbar'));
   assert.ok(js.includes('#ag-codex-theme') || js.includes("'ag-codex-theme'"));
 
   execFileSync(process.execPath, ['--input-type=commonjs', '--check'], {
@@ -87,9 +89,14 @@ test('Repository contains zero upstream branding, removed warm presets, or Drive
   const violations = [];
   for (const full of allFiles) {
     const rel = path.relative(ROOT_DIR, full);
-    if (rel === 'tests/manifest-hygiene.test.mjs') continue;
+    if (rel === 'tests/manifest-hygiene.test.mjs' || rel.startsWith('assets/')) continue;
     const text = fs.readFileSync(full, 'utf8');
-    for (const pat of forbiddenPatterns) {
+    // Allow explicit upstream attribution only inside README.md while keeping code/configs/scripts clean
+    const scopedForbidden =
+      rel === 'README.md'
+        ? forbiddenPatterns.filter((p) => String(p) !== '/chuanban/i' && String(p) !== '/anarcadia/i')
+        : forbiddenPatterns;
+    for (const pat of scopedForbidden) {
       if (pat.test(text)) {
         violations.push({ file: rel, pattern: String(pat) });
       }

@@ -201,7 +201,7 @@ test('Offline, real terminal error, and daemon timeout turn red while user cance
     documentHidden: false
   });
   assert.equal(daemonDead.visualState, 'error');
-  assert.equal(daemonDead.chipText, '遥测断连');
+  assert.equal(daemonDead.chipText, '后台断连');
   assert.equal(fmtWaitDuration(65), '1m05s');
   assert.equal(isUserCancelError('Cancelled by user'), true);
 });

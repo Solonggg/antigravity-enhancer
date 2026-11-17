@@ -3,7 +3,7 @@
  * antigravity-codex-theme · Cross-Platform Installer, Doctor, Verify & Rollback CLI
  *
  * Subcommands:
- *   node install.mjs install [--channel auto|stable|insiders] [--preset codex-pure-white|onyx-dark] [--target-dir <dir>] [--sync-user]
+ *   node install.mjs install [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--target-dir <dir>] [--sync-user]
  *   node install.mjs doctor  [--channel auto|stable|insiders] [--target-dir <dir>]
  *   node install.mjs verify  [--safe-mode] [--channel auto|stable|insiders] [--target-dir <dir>]
  *   node install.mjs rollback [--target-dir <dir>]
@@ -173,9 +173,9 @@ async function runInstall() {
     currentCfg.channel = 'auto';
   }
   if (presetArg) {
-    currentCfg.preset = presetArg === 'onyx-dark' ? 'onyx-dark' : 'codex-pure-white';
-  } else if (currentCfg.preset !== 'codex-pure-white' && currentCfg.preset !== 'onyx-dark') {
-    currentCfg.preset = 'codex-pure-white';
+    currentCfg.preset = presetArg === 'codex-dark' || presetArg === 'onyx-dark' ? 'codex-dark' : 'codex-pure-white';
+  } else if (currentCfg.preset !== 'codex-pure-white' && currentCfg.preset !== 'codex-dark') {
+    currentCfg.preset = currentCfg.preset === 'onyx-dark' ? 'codex-dark' : 'codex-pure-white';
   }
   if (!currentCfg.telemetryLayout) currentCfg.telemetryLayout = 'compact';
   if (!currentCfg.telemetryCacheMode) currentCfg.telemetryCacheMode = 'session';
@@ -361,7 +361,7 @@ switch (subcommand) {
     break;
   default:
     console.log(`antigravity-codex-theme CLI Usage:
-  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|onyx-dark] [--sync-user]
+  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--sync-user]
   node install.mjs doctor         [--channel auto|stable|insiders]
   node install.mjs verify         [--safe-mode] [--channel auto|stable|insiders]
   node install.mjs rollback

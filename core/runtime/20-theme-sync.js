@@ -1,11 +1,11 @@
 /**
- * Part 20: Light/Dark Theme Mode Sync (Codex Pure White & Official Onyx Dark)
+ * Part 20: Light/Dark Theme Mode Sync (Codex Pure White & Codex Dark)
  */
   const PRESETS = {
     CODEX_PURE_WHITE: 'codex-pure-white',
-    ONYX_DARK: 'onyx-dark'
+    CODEX_DARK: 'codex-dark'
   };
-  const ALL_CUSTOM_PRESET_NAMES = new Set(Object.values(PRESETS));
+  const ALL_CUSTOM_PRESET_NAMES = new Set([...Object.values(PRESETS), 'onyx-dark']);
 
   if (DEFAULT_PRESET && window.__ag_last_boot_preset !== DEFAULT_PRESET) {
     window.__ag_last_boot_preset = DEFAULT_PRESET;
@@ -51,7 +51,7 @@
         : !!(document.documentElement && document.documentElement.style.colorScheme === 'dark');
 
       const targetMode = isDark ? 'dark' : 'light';
-      const targetPreset = isDark ? PRESETS.ONYX_DARK : PRESETS.CODEX_PURE_WHITE;
+      const targetPreset = isDark ? PRESETS.CODEX_DARK : PRESETS.CODEX_PURE_WHITE;
 
       const prevPreset = document.documentElement.getAttribute('data-ag-preset');
       if (prevPreset !== targetPreset) {
@@ -62,7 +62,7 @@
         document.documentElement.setAttribute('data-ag-theme-mode', targetMode);
         try {
           const cs = getComputedStyle(document.body || document.documentElement);
-          const sidebarBg = cs.getPropertyValue('--sidebar').trim() || (isDark ? '#111114' : '#F9F9F9');
+          const sidebarBg = cs.getPropertyValue('--sidebar').trim() || (isDark ? '#232323' : '#F9F9F9');
           const fgColor = cs.getPropertyValue('--foreground').trim() || (isDark ? '#FFFFFF' : '#0D0D0D');
           window.electronNative?.setTitleBarOverlay?.({
             color: sidebarBg,

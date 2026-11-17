@@ -203,7 +203,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     const enabled = safeMode ? true : userCfg.enabled !== false;
     const channel = cliChannel || userCfg.channel || 'auto';
     const presetRaw = String(userCfg.preset || 'codex-pure-white').trim();
-    const preset = presetRaw === 'onyx-dark' ? 'onyx-dark' : 'codex-pure-white';
+    const preset = presetRaw === 'codex-dark' || presetRaw === 'onyx-dark' ? 'codex-dark' : 'codex-pure-white';
     const telemetryLayout = userCfg.telemetryLayout === 'detailed' ? 'detailed' : 'compact';
     const telemetryCacheMode = userCfg.telemetryCacheMode === 'step' ? 'step' : 'session';
 

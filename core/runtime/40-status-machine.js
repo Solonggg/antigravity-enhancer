@@ -7,7 +7,7 @@
  * Visual States:
  *   - 'idle'    : Connected & ready (steady blue LED)
  *   - 'running' : Active LLM / Compact / Tool step progressing (pulsing blue LED)
- *   - 'slow'    : Waiting >= 60s without first byte/progress, model retry, or brief disconnect (3s-11s) (pulsing amber LED)
+ *   - 'slow'    : Waiting >= 60s without first byte/progress, model retry, or brief disconnect (3s-11s) (pulsing yellow LED)
  *   - 'error'   : Offline, disconnect >= 12s, API/step failure, or telemetry daemon timeout (pulsing red LED)
  */
   const WAIT_DEFAULTS = Object.freeze({
@@ -142,7 +142,7 @@
       hbMs > 0 &&
       now - hbMs > cfg.HEARTBEAT_STALE_MS &&
       (visMs === 0 || now - visMs >= cfg.VISIBLE_GRACE_MS)
-        ? '遥测守护进程响应超时（超过 ' + fmtWaitDuration((now - hbMs) / 1000) + ' 未收到心跳）'
+        ? '后台统计服务响应超时（超过 ' + fmtWaitDuration((now - hbMs) / 1000) + ' 未收到心跳）'
         : '';
 
     const curNorm = normModelFn(curModel);
@@ -179,7 +179,7 @@
       } else if (apiErrMsg) {
         chipText = '执行报错';
       } else {
-        chipText = '遥测断连';
+        chipText = '后台断连';
       }
       dotTitle = '异常：' + errDetail;
       noteClass = 'is-visible is-error';

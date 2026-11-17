@@ -6,7 +6,7 @@
  *
  * Available on `ctx`:
  *   - ctx.version           Current bundle build version
- *   - ctx.preset            Active light/dark preset ('codex-pure-white' | 'onyx-dark')
+ *   - ctx.preset            Active light/dark preset ('codex-pure-white' | 'codex-dark')
  *   - ctx.telemetryLayout   'compact' | 'detailed'
  *   - ctx.dict              Mutable WeakMap i18n dictionary
  *   - ctx.metrics           Latest parsed session telemetry payload

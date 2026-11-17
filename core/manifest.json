@@ -17,8 +17,8 @@
       "bytes": 2123
     },
     "daemon/paths.mjs": {
-      "sha256": "7f97487c559238f300828822b2c9ccefa3a32b31af24b13614012acb882333cf",
-      "bytes": 12169
+      "sha256": "5102aa9b52db436390ed6c027e09155de53bbc4ba79c02b51e2f687ce26c2546",
+      "bytes": 12200
     },
     "daemon/protobuf.mjs": {
       "sha256": "9e1cff0e22d8361fc80a9b7d4076a0071b64bbab036386d644713e2d82cf3367",
@@ -41,8 +41,8 @@
       "bytes": 9025
     },
     "installer/manifest.mjs": {
-      "sha256": "a34dc22825a0869607045c4d7f2b1d42b8d1c72d5fca5f77f2f9cf5a4f379428",
-      "bytes": 5730
+      "sha256": "f00c449d12066a52a7fc2eaa7173b5de767ceba01b1210c9fb35d789ae98681c",
+      "bytes": 5744
     },
     "installer/service.mjs": {
       "sha256": "a42491d4c07b98493bd7d4ea82b274fed7e827c1358717c89a8bf33211f6f5eb",
@@ -57,20 +57,20 @@
       "bytes": 2542
     },
     "runtime/20-theme-sync.js": {
-      "sha256": "743167f88b86e69d59062013d8715f192d7d1f2c9d484ee68581dbd3e4eda09b",
-      "bytes": 5070
+      "sha256": "438d2b1f4062f53bd475a1d33ca427dde629601be1aa2b37c3518faa8339321c",
+      "bytes": 5083
     },
     "runtime/30-antigravity-probe.js": {
       "sha256": "dce13709f4ae44626298ece4a1f5b66c97792ec42466b53bcd577743949d4122",
       "bytes": 7244
     },
     "runtime/40-status-machine.js": {
-      "sha256": "0645b5ccd8e7b7a80688d87ffdb5e0b76a5f08651618d25a987475060c3f03a9",
-      "bytes": 11649
+      "sha256": "32b3e89c815739a0089547622620f3b02fe634f099b465e0fe472057daeffc6a",
+      "bytes": 11650
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "32ee2bbfefb16b429b81ae5b16af70b2aa660c5bc717cf4dd542365ec0d74b3b",
-      "bytes": 22845
+      "sha256": "66e8fab9db52711314ceb6bdcd606c92de0ef9302e9ceb07d4b64b15974a59ba",
+      "bytes": 30770
     },
     "runtime/60-i18n-engine.js": {
       "sha256": "8aa3cee9aafe16b872e445735c9dba2f72fc083ff618bfeca34f11c16ab51872",
@@ -92,13 +92,13 @@
       "sha256": "0a53301cd22e26dee289cd42a22839296f15a6cda0f5cb1efe3e7f478eaad2f5",
       "bytes": 3435
     },
-    "styles/20-dark-onyx.css": {
-      "sha256": "0bd5df834321b71d680d6769fadb0cc709ba8aea350019209e4b3958131e7471",
-      "bytes": 6101
+    "styles/20-dark-codex.css": {
+      "sha256": "a14018f40e5a55067e93baa9614aaa77d3d29818cc095460cd790c03ad0f3bf5",
+      "bytes": 7189
     },
     "styles/30-telemetry.css": {
-      "sha256": "7bce8a88847c5c217decea46ecbc1c644f9a71007407586ec11657e12f58d91b",
-      "bytes": 21895
+      "sha256": "45bba4583e02de2c3938c4656fe18f4503deb1b5633e5acff3bb4d7b9f6786a2",
+      "bytes": 21894
     }
   }
 }

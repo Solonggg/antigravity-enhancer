@@ -1,11 +1,11 @@
 ---
 name: antigravity-codex-theme
-description: Deploy, diagnose, configure, or troubleshoot antigravity-codex-theme (Chinese UI localization + Codex pure-white/Onyx theme + 4-state live telemetry LED) on macOS, Windows, and Linux.
+description: Deploy, diagnose, configure, or troubleshoot antigravity-codex-theme (Chinese UI localization, Codex pure-white/charcoal-dark theme, expandable L1/L2 usage panels, per-turn footer stats, and 4-state connection indicator) on macOS, Windows, and Linux.
 ---
 
 # Agent Operations Guide: antigravity-codex-theme
 
-Follow this guide when a user asks you to install, verify, customize, troubleshoot, rollback, or uninstall **`antigravity-codex-theme`** (Chinese UI localization + Codex pure-white light / Onyx dark theme + 4-state telemetry LED).
+Follow this guide when a user asks you to install, verify, customize, troubleshoot, rollback, or uninstall **`antigravity-codex-theme`** (Chinese UI localization + Codex pure-white light / Codex charcoal-dark theme + 4-state status indicator + L1/L2 usage panels + per-turn stats).
 
 ## 1. Key Paths & Service Identifiers
 
@@ -35,7 +35,7 @@ Verify in JSON output:
 - `ok === true`
 - `node.tier` shows `FULL (>= 22.13, ...)` when live SQLite telemetry is expected
 - `coreIntegrity.clean === true`
-- `liveWindow.reachable === true` and `liveWindow.state.hasStyle === true` (`#ag-codex-theme`), `preset` is `"codex-pure-white"` (light) or `"onyx-dark"` (dark), `dictCount >= 800`, and `pillMounted === true` in an active chat
+- `liveWindow.reachable === true` and `liveWindow.state.hasStyle === true` (`#ag-codex-theme`), `preset` is `"codex-pure-white"` (light) or `"codex-dark"` (dark), `dictCount >= 800`, and `pillMounted === true` in an active chat
 
 ### Safe-Mode Troubleshooting
 If a user edit in `user/custom.css` or `user/custom.js` causes visual breakage:
