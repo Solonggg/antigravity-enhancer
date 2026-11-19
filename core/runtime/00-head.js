@@ -3,10 +3,16 @@
  * Part 00: Bootstrap, Lifecycle Cleanup, Theme Variables & Stylesheet Injection
  */
 ((boot) => {
-  if (window.top !== window) return;
+  const IS_SWARM_PLUGIN_FRAME = Boolean(
+    window.top !== window &&
+      window.location &&
+      window.location.protocol === 'plugin:' &&
+      /^swarm--/i.test(window.location.hostname || '')
+  );
+  if (window.top !== window && !IS_SWARM_PLUGIN_FRAME) return;
   if (!boot || typeof boot !== 'object') return;
 
-  const PATCH_VERSION = boot.version || '1.0.0';
+  const PATCH_VERSION = boot.version || '1.1.0';
   const ENABLED = boot.enabled !== false;
   const CSS_TEXT = boot.cssText || '';
   const CUSTOM_CSS_TEXT = boot.customCss || '';
@@ -18,6 +24,7 @@
       metrics: true,
       deadlockHealer: true,
       zoomShortcuts: true,
+      cdpAutoRelaunch: true,
       customCss: true,
       customJs: true
     },
@@ -26,7 +33,7 @@
 
   const DEFAULT_PRESET = boot.preset || 'codex-pure-white';
   const DEFAULT_EXCLUDE_I18N =
-    'code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable="true"], [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, [class*="onyx-key"], .prose, .markdown, [class*="chat-message"], [class*="group/file-title"], [data-testid="conversation-row-sidebar"] a[href^="/c/"], [data-testid="conversation-row-sidebar"] span.truncate, #ag-live-metrics-pill, #ag-live-metrics-tooltip, .ag-turn-metrics';
+    'code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable="true"], [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, [class*="onyx-key"], .prose, .markdown, [class*="chat-message"], [class*="group/file-title"], [data-testid="conversation-row-sidebar"] a[href^="/c/"], [data-testid="conversation-row-sidebar"] span.truncate, [data-testid="conversation-row-history"] a[href^="/c/"], [data-testid="conversation-row-history"] span.truncate, [data-testid="conversation-navigator-turn"], #ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics';
 
   const SELECTORS = Object.assign(
     {
@@ -184,7 +191,7 @@
   }
 
   if (!ENABLED) {
-    for (const id of ['ag-codex-theme', 'ag-user-theme-vars', 'ag-user-custom-style', 'ag-live-metrics-pill', 'ag-live-metrics-tooltip']) {
+    for (const id of ['ag-codex-theme', 'ag-user-theme-vars', 'ag-user-custom-style', 'ag-live-metrics-pill', 'ag-live-metrics-tooltip', 'ag-turn-metrics-tooltip']) {
       const el = document.getElementById(id);
       if (el) el.remove();
     }
@@ -243,6 +250,9 @@
   const detectedOs =
     boot.platform || (/Win/i.test(navigator.platform || '') ? 'win32' : /Mac/i.test(navigator.platform || '') ? 'darwin' : 'linux');
   document.documentElement.setAttribute('data-ag-os', detectedOs);
+  if (IS_SWARM_PLUGIN_FRAME) {
+    document.documentElement.setAttribute('data-ag-page-type', 'plugin');
+  }
   if (MODULES.theme !== false) {
     applyThemeVars(THEME_VARS);
   } else {

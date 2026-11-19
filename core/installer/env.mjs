@@ -1,5 +1,5 @@
 /**
- * core/installer/env.mjs — Antigravity Environment Detection, argv.json Patcher & Live CDP Probe
+ * core/installer/env.mjs — Antigravity Environment Detection, Host Process Probe, argv.json Patcher & Live CDP Probe
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +9,20 @@ import {
   fetchTargetsFromPort,
   inspectJsoncRootObject
 } from '../shared.mjs';
+import { readHostVersionAndProcesses } from './cdp-launch.mjs';
+
+export function resolveCdpStatus({ runningProcesses = [], channels = {}, portFileExists = false }) {
+  if (runningProcesses.length > 0) {
+    const anyReadyRunning = runningProcesses.some(
+      (p) => p.hasCdpFlag || Boolean(channels[p.channel]?.portFileExists)
+    );
+    return anyReadyRunning ? 'ready' : 'missing_opt_in_flag';
+  }
+  if (portFileExists) {
+    return 'stale_port_file';
+  }
+  return 'app_not_running';
+}
 
 export async function detectEnvironment(channel = 'auto') {
   const nodeVer = process.versions.node;
@@ -56,8 +70,34 @@ export async function detectEnvironment(channel = 'auto') {
   };
 
   const primaryChannel = channel === 'insiders' ? 'insiders' : 'stable';
-  const chInfo = checkSingleChannel(primaryChannel);
+  const stableInfo = checkSingleChannel('stable');
   const insidersInfo = checkSingleChannel('insiders');
+  const chInfo = primaryChannel === 'insiders' ? insidersInfo : stableInfo;
+  const channelsMap = {
+    stable: stableInfo,
+    insiders: insidersInfo
+  };
+
+  const hostRuntime = readHostVersionAndProcesses(channel);
+  const portFileExists =
+    channel === 'stable'
+      ? stableInfo.portFileExists
+      : channel === 'insiders'
+      ? insidersInfo.portFileExists
+      : hostRuntime.runningProcesses.length > 0
+      ? hostRuntime.runningProcesses.some((p) => channelsMap[p.channel]?.portFileExists)
+      : stableInfo.portFileExists || insidersInfo.portFileExists;
+
+  const cdpStatus = resolveCdpStatus({
+    runningProcesses: hostRuntime.runningProcesses,
+    channels: channelsMap,
+    portFileExists
+  });
+
+  const activeRunningChannel = hostRuntime.runningProcesses[0]?.channel || primaryChannel;
+  const preferredPortFile =
+    channelsMap[activeRunningChannel]?.portFile ||
+    (chInfo.portFileExists ? chInfo.portFile : insidersInfo.portFileExists ? insidersInfo.portFile : chInfo.portFile);
 
   return {
     nodeVer,
@@ -73,13 +113,14 @@ export async function detectEnvironment(channel = 'auto') {
         ? 'STANDARD (>= 22.13.0, Codex Theme + i18n; node:sqlite unavailable)'
         : 'UNSUPPORTED (< 22.13.0, requires Node >= 22.13.0)',
     channel,
-    appExists: chInfo.appExists || insidersInfo.appExists,
-    portFile: chInfo.portFileExists ? chInfo.portFile : insidersInfo.portFileExists ? insidersInfo.portFile : chInfo.portFile,
-    portFileExists: chInfo.portFileExists || insidersInfo.portFileExists,
-    channels: {
-      stable: checkSingleChannel('stable'),
-      insiders: insidersInfo
-    }
+    appExists: chInfo.appExists || insidersInfo.appExists || hostRuntime.runningProcesses.length > 0,
+    appVersion: hostRuntime.appVersion,
+    cdpStatus,
+    launcherInstalled: hostRuntime.launcherInstalled,
+    runningProcesses: hostRuntime.runningProcesses,
+    portFile: preferredPortFile,
+    portFileExists,
+    channels: channelsMap
   };
 }
 
@@ -180,7 +221,10 @@ export async function inspectLiveWindow(portFileOrEnv, fallbackPort = 9222) {
     }
   }
   if (!port || targets.length === 0) {
-    return { reachable: false, reason: 'No active CDP port responded (checked DevToolsActivePort & fallback port 9222)' };
+    return {
+      reachable: false,
+      reason: 'No active CDP port responded (Antigravity 2.33.0+ requires --remote-debugging-port=0 opt-in launch)'
+    };
   }
 
   const pages = targets.filter(
@@ -196,61 +240,98 @@ export async function inspectLiveWindow(portFileOrEnv, fallbackPort = 9222) {
     return { reachable: true, port, pages: 0, reason: 'No active workbench page target' };
   }
 
-  const page = pages[0];
-  const state = await new Promise((resolve) => {
-    const ws = new WebSocket(page.webSocketDebuggerUrl);
-    const timer = setTimeout(() => {
-      try {
-        ws.close();
-      } catch {}
-      resolve(null);
-    }, 2000);
-    ws.addEventListener('open', () => {
-      ws.send(
-        JSON.stringify({
-          id: 1,
-          method: 'Runtime.evaluate',
-          params: {
-            expression: `({
-              version: window.__ag_patch_version || null,
-              bodyReady: window.__ag_body_ready === true,
-              hasStyle: !!document.getElementById('ag-codex-theme'),
-              hasUserStyle: !!document.getElementById('ag-user-custom-style'),
-              preset: document.documentElement.getAttribute('data-ag-preset'),
-              themeMode: document.documentElement.getAttribute('data-ag-theme-mode'),
-              pageType: document.documentElement.getAttribute('data-ag-page-type'),
-              dictCount: window.__ag_i18n_dict ? Object.keys(window.__ag_i18n_dict).length : 0,
-              protoSafe: window.__ag_i18n_dict ? Object.getPrototypeOf(window.__ag_i18n_dict) === null : false,
-              modules: window.__AG_CODEX_CTX__ ? window.__AG_CODEX_CTX__.modules : null,
-              pillMounted: !!document.getElementById('ag-live-metrics-pill'),
-              pillText: document.getElementById('ag-live-metrics-pill')?.textContent || null
-            })`,
-            returnByValue: true
-          }
-        })
-      );
-    });
-    ws.addEventListener('message', (ev) => {
-      try {
-        const msg = JSON.parse(String(ev.data));
-        if (msg.id === 1) {
-          clearTimeout(timer);
+  const evaluatePageState = (candidate) =>
+    new Promise((resolve) => {
+      const ws = new WebSocket(candidate.webSocketDebuggerUrl);
+      const timer = setTimeout(() => {
+        try {
           ws.close();
-          resolve(msg.result?.result?.value || null);
-        }
-      } catch {}
+        } catch {}
+        resolve(null);
+      }, 2000);
+      ws.addEventListener('open', () => {
+        ws.send(
+          JSON.stringify({
+            id: 1,
+            method: 'Runtime.evaluate',
+            params: {
+              expression: `(() => ({
+                __isHost: !!(
+                  (window.location && window.location.protocol === 'vscode-file:') ||
+                  (window.__APP_CONFIG__ && window.__APP_CONFIG__.productName === 'antigravity') ||
+                  (window.electronNative && (
+                    typeof window.electronNative.setTitleBarOverlay === 'function' ||
+                    typeof window.electronNative.getZoomLevel === 'function'
+                  )) ||
+                  (typeof document !== 'undefined' && document.querySelector &&
+                    document.querySelector('link[href*="/jetbox.css"], body[data-agy-theme], body[data-newux-theme], [id="antigravity.agentSidePanelInputBox"]'))
+                ),
+                version: window.__ag_patch_version || null,
+                bodyReady: window.__ag_body_ready === true,
+                hasStyle: !!document.getElementById('ag-codex-theme'),
+                hasUserStyle: !!document.getElementById('ag-user-custom-style'),
+                preset: document.documentElement ? document.documentElement.getAttribute('data-ag-preset') : null,
+                themeMode: document.documentElement ? document.documentElement.getAttribute('data-ag-theme-mode') : null,
+                pageType: document.documentElement ? document.documentElement.getAttribute('data-ag-page-type') : null,
+                dictCount: window.__ag_i18n_dict ? Object.keys(window.__ag_i18n_dict).length : 0,
+                protoSafe: window.__ag_i18n_dict ? Object.getPrototypeOf(window.__ag_i18n_dict) === null : false,
+                modules: window.__AG_CODEX_CTX__ ? window.__AG_CODEX_CTX__.modules : null,
+                pillMounted: !!document.getElementById('ag-live-metrics-pill'),
+                pillText: document.getElementById('ag-live-metrics-pill')?.textContent || null
+              }))()`,
+              returnByValue: true
+            }
+          })
+        );
+      });
+      ws.addEventListener('message', (ev) => {
+        try {
+          const msg = JSON.parse(String(ev.data));
+          if (msg.id === 1) {
+            clearTimeout(timer);
+            ws.close();
+            resolve(msg.result?.result?.value || null);
+          }
+        } catch {}
+      });
+      ws.addEventListener('error', () => {
+        clearTimeout(timer);
+        resolve(null);
+      });
     });
-    ws.addEventListener('error', () => {
-      clearTimeout(timer);
-      resolve(null);
-    });
-  });
+
+  let selected = null;
+  let firstHostCandidate = null;
+  let firstNullCandidate = null;
+
+  for (const candidate of pages) {
+    const rawState = await evaluatePageState(candidate);
+    if (rawState === null) {
+      if (!firstNullCandidate) firstNullCandidate = { page: candidate, state: null };
+      continue;
+    }
+    const isHost = rawState.__isHost === true;
+    const cleanState = { ...rawState };
+    delete cleanState.__isHost;
+    if (isHost) {
+      if (cleanState.hasStyle === true) {
+        selected = { page: candidate, state: cleanState };
+        break;
+      }
+      if (!firstHostCandidate) firstHostCandidate = { page: candidate, state: cleanState };
+    }
+  }
+
+  if (!selected) selected = firstHostCandidate || firstNullCandidate;
+  if (!selected) {
+    return { reachable: true, port, pages: 0, reason: 'No active workbench page target' };
+  }
 
   return {
     reachable: true,
     port,
-    targetId: page.id,
-    title: page.title,
-    state
+    targetId: selected.page.id,
+    title: selected.page.title,
+    state: selected.state
   };
 }

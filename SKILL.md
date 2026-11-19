@@ -1,15 +1,16 @@
 ---
 name: antigravity-codex-theme
-description: Deploy, selectively install, diagnose, configure, or troubleshoot antigravity-codex-theme (Codex pure-white/charcoal-dark theme, Chinese UI localization, 4-state session status indicator, expandable L1/L2 usage panels, and per-turn footer stats) on macOS, Windows, and Linux.
+description: Deploy, selectively install, relaunch with CDP opt-in (Antigravity 2.33.0+), diagnose, configure, or troubleshoot antigravity-codex-theme (Codex pure-white/charcoal-dark theme, Chinese UI localization, 4-state session status indicator, expandable L1/L2 usage panels, and per-turn footer stats) on macOS, Windows, and Linux.
 ---
 
 # Agent Operations Guide: antigravity-codex-theme
 
-Follow this guide when a user asks you to install, selectively install specific modules, verify, customize, troubleshoot, rollback, or uninstall **`antigravity-codex-theme`**.
+Follow this guide when a user asks you to install, selectively install specific modules, update for Antigravity `2.33.0+`, verify, customize, troubleshoot, rollback, or uninstall **`antigravity-codex-theme`**.
 
 > **Platform & Node.js Alignment**:
 > - Minimum Node.js version: **`>= 22.13.0`** (aligned with `package.json`, required for built-in `node:sqlite`).
-> - Real-device verified environment: **macOS** with Antigravity **`2.31.0` / `2.32.1`** and Node.js `v24.4.1`. Windows (`schtasks`) and Linux (`systemd --user`) autostart implementations are included, while CI (`ubuntu-latest`) covers syntax checks and unit tests only.
+> - Supported Antigravity versions: **`2.30.x` – `2.33.0+`** (includes single-icon M1/M2 `--remote-debugging-port=0` opt-in relaunch for `2.33.0+`).
+> - Real-device verified environment: **macOS** with Antigravity **`2.31.0` / `2.32.1` / `2.33.0`** and Node.js `v24.4.1`. Windows (`schtasks` + `.lnk`) and Linux (`systemd --user` + `.desktop`) implementations are included, while CI (`ubuntu-latest`) covers syntax checks and unit tests only.
 
 ## 1. Key Paths & Service Identifiers
 
@@ -29,8 +30,8 @@ Users can install all features or only the modules they request:
 
 | Feature ID | Config Keys | Purpose |
 | :--- | :--- | :--- |
-| `theme` | `modules.theme` | Codex pure-white light & charcoal-dark themes (`00-base.css`, `10-light-codex.css`, `20-dark-codex.css`, `20-theme-sync.js`) |
-| `i18n` | `modules.i18n` | 900+ Chinese UI localization entries (`core/i18n.json`, `60-i18n-engine.js`) |
+| `theme` | `modules.theme` | Codex pure-white light & charcoal-dark themes (`00-base.css`, `10-light-codex.css`, `20-dark-codex.css`, `20-theme-sync.js`, including Swarm iframe sync) |
+| `i18n` | `modules.i18n` | 1,860+ Chinese UI localization entries (`core/i18n.json`, `60-i18n-engine.js`, preserving English model names & reasoning effort labels) |
 | `metrics` | `modules.metrics` | 4-state session status indicator (`会话状态`), L1/L2 expandable usage panels, and per-turn footer stats |
 | `fixes` | `modules.deadlockHealer`, `modules.zoomShortcuts` | Settings modal router deadlock fix & `Cmd/Ctrl + -/=/0` zoom shortcuts (`10-guards.js`) |
 
@@ -56,20 +57,26 @@ Optional flags:
 - `--only theme,i18n,metrics,fixes`: enable only the specified feature groups
 - `--without <features>`: exclude specific feature groups
 - `--minimal`: prune excluded feature files inside `~/.gemini/antigravity/codex-theme/core` and rebuild its manifest
+- `--with-launcher`: (macOS only) optionally create `~/Applications/Antigravity (Codex Theme).app`; by default macOS uses single-icon mode (`single-icon-m2-relay`) with no duplicate app icon
 - `--sync-user`: overwrite `user/*` files from repository defaults
 - `--channel stable|insiders`: restrict to one Antigravity channel
 
-> **Note**: `install` patches `~/.antigravity/argv.json` with `"remote-debugging-port": 9222` (or `9223` for Insiders) and registers the background autostart service. If Antigravity was already open without remote debugging enabled, ask the user to fully quit and reopen Antigravity once.
+### Antigravity `2.33.0+` CDP Opt-In Relaunch & Anti-Self-Termination Rule
+Antigravity `2.33.0+` no longer opens `DevToolsActivePort` by default unless launched with `--remote-debugging-port=0`.
+- **Single-icon M2 cold-start relay (`cdpAutoRelaunch: true`)**: On macOS (and post-update restarts on Windows/Linux), the background daemon automatically relaunches a freshly opened Antigravity process with `--remote-debugging-port=0` during its first `12s` (`25s` for `--updated`), while **strictly exempting** any already-running session past that window.
+- **When `install` or `doctor` reports `"cdpStatus": "missing_opt_in_flag"`**:
+  - **Case A (Agent running inside Antigravity itself)**: **NEVER run `relaunch --force`** during an active turn (it would terminate your own Antigravity host window; running without `--force` is also safely blocked with exit code `2` by the 15s `.db-wal` active-conversation guard). Tell the user the update is deployed and ask them to quit and reopen Antigravity once after the reply completes (M2 will attach `--remote-debugging-port=0` automatically), or run `node ~/.gemini/antigravity/codex-theme/install.mjs relaunch` from an external terminal.
+  - **Case B (Agent running in an external terminal such as iTerm2 / Claude Code / Codex / Windows Terminal with no active Antigravity turn)**: Run `node ~/.gemini/antigravity/codex-theme/install.mjs relaunch` directly to restart Antigravity with `--remote-debugging-port=0` and verify live injection.
 
 ### Diagnose Environment & Live Injection
 ```bash
 node --disable-warning=ExperimentalWarning install.mjs doctor
 ```
 Verify in JSON output:
-- `ok === true`
+- `ok === true` (returns `false` with `remediation` when `cdpStatus === "missing_opt_in_flag"`)
 - `node.tier` shows `FULL (>= 22.13.0, ...)`
 - `coreIntegrity.clean === true`
-- `liveWindow.reachable === true` and `liveWindow.state.hasStyle === true` (`#ag-codex-theme`); when `theme` is enabled, `preset` is `"codex-pure-white"` or `"codex-dark"`; when `i18n` is enabled, `dictCount >= 800`; when `metrics` is enabled in an active chat, `pillMounted === true`
+- `liveWindow.reachable === true` and `liveWindow.state.hasStyle === true` (`#ag-codex-theme`); when `theme` is enabled, `preset` is `"codex-pure-white"` or `"codex-dark"`; when `i18n` is enabled, `dictCount >= 1800`; when `metrics` is enabled in an active chat, `pillMounted === true`
 
 ### Safe-Mode Troubleshooting
 ```bash
@@ -79,7 +86,7 @@ If `--safe-mode` works cleanly, inspect `~/.gemini/antigravity/codex-theme/user/
 
 ### Configuration Tweaks (Hot-Reloaded in ~2.5s)
 Edit `~/.gemini/antigravity/codex-theme/user/config.json`:
-- **Toggle individual modules**: `"modules": { "theme": true, "i18n": true, "metrics": true, "deadlockHealer": true, "zoomShortcuts": true }`
+- **Toggle individual modules**: `"modules": { "theme": true, "i18n": true, "metrics": true, "deadlockHealer": true, "zoomShortcuts": true, "cdpAutoRelaunch": true }`
 - **Switch status bar density**: `"telemetryLayout": "detailed"` (`"compact"` is default)
 - **Switch cache metric mode**: `"telemetryCacheMode": "step"` (`"session"` is default)
 - **Disable entire plugin cleanly**: `"enabled": false`
@@ -89,7 +96,7 @@ Edit `~/.gemini/antigravity/codex-theme/user/config.json`:
 node install.mjs rollback
 node install.mjs uninstall
 ```
-`uninstall` stops the daemon, removes autostart registrations, and restores original English UI and native styling while preserving `~/.gemini/antigravity/codex-theme/user/`, `backups/`, `core.prev/`, and `"remote-debugging-port"` in `argv.json`.
+`uninstall` stops the daemon, removes autostart registrations and managed CDP launchers, and restores original English UI and native styling while preserving `~/.gemini/antigravity/codex-theme/user/`, `backups/`, `core.prev/`, and `"remote-debugging-port"` in `argv.json`.
 
 ## 4. Verification Checklist (For Maintainers / Contributors)
 After editing any file under `core/`, always regenerate `core/manifest.json` before running checks or tests:

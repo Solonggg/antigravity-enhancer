@@ -3,7 +3,7 @@
  */
   // Remove any stale DOM nodes from a prior bundle version so fresh listeners attach cleanly
   try {
-    for (const staleId of ['ag-live-metrics-pill', 'ag-live-metrics-tooltip']) {
+    for (const staleId of ['ag-live-metrics-pill', 'ag-live-metrics-tooltip', 'ag-turn-metrics-tooltip']) {
       const staleEl = document.getElementById(staleId);
       if (staleEl) staleEl.remove();
     }
@@ -538,47 +538,174 @@
     if (t.tps > 0) parts.push('<span>' + t.tps + ' tok/s</span>');
     const html = parts.join('<span class="ag-sep"> · </span>');
 
-    const lines = [];
-    if (t.model) lines.push('模型: ' + t.model + ' (' + t.steps + '步)');
+    const rows = [];
     if (t.lastCtx > 0) {
-      lines.push('当前上下文: ' + t.lastCtx.toLocaleString('en-US') + ' / ' + t.limitStr + ' (' + t.ctxPct + '%)');
+      const ctxCls = t.ctxPct >= 90 ? 'ag-tmt-ctx-crit' : t.ctxPct >= 75 ? 'ag-tmt-ctx-warn' : '';
+      const ctxVal =
+        escapeStatusHtml(t.lastCtx.toLocaleString('en-US')) +
+        ' / ' +
+        escapeStatusHtml(t.limitStr) +
+        ' <span class="' +
+        ctxCls +
+        '">(' +
+        escapeStatusHtml(String(t.ctxPct)) +
+        '%)</span>';
+      rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">当前上下文</span><span class="ag-tmt-val">' + ctxVal + '</span></div>');
     }
     if (t.outTok > 0) {
-      lines.push(
-        '本轮输出: ' +
-          t.outTok.toLocaleString('en-US') +
-          ' (思考 ' +
-          t.thinkTok.toLocaleString('en-US') +
-          ' + 正文/工具 ' +
-          t.respTok.toLocaleString('en-US') +
-          ')'
-      );
+      const outVal =
+        escapeStatusHtml(t.outTok.toLocaleString('en-US')) +
+        ' <span class="ag-tmt-sub">(思考 ' +
+        escapeStatusHtml(t.thinkTok.toLocaleString('en-US')) +
+        ' + 正文/工具 ' +
+        escapeStatusHtml(t.respTok.toLocaleString('en-US')) +
+        ')</span>';
+      rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">本轮输出</span><span class="ag-tmt-val">' + outVal + '</span></div>');
     }
     const promptSum = t.inTok + t.cacheWrite + t.cacheRead;
     if (promptSum > 0) {
-      lines.push(
-        '本轮累计输入: 新增 ' +
-          t.inTok.toLocaleString('en-US') +
-          (t.cacheWrite > 0 ? ' + 写缓存 ' + t.cacheWrite.toLocaleString('en-US') : '') +
-          ' + 读缓存 ' +
-          t.cacheRead.toLocaleString('en-US') +
-          ' (命中率 ' +
-          t.cacheRate +
-          ')'
-      );
+      const inVal =
+        '新增 ' +
+        escapeStatusHtml(t.inTok.toLocaleString('en-US')) +
+        (t.cacheWrite > 0 ? ' + 写缓存 ' + escapeStatusHtml(t.cacheWrite.toLocaleString('en-US')) : '') +
+        ' + 读缓存 ' +
+        escapeStatusHtml(t.cacheRead.toLocaleString('en-US')) +
+        ' <span class="ag-tmt-sub">(命中率 ' +
+        escapeStatusHtml(t.cacheRate) +
+        ')</span>';
+      rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">本轮累计输入</span><span class="ag-tmt-val">' + inVal + '</span></div>');
     }
     if (t.tps > 0 || t.totDur > 0) {
-      lines.push(
-        '速度与耗时: ' +
-          (t.tps > 0 ? t.tps + ' tok/s (端到端 ' + t.e2eTps + ' tok/s) · ' : '') +
-          '流式 ' +
-          t.streamDur +
-          's / 总计 ' +
-          t.totDur +
-          's'
-      );
+      const spdVal =
+        (t.tps > 0
+          ? escapeStatusHtml(String(t.tps)) +
+            ' tok/s <span class="ag-tmt-sub">(端到端 ' +
+            escapeStatusHtml(String(t.e2eTps)) +
+            ' tok/s)</span> · '
+          : '') +
+        '流式 ' +
+        escapeStatusHtml(String(t.streamDur)) +
+        's / 总计 ' +
+        escapeStatusHtml(String(t.totDur)) +
+        's';
+      rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">速度与耗时</span><span class="ag-tmt-val">' + spdVal + '</span></div>');
     }
-    return { html, title: lines.join('\n') };
+
+    const hdrHtml = t.model
+      ? '<div class="ag-tmt-hdr"><span class="ag-tmt-model">' +
+        escapeStatusHtml(t.model) +
+        '</span><span class="ag-tmt-chip">' +
+        escapeStatusHtml(String(t.steps || 1)) +
+        ' 步</span></div>'
+      : '';
+    const tooltipHtml = hdrHtml || rows.length > 0 ? hdrHtml + '<div class="ag-tmt-grid">' + rows.join('') + '</div>' : '';
+    return { html, tooltipHtml };
+  }
+
+  let activeTurnBadgeEl = null;
+
+  function clearTurnTooltipTimers() {
+    if (window.__ag_turn_tt_show_timer) {
+      clearTimeout(window.__ag_turn_tt_show_timer);
+      window.__ag_turn_tt_show_timer = null;
+    }
+    if (window.__ag_turn_tt_hide_timer) {
+      clearTimeout(window.__ag_turn_tt_hide_timer);
+      window.__ag_turn_tt_hide_timer = null;
+    }
+  }
+
+  function hideTurnMetricsTooltip(immediate = false) {
+    if (window.__ag_turn_tt_show_timer) {
+      clearTimeout(window.__ag_turn_tt_show_timer);
+      window.__ag_turn_tt_show_timer = null;
+    }
+    const doHide = () => {
+      window.__ag_turn_tt_hide_timer = null;
+      activeTurnBadgeEl = null;
+      const tt = document.getElementById('ag-turn-metrics-tooltip');
+      if (tt) tt.removeAttribute('data-visible');
+    };
+    if (immediate) {
+      if (window.__ag_turn_tt_hide_timer) {
+        clearTimeout(window.__ag_turn_tt_hide_timer);
+        window.__ag_turn_tt_hide_timer = null;
+      }
+      doHide();
+      return;
+    }
+    if (window.__ag_turn_tt_hide_timer) clearTimeout(window.__ag_turn_tt_hide_timer);
+    window.__ag_turn_tt_hide_timer = setTimeout(doHide, 110);
+  }
+
+  function ensureTurnMetricsTooltipEl() {
+    let tt = document.getElementById('ag-turn-metrics-tooltip');
+    if (!tt && document.body) {
+      tt = document.createElement('div');
+      tt.id = 'ag-turn-metrics-tooltip';
+      document.body.appendChild(tt);
+      tt.addEventListener('mouseenter', () => {
+        if (window.__ag_turn_tt_hide_timer) {
+          clearTimeout(window.__ag_turn_tt_hide_timer);
+          window.__ag_turn_tt_hide_timer = null;
+        }
+      });
+      tt.addEventListener('mouseleave', () => {
+        hideTurnMetricsTooltip(false);
+      });
+    }
+    return tt;
+  }
+
+  function positionTurnMetricsTooltip(badge, tt) {
+    if (!badge || !tt) return;
+    try {
+      const rect = badge.getBoundingClientRect();
+      const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+      const ttRect = tt.getBoundingClientRect();
+      const ttW = tt.offsetWidth || ttRect.width || 320;
+      const ttH = tt.offsetHeight || ttRect.height || 130;
+
+      const preferAbove = rect.top >= ttH + 16 || rect.top >= vh - rect.bottom;
+      const left = Math.max(12, Math.min(Math.round(rect.left), vw - ttW - 12));
+      if (preferAbove) {
+        const top = Math.max(12, Math.round(rect.top - ttH - 8));
+        tt.setAttribute('data-placement', 'above');
+        tt.style.top = top + 'px';
+      } else {
+        const top = Math.min(vh - ttH - 12, Math.round(rect.bottom + 8));
+        tt.setAttribute('data-placement', 'below');
+        tt.style.top = Math.max(12, top) + 'px';
+      }
+      tt.style.left = left + 'px';
+    } catch (e) {}
+  }
+
+  function scheduleShowTurnMetricsTooltip(badge) {
+    if (!badge || !badge.__agTurnTtHtml) return;
+    if (window.__ag_turn_tt_hide_timer) {
+      clearTimeout(window.__ag_turn_tt_hide_timer);
+      window.__ag_turn_tt_hide_timer = null;
+    }
+    if (activeTurnBadgeEl === badge) {
+      const existingTt = document.getElementById('ag-turn-metrics-tooltip');
+      if (existingTt && existingTt.getAttribute('data-visible') === '1') return;
+    }
+    if (window.__ag_turn_tt_show_timer) clearTimeout(window.__ag_turn_tt_show_timer);
+    window.__ag_turn_tt_show_timer = setTimeout(() => {
+      window.__ag_turn_tt_show_timer = null;
+      if (!badge.isConnected || !badge.__agTurnTtHtml) return;
+      const tt = ensureTurnMetricsTooltipEl();
+      if (!tt) return;
+      activeTurnBadgeEl = badge;
+      if (tt.getAttribute('data-ag-turn-tt-raw') !== badge.__agTurnTtHtml) {
+        tt.setAttribute('data-ag-turn-tt-raw', badge.__agTurnTtHtml);
+        tt.innerHTML = badge.__agTurnTtHtml;
+      }
+      positionTurnMetricsTooltip(badge, tt);
+      tt.setAttribute('data-visible', '1');
+    }, 80);
   }
 
   function renderTurnMetrics(payload, currentId) {
@@ -611,7 +738,7 @@
           if (badge) badge.remove();
           continue;
         }
-        const { html, title } = formatTurnBadgeData(turn);
+        const { html, tooltipHtml } = formatTurnBadgeData(turn);
         if (!html) {
           if (badge) badge.remove();
           continue;
@@ -628,7 +755,16 @@
           badge.setAttribute('data-ag-turn-html', html);
           badge.innerHTML = html;
         }
-        if (badge.getAttribute('title') !== title) badge.setAttribute('title', title);
+        if (badge.hasAttribute('title')) badge.removeAttribute('title');
+        badge.__agTurnTtHtml = tooltipHtml;
+        if (activeTurnBadgeEl === badge) {
+          const tt = document.getElementById('ag-turn-metrics-tooltip');
+          if (tt && tt.getAttribute('data-visible') === '1' && tt.getAttribute('data-ag-turn-tt-raw') !== tooltipHtml) {
+            tt.setAttribute('data-ag-turn-tt-raw', tooltipHtml);
+            tt.innerHTML = tooltipHtml;
+            positionTurnMetricsTooltip(badge, tt);
+          }
+        }
       }
     } catch (e) {}
   }
@@ -715,6 +851,7 @@
       }
       window.__ag_tt_pinned = false;
       window.__ag_tt_hover_opened_at = 0;
+      hideTurnMetricsTooltip(true);
       const tt = document.getElementById('ag-live-metrics-tooltip');
       if (tt) {
         tt.removeAttribute('data-visible');
@@ -776,6 +913,7 @@
   const _closeMetricsTooltip = () => {
     window.__ag_tt_pinned = false;
     window.__ag_tt_hover_opened_at = 0;
+    hideTurnMetricsTooltip(true);
     const tt = document.getElementById('ag-live-metrics-tooltip');
     if (tt) {
       tt.removeAttribute('data-expanded');
@@ -790,8 +928,32 @@
   const _onDocClick = (e) => {
     const t = e && e.target;
     if (!t || !t.closest) return;
-    if (t.closest('#ag-live-metrics-pill') || t.closest('#ag-live-metrics-tooltip')) return;
+    if (t.closest('#ag-live-metrics-pill') || t.closest('#ag-live-metrics-tooltip') || t.closest('#ag-turn-metrics-tooltip')) return;
     _closeMetricsTooltip();
+  };
+  const _onTurnMouseOver = (e) => {
+    if (!MODULES.metrics) return;
+    const t = e && e.target;
+    if (!t || !t.closest) return;
+    const badge = t.closest('.ag-turn-metrics');
+    if (!badge) return;
+    scheduleShowTurnMetricsTooltip(badge);
+  };
+  const _onTurnMouseOut = (e) => {
+    const t = e && e.target;
+    if (!t || !t.closest) return;
+    const badge = t.closest('.ag-turn-metrics');
+    if (!badge) return;
+    const rel = e.relatedTarget;
+    if (rel && rel.closest && (rel.closest('.ag-turn-metrics') === badge || rel.closest('#ag-turn-metrics-tooltip'))) {
+      return;
+    }
+    hideTurnMetricsTooltip(false);
+  };
+  const _onTurnScroll = () => {
+    if (activeTurnBadgeEl || window.__ag_turn_tt_show_timer) {
+      hideTurnMetricsTooltip(true);
+    }
   };
 
   window.__ag_tt_pinned = false;
@@ -803,6 +965,9 @@
   window.addEventListener('offline', _onNetworkChange);
   window.addEventListener('keydown', _onEscapeKey, true);
   document.addEventListener('click', _onDocClick, true);
+  document.addEventListener('mouseover', _onTurnMouseOver, true);
+  document.addEventListener('mouseout', _onTurnMouseOut, true);
+  window.addEventListener('scroll', _onTurnScroll, true);
 
   if (MODULES.metrics) {
     if (!window.__ag_visible_since) window.__ag_visible_since = Date.now();
@@ -814,6 +979,7 @@
     }, 1000);
   } else {
     try {
+      hideTurnMetricsTooltip(true);
       document.querySelectorAll('.ag-turn-metrics').forEach((el) => el.remove());
       if (window.__ag_metrics_ro) {
         window.__ag_metrics_ro.disconnect();
@@ -832,6 +998,11 @@
     window.removeEventListener('offline', _onNetworkChange);
     window.removeEventListener('keydown', _onEscapeKey, true);
     document.removeEventListener('click', _onDocClick, true);
+    document.removeEventListener('mouseover', _onTurnMouseOver, true);
+    document.removeEventListener('mouseout', _onTurnMouseOut, true);
+    window.removeEventListener('scroll', _onTurnScroll, true);
+    clearTurnTooltipTimers();
+    activeTurnBadgeEl = null;
     window.__ag_tt_pinned = false;
     window.__ag_tt_hover_opened_at = 0;
     if (window.__ag_metrics_route_watcher) {

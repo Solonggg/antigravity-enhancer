@@ -70,7 +70,8 @@ const cdpManager = createCdpManager({
   bundleCtrl,
   metricsReader,
   hasSqlite: () => Boolean(DatabaseSync && sqliteMetricsMod),
-  runOnce: cliOpts.runOnce
+  runOnce: cliOpts.runOnce,
+  safeMode: cliOpts.safeMode
 });
 
 export {

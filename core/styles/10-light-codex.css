@@ -62,13 +62,25 @@ html:not([data-ag-theme-mode="dark"]) body:not(.dark) {
   --code-foreground: #171717 !important;
 }
 
-/* Codex rounded neutral-gray capsule on active sidebar row */
+/* Codex rounded neutral-gray capsule on active sidebar row (compatible with 2.33.0+ removing data-newux-theme="onyx") */
+body[data-agy-theme]:not(.dark) .agy-sidebar-row[data-selected="true"],
+body[data-agy-theme][data-newux-theme="onyx"]:not(.dark) .agy-sidebar-row[data-selected="true"],
 body:not(.dark) [data-testid="conversation-row-sidebar"][data-selected="true"],
 body:not(.dark) .agy-sidebar-row[data-selected="true"] {
   background-color: #EFEFEF !important;
   --row-bg: #EFEFEF !important;
   border-radius: 10px !important;
   box-shadow: none !important;
+}
+
+/* Swarm plugin iframe light-mode secondary surface fallbacks */
+html[data-ag-page-type="plugin"]:not([data-ag-theme-mode="dark"]),
+html[data-ag-page-type="plugin"]:not([data-ag-theme-mode="dark"]) body {
+  --primary-foreground: #FFFFFF !important;
+  --secondary: rgba(0, 0, 0, 0.05) !important;
+  --muted: rgba(0, 0, 0, 0.04) !important;
+  --placeholder: #8C8C8C !important;
+  --error: #DC2626 !important;
 }
 
 html:not([data-ag-theme-mode="dark"]) body:not(.dark):not(.theme-dark) #antigravity\.agentSidePanelInputBox button[data-testid="input-cancel-button"] {

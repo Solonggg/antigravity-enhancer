@@ -45,13 +45,27 @@
       try {
         storedThemeMode = Storage.prototype.getItem.call(localStorage, 'theme-mode');
       } catch (e) {}
-      const isDark = bodyExplicitDark
-        ? true
-        : bodyExplicitLight || storedThemeMode === 'light'
-        ? false
-        : storedThemeMode === 'dark'
-        ? true
-        : !!(document.documentElement && document.documentElement.style.colorScheme === 'dark');
+      let isDark;
+      if (IS_SWARM_PLUGIN_FRAME) {
+        const hostMode = window.__ag_host_theme_mode;
+        if (hostMode === 'dark' || hostMode === 'light') {
+          isDark = hostMode === 'dark';
+        } else {
+          const docTheme = document.documentElement ? document.documentElement.getAttribute('data-theme') : '';
+          isDark =
+            docTheme === 'dark' ||
+            bodyExplicitDark ||
+            Boolean(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        }
+      } else {
+        isDark = bodyExplicitDark
+          ? true
+          : bodyExplicitLight || storedThemeMode === 'light'
+          ? false
+          : storedThemeMode === 'dark'
+          ? true
+          : !!(document.documentElement && document.documentElement.style.colorScheme === 'dark');
+      }
 
       const targetMode = isDark ? 'dark' : 'light';
       const targetPreset = isDark ? PRESETS.CODEX_DARK : PRESETS.CODEX_PURE_WHITE;
@@ -63,6 +77,14 @@
       const prevMode = document.documentElement.getAttribute('data-ag-theme-mode');
       if (prevMode !== targetMode || prevPreset !== targetPreset) {
         document.documentElement.setAttribute('data-ag-theme-mode', targetMode);
+        if (IS_SWARM_PLUGIN_FRAME && document.documentElement) {
+          document.documentElement.style.colorScheme = targetMode;
+        }
+        if (!IS_SWARM_PLUGIN_FRAME && typeof window.__agSyncHostThemeMode === 'function') {
+          try {
+            window.__agSyncHostThemeMode(targetMode);
+          } catch (e) {}
+        }
         try {
           const cs = getComputedStyle(document.body || document.documentElement);
           const sidebarBg = cs.getPropertyValue('--sidebar').trim() || (isDark ? '#232323' : '#F9F9F9');
@@ -77,6 +99,11 @@
   }
 
   window.__ag_sync_preset_fn = syncThemePreset;
+  window.__ag_set_host_theme_mode = function (mode) {
+    if (mode !== 'dark' && mode !== 'light') return;
+    window.__ag_host_theme_mode = mode;
+    syncThemePreset();
+  };
 
   if (MODULES.theme !== false) {
     if (DEFAULT_PRESET && window.__ag_last_boot_preset !== DEFAULT_PRESET) {

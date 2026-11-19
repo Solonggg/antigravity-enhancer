@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_ALLOWED_ORIGINS, extractJsoncNumberProperty } from '../shared.mjs';
+import { DEFAULT_ALLOWED_ORIGINS, extractJsoncNumberProperty, stripUtf8Bom } from '../shared.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +15,7 @@ export const CORE_DIR = path.join(ROOT_DIR, 'core');
 export const STYLES_DIR = path.join(CORE_DIR, 'styles');
 export const RUNTIME_DIR = path.join(CORE_DIR, 'runtime');
 export const USER_DIR = path.join(ROOT_DIR, 'user');
-export const BASE_VERSION = '1.0.0';
+export const BASE_VERSION = '1.1.0';
 
 export function parseDaemonCliArgs(argv = process.argv.slice(2)) {
   const hasFlag = (f) => argv.some((a) => a === f || a.startsWith(f + '='));
@@ -38,7 +38,7 @@ export function parseDaemonCliArgs(argv = process.argv.slice(2)) {
 export function readJsonSafe(filePath, fallback = {}) {
   try {
     if (!fs.existsSync(filePath)) return fallback;
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return JSON.parse(stripUtf8Bom(fs.readFileSync(filePath, 'utf8')));
   } catch {
     return fallback;
   }
@@ -168,6 +168,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       metrics: Boolean(hasSqlite),
       deadlockHealer: true,
       zoomShortcuts: true,
+      cdpAutoRelaunch: true,
       customCss: true,
       customJs: true
     },
@@ -230,6 +231,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
         metrics: true,
         deadlockHealer: true,
         zoomShortcuts: true,
+        cdpAutoRelaunch: true,
         customCss: true,
         customJs: true
       },

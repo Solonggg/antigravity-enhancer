@@ -136,6 +136,7 @@ code, pre, kbd, samp, .font-mono, [class*="language-"], .monaco-editor, .xterm, 
   transition: border-color 180ms ease, box-shadow 180ms ease !important;
 }
 
+body[data-agy-theme] .surface-composer > .surface-composer-card,
 body[data-agy-theme][data-newux-theme="onyx"] .surface-composer > .surface-composer-card,
 .surface-composer-card.bg-card,
 [id="antigravity.agentSidePanelInputBox"] .surface-composer-card,
@@ -148,6 +149,7 @@ body[data-agy-theme][data-newux-theme="onyx"] .surface-composer > .surface-compo
   transition: box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1), border-color 220ms ease !important;
 }
 
+body[data-agy-theme] .surface-composer:focus-within > .surface-composer-card,
 body[data-agy-theme][data-newux-theme="onyx"] .surface-composer:focus-within > .surface-composer-card,
 .surface-composer:focus-within > .surface-composer-card,
 .surface-composer-card:focus-within,

@@ -1,5 +1,5 @@
 /**
- * core/daemon/cdp-bridge.mjs — CDP Target Discovery, WebSocket Attachment, PID Lock & Log Hygiene
+ * core/daemon/cdp-bridge.mjs — CDP Target Discovery, Host Fingerprint Gate, Swarm Relay, M2 Cold-Start Relay & Log Hygiene
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,6 +11,8 @@ import {
   fetchTargetsFromPort,
   isConfirmedDaemonPid
 } from '../shared.mjs';
+import { ROOT_DIR } from './paths.mjs';
+import { createCdpRelaunchController } from './cdp-relaunch.mjs';
 
 const __bridgeDir = path.dirname(fileURLToPath(import.meta.url));
 let getLsLogSig = () => '';
@@ -26,6 +28,15 @@ if (fs.existsSync(path.join(__bridgeDir, 'sqlite-metrics.mjs'))) {
     const sqMod = await import('./sqlite-metrics.mjs');
     if (typeof sqMod.getDbSignature === 'function') getDbSignature = sqMod.getDbSignature;
   } catch {}
+}
+
+function getTargetOriginKey(urlStr) {
+  try {
+    const u = new URL(String(urlStr || ''));
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return String(urlStr || '').slice(0, 64);
+  }
 }
 
 export function acquireDaemonPidLock(cliChannel = null, runOnce = false) {
@@ -61,7 +72,7 @@ export function acquireDaemonPidLock(cliChannel = null, runOnce = false) {
   } catch {}
 }
 
-export function trimLogFileIfOversized(filePath, maxBytes = 1024 * 1024, keepBytes = 128 * 1024) {
+export function trimLogFileIfOversized(filePath, maxBytes = 256 * 1024, keepBytes = 64 * 1024) {
   try {
     const st = fs.statSync(filePath, { throwIfNoEntry: false });
     if (!st || !st.isFile() || st.size <= maxBytes) return false;
@@ -90,17 +101,62 @@ export function trimDaemonLogsIfNeeded(runOnce = false) {
   trimLogFileIfOversized('/tmp/antigravity-codex-daemon.err');
 }
 
-export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce = false }) {
+export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce = false, safeMode = false }) {
   const attachedTargets = new Map();
   const fallbackBackoffUntil = new Map();
+  const skippedNonHostTargets = new Map();
+  const targetMetaMap = new Map();
+  const targetThemeModes = new Map();
+  const cdpRelaunchCtrl = createCdpRelaunchController();
   let isSyncing = false;
   let syncTickCount = 0;
   let lastTargetDiscoveryMs = 0;
   const TARGET_DISCOVERY_INTERVAL_MS = 12500;
 
+  function resolveParentThemeMode(targetId, channel) {
+    let curId = targetId;
+    for (let depth = 0; depth < 6 && curId; depth += 1) {
+      const meta = targetMetaMap.get(curId);
+      const pid = meta?.parentId || null;
+      if (pid && targetThemeModes.has(pid)) {
+        return targetThemeModes.get(pid);
+      }
+      curId = pid;
+    }
+    for (const [id, mode] of targetThemeModes.entries()) {
+      const meta = targetMetaMap.get(id);
+      if (!channel || !meta?.channel || meta.channel === channel) {
+        return mode;
+      }
+    }
+    return '';
+  }
+
+  async function relayThemeModeToChildIframes(parentId, channel, mode) {
+    if (mode !== 'dark' && mode !== 'light') return;
+    for (const [id, entry] of attachedTargets.entries()) {
+      if (!entry.isSwarmIframe || !entry.hostConfirmed) continue;
+      if (channel && entry.endpoint?.channel && entry.endpoint.channel !== channel) continue;
+      if (parentId && entry.parentId && entry.parentId !== parentId) {
+        const resolved = resolveParentThemeMode(id, entry.endpoint?.channel);
+        if (resolved && resolved !== mode) continue;
+      }
+      try {
+        await entry.send('Runtime.evaluate', {
+          expression: `window.__ag_host_theme_mode = ${JSON.stringify(mode)}; if (typeof window.__ag_set_host_theme_mode === 'function') window.__ag_set_host_theme_mode(${JSON.stringify(mode)});`,
+          returnByValue: false
+        });
+        if (entry.updateNewDocScript) {
+          await entry.updateNewDocScript();
+        }
+      } catch {}
+    }
+  }
+
   function attachTarget(target, endpoint) {
     const wsUrl = target.webSocketDebuggerUrl;
     if (!wsUrl) return Promise.resolve(false);
+    const isSwarmIframe = target.type === 'iframe' && String(target.url || '').startsWith('plugin://swarm--');
 
     return new Promise((resolveAttach) => {
       let settled = false;
@@ -110,7 +166,7 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
           resolveAttach(ok);
         }
       };
-      const attachTimeout = setTimeout(() => finishAttach(false), 2500);
+      const attachTimeout = setTimeout(() => finishAttach(false), 3000);
 
       try {
         const ws = new WebSocket(wsUrl);
@@ -119,6 +175,8 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
         let lastPushedHash = '';
         let lastPendingActive = false;
         let evalScriptId = null;
+        let hostConfirmed = isSwarmIframe;
+        let currentTargetUrl = target.url || '';
         const pendingCallbacks = new Map();
 
         const send = (method, params = {}) =>
@@ -136,14 +194,45 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
             ws.send(JSON.stringify({ id, method, params }));
           });
 
+        const buildEffectiveScript = () => {
+          const { cachedInjectScript } = bundleCtrl.getState();
+          if (!isSwarmIframe) return cachedInjectScript;
+          const inheritedMode = resolveParentThemeMode(target.id, endpoint.channel);
+          const preamble = inheritedMode ? `window.__ag_host_theme_mode = ${JSON.stringify(inheritedMode)};\n` : '';
+          return `${preamble}${cachedInjectScript}`;
+        };
+
+        const verifyHostTarget = async () => {
+          if (isSwarmIframe) return true;
+          const probe = await send('Runtime.evaluate', {
+            expression: `(() => {
+              const loc = window.location;
+              const isHost = Boolean(
+                (loc && loc.protocol === 'vscode-file:') ||
+                (window.__APP_CONFIG__ && window.__APP_CONFIG__.productName === 'antigravity') ||
+                (window.electronNative && (
+                  typeof window.electronNative.setTitleBarOverlay === 'function' ||
+                  typeof window.electronNative.getZoomLevel === 'function'
+                )) ||
+                (typeof document !== 'undefined' && document.querySelector &&
+                  document.querySelector('link[href*="/jetbox.css"], body[data-agy-theme], body[data-newux-theme], [id="antigravity.agentSidePanelInputBox"]'))
+              );
+              return isHost;
+            })()`,
+            returnByValue: true
+          });
+          return probe?.result?.result?.value === true;
+        };
+
         const updateNewDocScript = async () => {
-          const { activeConfig, cachedInjectScript } = bundleCtrl.getState();
+          if (!hostConfirmed) return;
+          const { activeConfig } = bundleCtrl.getState();
           if (evalScriptId) {
             await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: evalScriptId });
             evalScriptId = null;
           }
           if (activeConfig.enabled) {
-            const addRes = await send('Page.addScriptToEvaluateOnNewDocument', { source: cachedInjectScript });
+            const addRes = await send('Page.addScriptToEvaluateOnNewDocument', { source: buildEffectiveScript() });
             if (addRes?.result?.identifier) {
               evalScriptId = addRes.result.identifier;
             }
@@ -151,9 +240,10 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
         };
 
         const inject = async () => {
-          const { cachedInjectScript, cachedPatchVersion } = bundleCtrl.getState();
+          if (!hostConfirmed) return false;
+          const { cachedPatchVersion } = bundleCtrl.getState();
           const res = await send('Runtime.evaluate', {
-            expression: cachedInjectScript,
+            expression: buildEffectiveScript(),
             returnByValue: true
           });
           if (res?.error) {
@@ -167,11 +257,14 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
             );
             return false;
           }
-          console.log(`[Daemon] Injected (${cachedPatchVersion}) into target ${target.id} [${endpoint.channel}]`);
+          console.log(
+            `[Daemon] Injected (${cachedPatchVersion}) into ${isSwarmIframe ? 'swarm iframe' : 'target'} ${target.id} [${endpoint.channel}]`
+          );
           return true;
         };
 
         const syncMetricsForSession = async (force = false) => {
+          if (isSwarmIframe || !hostConfirmed) return;
           const { activeConfig } = bundleCtrl.getState();
           if (!hasSqlite() || !activeConfig.modules.metrics || !activeConfig.enabled) return;
 
@@ -231,6 +324,7 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
         };
 
         const checkAndInject = async () => {
+          if (!hostConfirmed) return;
           try {
             const { activeConfig, cachedPatchVersion } = bundleCtrl.getState();
             const checkRes = await send('Runtime.evaluate', {
@@ -253,12 +347,42 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
         let navDebounceTimer = null;
 
         ws.addEventListener('open', async () => {
-          console.log(`[Daemon] Attached target: ${target.id} (${target.title || 'Untitled'}) [${endpoint.channel}]`);
           await send('Page.enable');
           await send('Runtime.enable');
-          await send('Runtime.addBinding', { name: '__agRequestMetrics' });
+
+          const isHost = await verifyHostTarget();
+          if (!isHost) {
+            skippedNonHostTargets.set(target.id, { origin: getTargetOriginKey(currentTargetUrl) });
+            try {
+              ws.close();
+            } catch {}
+            clearTimeout(attachTimeout);
+            finishAttach(false);
+            return;
+          }
+          hostConfirmed = true;
+          const entryRef = attachedTargets.get(target.id);
+          if (entryRef) entryRef.hostConfirmed = true;
+
+          console.log(
+            `[Daemon] Attached ${isSwarmIframe ? 'swarm iframe' : 'target'}: ${target.id} (${target.title || 'Untitled'}) [${endpoint.channel}]`
+          );
+          if (!isSwarmIframe) {
+            await send('Runtime.addBinding', { name: '__agRequestMetrics' });
+            await send('Runtime.addBinding', { name: '__agSyncHostThemeMode' });
+          }
           await updateNewDocScript();
           const ok = await inject();
+          if (!isSwarmIframe) {
+            const modeRes = await send('Runtime.evaluate', {
+              expression: `document.documentElement ? (document.documentElement.getAttribute('data-ag-theme-mode') || '') : ''`,
+              returnByValue: true
+            });
+            const resolvedMode = String(modeRes?.result?.result?.value || '').trim();
+            if (resolvedMode === 'dark' || resolvedMode === 'light') {
+              targetThemeModes.set(target.id, resolvedMode);
+            }
+          }
           await syncMetricsForSession(true);
           initialAttachDone = true;
           clearTimeout(attachTimeout);
@@ -284,6 +408,17 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
                 activeCascadeId = '';
                 lastPushedHash = '';
                 lastPendingActive = false;
+              }
+              return;
+            }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agSyncHostThemeMode') {
+              const nextMode = String(msg.params.payload || '').trim();
+              if (nextMode === 'dark' || nextMode === 'light') {
+                const prevMode = targetThemeModes.get(target.id);
+                targetThemeModes.set(target.id, nextMode);
+                if (prevMode !== nextMode) {
+                  relayThemeModeToChildIframes(target.id, endpoint.channel, nextMode);
+                }
               }
               return;
             }
@@ -313,6 +448,7 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
           for (const [, cb] of pendingCallbacks) cb(null);
           pendingCallbacks.clear();
           attachedTargets.delete(target.id);
+          targetThemeModes.delete(target.id);
           finishAttach(false);
         };
         ws.addEventListener('close', closeHandler);
@@ -325,7 +461,13 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
           inject,
           checkAndInject,
           syncMetricsForSession,
-          endpoint
+          endpoint,
+          isSwarmIframe,
+          parentId: target.parentId || null,
+          hostConfirmed,
+          updateTargetUrl: (u) => {
+            if (u) currentTargetUrl = u;
+          }
         });
       } catch {
         clearTimeout(attachTimeout);
@@ -339,9 +481,12 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
     isSyncing = true;
     syncTickCount = (syncTickCount + 1) % 6000;
     try {
-      if (syncTickCount % 120 === 1) trimDaemonLogsIfNeeded(runOnce);
+      if (syncTickCount % 24 === 1) trimDaemonLogsIfNeeded(runOnce);
       const bundleChanged = bundleCtrl.rebuildBundleIfNeeded();
       const { activeConfig } = bundleCtrl.getState();
+      if (!activeConfig.enabled) {
+        targetThemeModes.clear();
+      }
       const shouldHeartbeatCheck = bundleChanged || syncTickCount % 6 === 1;
       const nowMs = Date.now();
       const shouldDiscoverTargets =
@@ -352,6 +497,7 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
 
       if (!shouldDiscoverTargets) {
         for (const entry of attachedTargets.values()) {
+          if (!entry.hostConfirmed) continue;
           if (shouldHeartbeatCheck && entry.checkAndInject) await entry.checkAndInject();
           if (entry.syncMetricsForSession) await entry.syncMetricsForSession(false);
         }
@@ -360,7 +506,9 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
 
       lastTargetDiscoveryMs = nowMs;
       const activeTargetIds = new Set();
-      const attachPromises = [];
+      const seenRawTargetIds = new Set();
+      const pendingPages = [];
+      const pendingIframes = [];
       const probedPorts = new Set();
 
       for (const endpoint of activeConfig.endpoints) {
@@ -387,32 +535,70 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
         }
         if (targets.length === 0) continue;
 
+        for (const t of targets) {
+          if (!t?.id) continue;
+          seenRawTargetIds.add(t.id);
+          targetMetaMap.set(t.id, { type: t.type, parentId: t.parentId || null, channel: endpoint.channel });
+          const skipped = skippedNonHostTargets.get(t.id);
+          if (skipped && (!sharedIsAllowedOrigin(t.url, activeConfig.allowedOrigins) || getTargetOriginKey(t.url) !== skipped.origin)) {
+            skippedNonHostTargets.delete(t.id);
+          }
+        }
+
         const pages = targets.filter(
           (t) =>
-            t.type === 'page' &&
+            (t.type === 'page' || (t.type === 'iframe' && String(t.url || '').startsWith('plugin://swarm--'))) &&
             t.webSocketDebuggerUrl &&
             !String(t.url || '').startsWith('devtools://') &&
             sharedIsAllowedOrigin(t.url, activeConfig.allowedOrigins) &&
-            !String(t.title || '').includes('Launchpad')
+            !String(t.title || '').includes('Launchpad') &&
+            skippedNonHostTargets.get(t.id)?.origin !== getTargetOriginKey(t.url)
         );
 
         for (const page of pages) {
           activeTargetIds.add(page.id);
-          if (!attachedTargets.has(page.id)) {
-            attachPromises.push(attachTarget(page, endpoint));
+          if (page.type === 'iframe') {
+            pendingIframes.push({ page, endpoint });
           } else {
-            const entry = attachedTargets.get(page.id);
-            if (bundleChanged && entry.updateNewDocScript) {
-              await entry.updateNewDocScript();
-            }
-            if (shouldHeartbeatCheck && entry.checkAndInject) await entry.checkAndInject();
-            if (entry.syncMetricsForSession) await entry.syncMetricsForSession(bundleChanged);
+            pendingPages.push({ page, endpoint });
           }
         }
       }
 
-      if (attachPromises.length > 0) {
-        await Promise.allSettled(attachPromises);
+      const syncTargetBatch = async (items) => {
+        const attachPromises = [];
+        for (const { page, endpoint } of items) {
+          if (!attachedTargets.has(page.id)) {
+            attachPromises.push(attachTarget(page, endpoint));
+          } else {
+            const entry = attachedTargets.get(page.id);
+            entry.endpoint = endpoint;
+            entry.parentId = page.parentId || entry.parentId || null;
+            entry.updateTargetUrl?.(page.url);
+            if (entry.hostConfirmed) {
+              if (bundleChanged && entry.updateNewDocScript) {
+                await entry.updateNewDocScript();
+              }
+              if (shouldHeartbeatCheck && entry.checkAndInject) await entry.checkAndInject();
+              if (entry.syncMetricsForSession) await entry.syncMetricsForSession(bundleChanged);
+            }
+          }
+        }
+        if (attachPromises.length > 0) {
+          await Promise.allSettled(attachPromises);
+        }
+      };
+
+      await syncTargetBatch(pendingPages);
+      await syncTargetBatch(pendingIframes);
+
+      if (pendingPages.length === 0 && attachedTargets.size === 0) {
+        cdpRelaunchCtrl.maybeAutoRelaunchColdStartWithoutCdp({
+          activeConfig,
+          safeMode,
+          runOnce,
+          rootDir: ROOT_DIR
+        });
       }
 
       for (const [id, entry] of attachedTargets.entries()) {
@@ -421,7 +607,18 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
             entry.ws.close();
           } catch {}
           attachedTargets.delete(id);
+          targetThemeModes.delete(id);
         }
+      }
+      if (seenRawTargetIds.size > 0) {
+        for (const id of skippedNonHostTargets.keys()) {
+          if (!seenRawTargetIds.has(id)) skippedNonHostTargets.delete(id);
+        }
+        for (const id of targetMetaMap.keys()) {
+          if (!seenRawTargetIds.has(id)) targetMetaMap.delete(id);
+        }
+      } else if (attachedTargets.size === 0) {
+        targetMetaMap.clear();
       }
     } finally {
       isSyncing = false;
@@ -435,6 +632,7 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
       } catch {}
     }
     attachedTargets.clear();
+    targetThemeModes.clear();
   }
 
   return { sync, closeAll };

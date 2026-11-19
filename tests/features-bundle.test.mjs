@@ -206,6 +206,7 @@ test('core/daemon.mjs loads cleanly in a minimal sparse copy without metrics fil
       'core/shared.mjs',
       'core/daemon/paths.mjs',
       'core/daemon/cdp-bridge.mjs',
+      'core/daemon/cdp-relaunch.mjs',
       'core/i18n.json',
       'core/runtime/00-head.js',
       'core/runtime/60-i18n-engine.js',

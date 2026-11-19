@@ -10,8 +10,53 @@ export const DEFAULT_ALLOWED_ORIGINS = [
   'https://127.0.0.1',
   'http://localhost',
   'https://localhost',
-  'vscode-file://'
+  'vscode-file://',
+  'plugin://swarm--'
 ];
+
+export const NON_HOST_CMD_RE =
+  /--type=|--crashpad|--utility-sub-type=|--import=|sidecar_sdk|--ms-enable-electron-run-as-node/i;
+
+export function stripUtf8Bom(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+}
+
+export function sleepSync(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return;
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.round(ms));
+  } catch {}
+}
+
+export function isPidAlive(pid) {
+  if (!pid || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return Boolean(err && err.code === 'EPERM');
+  }
+}
+
+export function parsePosixEtimeSeconds(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return Infinity;
+  let days = 0;
+  let rest = s;
+  const dashIdx = s.indexOf('-');
+  if (dashIdx !== -1) {
+    days = parseInt(s.slice(0, dashIdx), 10);
+    if (!Number.isFinite(days)) return Infinity;
+    rest = s.slice(dashIdx + 1);
+  }
+  const parts = rest.split(':').map((p) => parseInt(p, 10));
+  if (parts.some((n) => !Number.isFinite(n))) return Infinity;
+  if (parts.length === 3) return days * 86400 + parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return days * 86400 + parts[0] * 60 + parts[1];
+  if (parts.length === 1) return days * 86400 + parts[0];
+  return Infinity;
+}
 
 export function isAllowedOrigin(urlStr, allowedOrigins = DEFAULT_ALLOWED_ORIGINS) {
   if (!urlStr || typeof urlStr !== 'string') return false;

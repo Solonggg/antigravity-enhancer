@@ -11,6 +11,7 @@
     "metrics": true,
     "deadlockHealer": true,
     "zoomShortcuts": true,
+    "cdpAutoRelaunch": true,
     "customCss": true,
     "customJs": true
   },

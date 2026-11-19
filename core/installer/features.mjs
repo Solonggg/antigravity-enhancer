@@ -16,6 +16,7 @@ export const BASE_SPARSE_PATHS = Object.freeze([
   '/core/installer',
   '/core/daemon/paths.mjs',
   '/core/daemon/cdp-bridge.mjs',
+  '/core/daemon/cdp-relaunch.mjs',
   '/core/runtime/00-head.js',
   '/core/runtime/90-tail.js'
 ]);

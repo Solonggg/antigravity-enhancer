@@ -77,7 +77,8 @@ html[data-ag-preset] body[data-agy-theme].dark {
   --code-foreground: #ECECEC !important;
 }
 
-/* Codex neutral dark-gray rounded capsule on active sidebar row */
+/* Codex neutral dark-gray rounded capsule on active sidebar row (compatible with 2.33.0+) */
+body[data-agy-theme].dark .agy-sidebar-row[data-selected="true"],
 body[data-agy-theme][data-newux-theme="onyx"].dark .agy-sidebar-row[data-selected="true"],
 :is(html[data-ag-theme-mode="dark"] body, body.dark) :is([data-testid="conversation-row-sidebar"][data-selected="true"], .agy-sidebar-row[data-selected="true"]) {
   background-color: #353535 !important;
@@ -94,8 +95,9 @@ body[data-agy-theme][data-newux-theme="onyx"].dark .agy-sidebar-row[data-selecte
   box-shadow: none !important;
 }
 
+body[data-agy-theme].dark .surface-composer > .surface-composer-card,
+body[data-agy-theme][data-newux-theme="onyx"].dark .surface-composer > .surface-composer-card,
 :is(html[data-ag-theme-mode="dark"] body, body.dark) :is(
-  body[data-agy-theme][data-newux-theme="onyx"] .surface-composer > .surface-composer-card,
   .surface-composer-card.bg-card,
   [id="antigravity.agentSidePanelInputBox"] .surface-composer-card,
   [id="antigravity.agentSidePanelInputBox"] > div.bg-card

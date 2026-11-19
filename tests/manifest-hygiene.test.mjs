@@ -39,6 +39,9 @@ test('core/i18n.json is valid JSON with substantial localization coverage', () =
   const keys = Object.keys(dict);
   assert.ok(keys.length >= 800, `Expected >= 800 i18n entries, found ${keys.length}`);
   assert.equal(dict.Settings || dict['Settings'] ? typeof dict['Settings'] : 'string', 'string');
+  for (const keepEn of ['Minimal', 'Low', 'Medium', 'High', 'Extra', 'Extra High', 'XHigh', 'Max', 'Orchestrator', 'Orchestrator (Carbon)', 'Orchestrator (Argon)']) {
+    assert.equal(Object.prototype.hasOwnProperty.call(dict, keepEn), false, `Model/effort label "${keepEn}" should stay untranslated`);
+  }
 });
 
 test('Assembled runtime JS and CSS parts pass syntax validation and define Codex presets', () => {

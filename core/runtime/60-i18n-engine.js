@@ -65,7 +65,7 @@
     }
 
     const CONTAINER_IMMUTABLE_EXCLUDE_SELECTOR =
-      'code, pre, kbd, samp, style, script, noscript, [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, #ag-live-metrics-pill, #ag-live-metrics-tooltip, .ag-turn-metrics';
+      'code, pre, kbd, samp, style, script, noscript, [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, #ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics';
     const TEXT_IMMUTABLE_EXCLUDE_SELECTOR = 'textarea, input, ' + CONTAINER_IMMUTABLE_EXCLUDE_SELECTOR;
 
     const mergedExcludeParts = splitTopLevelSelectors(DEFAULT_EXCLUDE_I18N);
@@ -231,8 +231,10 @@
     const RE_ARIA_PERM_FIXED = /^(?:Permission mode|Agent permissions preset):\s*([^,(]+?)(?:\s*(?:,\s*(.+?)|\(([^)]+)\)))?$/i;
     const RE_ARIA_TURN = /^(?:Conversation turn\s+(\d+)\s+by\s+(User|Agent|Assistant)|Turn\s+(\d+)\s+of\s+(\d+))$/i;
     const RE_ARIA_LOAD_OLDER = /^(?:Load\s+(\d+)\s+older\s+turns?.*|Load older messages,\s*showing\s+(\d+)\s+of\s+(\d+))$/i;
-    const RE_EFFORT_SUFFIX = /^(.*?)\s*(?:\((Minimal|Low|Medium|High|XHigh|Max)\)|\b(Minimal|Low|Medium|High|XHigh|Max))\s*$/i;
-    const EFFORT_MAP = { minimal: '最低', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最高' };
+    const RE_YOUR_PLAN = /^Your Plan:\s*([^\r\n]{1,80})$/;
+    const RE_AVAILABLE_AI_CREDITS = /^Available AI Credits:\s*([^\r\n]{1,40})$/i;
+    const RE_EXITED_CODE_ONLY = /^Exited with code\s+(-?\d+)(\.)?$/i;
+    const RE_SUMMARY_EXITED_CODE = /^([^\r\n]{1,220}?)\s*·\s*Exited with code\s+(-?\d+)$/;
 
     function formatCompactDurationZh(str) {
       const s = String(str || '').trim();
@@ -497,6 +499,10 @@
           return raw.replace(RE_ZIPPING_FOLDER, (_, folder) => '正在打包 ' + folder + '…');
         }
       } else if (firstUpper === 'Y') {
+        const mPlan = trimmed.match(RE_YOUR_PLAN);
+        if (mPlan) {
+          return raw.replace(trimmed, () => '当前套餐：' + mPlan[1].trim());
+        }
         const mUsed = trimmed.match(RE_USED_LIMIT);
         if (mUsed) {
           const degreeMap = { some: '部分', all: '全部', most: '大部分' };
@@ -518,6 +524,24 @@
           const typeMap = { weekly: '每周', '5-hour': '5 小时', 'five-hour': '5 小时', daily: '每日' };
           const type = typeMap[mNotUsed[1].toLowerCase()] || mNotUsed[1];
           return '您尚未消耗任何' + type + '额度。';
+        }
+      } else if (firstUpper === 'A') {
+        const mCred = trimmed.match(RE_AVAILABLE_AI_CREDITS);
+        if (mCred) {
+          return raw.replace(trimmed, () => '可用 AI 积分：' + mCred[1].trim());
+        }
+      }
+
+      if (trimmed.length < 40 && firstUpper === 'E') {
+        const mExit = trimmed.match(RE_EXITED_CODE_ONLY);
+        if (mExit) {
+          return raw.replace(trimmed, () => '退出码 ' + mExit[1] + (mExit[2] ? '。' : ''));
+        }
+      }
+      if (trimmed.length < 240 && trimmed.includes('Exited with code')) {
+        const mSumExit = trimmed.match(RE_SUMMARY_EXITED_CODE);
+        if (mSumExit) {
+          return raw.replace(trimmed, () => mSumExit[1].trim() + ' · 退出码 ' + mSumExit[2]);
         }
       }
 
@@ -601,17 +625,8 @@
       if (typeof DICT[atrim] === 'string') return resolveContextualDictTranslation(atrim, el, DICT[atrim]);
       const mModel = atrim.match(RE_ARIA_MODEL);
       if (mModel) {
-        let mName = mModel[1].trim();
+        const mName = mModel[1].trim();
         if (mName === 'Select model') return '模型，当前：选择模型';
-        const mEff = mName.match(RE_EFFORT_SUFFIX);
-        if (mEff) {
-          const effRaw = mEff[2] || mEff[3];
-          const normKey =
-            effRaw.toUpperCase() === 'XHIGH' ? 'XHigh' : effRaw.charAt(0).toUpperCase() + effRaw.slice(1).toLowerCase();
-          const dictEff = DICT[effRaw] ?? DICT[normKey];
-          const effZh = typeof dictEff === 'string' ? dictEff : EFFORT_MAP[effRaw.toLowerCase()] || effRaw;
-          mName = mEff[1].trim() + (mEff[2] ? ' (' + effZh + ')' : ' · ' + effZh);
-        }
         return '模型，当前：' + mName;
       }
       const lookupPerm = (s) => {

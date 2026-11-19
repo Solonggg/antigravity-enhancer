@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * antigravity-codex-theme · Cross-Platform Installer, Doctor, Verify & Rollback CLI
+ * antigravity-codex-theme · Cross-Platform Installer, Relaunch, Doctor, Verify & Rollback CLI
  *
  * Subcommands:
- *   node install.mjs install      [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only <features>] [--without <features>] [--minimal] [--target-dir <dir>] [--sync-user]
+ *   node install.mjs install      [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only <features>] [--without <features>] [--minimal] [--with-launcher] [--target-dir <dir>] [--sync-user]
+ *   node install.mjs relaunch     [--channel auto|stable|insiders] [--force] [--target-dir <dir>]
  *   node install.mjs doctor       [--channel auto|stable|insiders] [--target-dir <dir>]
  *   node install.mjs verify       [--safe-mode] [--channel auto|stable|insiders] [--target-dir <dir>]
  *   node install.mjs rollback     [--target-dir <dir>]
@@ -17,8 +18,14 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { stripUtf8Bom } from './core/shared.mjs';
 import { sha256File, buildManifest, verifyCoreIntegrity, buildDistZip } from './core/installer/manifest.mjs';
 import { detectEnvironment, ensureArgvRemoteDebugging, inspectLiveWindow } from './core/installer/env.mjs';
+import {
+  ensureCdpLaunchers,
+  removeCdpLaunchers,
+  relaunchAntigravityWithCdp
+} from './core/installer/cdp-launch.mjs';
 import {
   parseFeatureSelection,
   getSparseCheckoutPaths,
@@ -67,6 +74,14 @@ function copyDirRecursive(src, dest) {
   }
 }
 
+function resolveLauncherMode(env) {
+  if (process.platform === 'darwin') {
+    return env.launcherInstalled ? 'optional-launcher-app' : 'single-icon-m2-relay';
+  }
+  if (process.platform === 'win32') return 'in-place-lnk';
+  return 'desktop-entry';
+}
+
 async function runDoctor() {
   const channel = getArg('--channel', 'auto');
   const targetDir = path.resolve(getArg('--target-dir', resolveDefaultTargetDir()));
@@ -74,8 +89,11 @@ async function runDoctor() {
   const integrity = verifyCoreIntegrity(targetDir);
   const live = await inspectLiveWindow(env);
 
+  const cdpMissingFlag = !live.reachable && env.cdpStatus === 'missing_opt_in_flag';
+  const remediation = cdpMissingFlag ? `node ${JSON.stringify(path.join(targetDir, 'install.mjs'))} relaunch` : null;
+
   const report = {
-    ok: Boolean(env.nodeBasicOk && integrity.ok),
+    ok: Boolean(env.nodeMinOk && integrity.ok && !cdpMissingFlag),
     node: {
       version: env.nodeVer,
       execPath: process.execPath,
@@ -84,6 +102,12 @@ async function runDoctor() {
     antigravity: {
       channel: env.channel,
       appExists: env.appExists,
+      appVersion: env.appVersion,
+      cdpStatus: live.reachable ? 'ready' : env.cdpStatus,
+      launcherMode: resolveLauncherMode(env),
+      launcherInstalled: env.launcherInstalled,
+      runningProcesses: env.runningProcesses,
+      remediation,
       portFile: env.portFile,
       portFileExists: env.portFileExists,
       channels: env.channels
@@ -110,6 +134,7 @@ async function runInstall() {
   const onlyArg = getArg('--only', getArg('--features', null));
   const withoutArg = getArg('--without', getArg('--skip', null));
   const minimalMode = hasFlag('--minimal');
+  const withLauncher = hasFlag('--with-launcher');
   const syncUser = hasFlag('--sync-user');
   const defaultTarget = path.join(os.homedir(), '.gemini', 'antigravity', SERVICE_IDS.installDirName);
   const targetDir = path.resolve(getArg('--target-dir', defaultTarget));
@@ -188,7 +213,7 @@ async function runInstall() {
 
   const userConfigPath = path.join(targetUser, 'config.json');
   const currentCfg = fs.existsSync(userConfigPath)
-    ? JSON.parse(fs.readFileSync(userConfigPath, 'utf8'))
+    ? JSON.parse(stripUtf8Bom(fs.readFileSync(userConfigPath, 'utf8')))
     : {};
   if (typeof currentCfg.enabled !== 'boolean') currentCfg.enabled = true;
   if (cliChannel) {
@@ -206,12 +231,24 @@ async function runInstall() {
   if (!currentCfg.modules || typeof currentCfg.modules !== 'object') {
     currentCfg.modules = {};
   }
-  const allowedModules = new Set(['theme', 'i18n', 'metrics', 'deadlockHealer', 'zoomShortcuts', 'customCss', 'customJs']);
+  const allowedModules = new Set([
+    'theme',
+    'i18n',
+    'metrics',
+    'deadlockHealer',
+    'zoomShortcuts',
+    'cdpAutoRelaunch',
+    'customCss',
+    'customJs'
+  ]);
   for (const k of Object.keys(currentCfg.modules)) {
     if (!allowedModules.has(k)) delete currentCfg.modules[k];
   }
   if (featureSel.explicit) {
     Object.assign(currentCfg.modules, featureSel.modulesPatch);
+  }
+  if (typeof currentCfg.modules.cdpAutoRelaunch !== 'boolean') {
+    currentCfg.modules.cdpAutoRelaunch = true;
   }
   // Automatically disable modules whose optional files were omitted by sparse checkout or --minimal
   if (!fs.existsSync(path.join(targetCore, 'styles', '10-light-codex.css'))) {
@@ -233,6 +270,7 @@ async function runInstall() {
   fs.writeFileSync(userConfigPath, JSON.stringify(currentCfg, null, 2) + '\n', 'utf8');
 
   const argvStatus = ensureArgvRemoteDebugging(currentCfg.channel);
+  const launcherInfo = ensureCdpLaunchers(currentCfg.channel, { withLauncher });
 
   const scriptsDir = path.join(os.homedir(), '.gemini', 'antigravity', 'scripts');
   fs.mkdirSync(scriptsDir, { recursive: true });
@@ -251,13 +289,25 @@ async function runInstall() {
     stdio: 'inherit'
   });
 
-  const live = await inspectLiveWindow(env);
+  const postEnv = await detectEnvironment(currentCfg.channel);
+  const live = await inspectLiveWindow(postEnv);
+  const cdpStatus = live.reachable ? 'ready' : postEnv.cdpStatus;
+  const remediation =
+    !live.reachable && cdpStatus === 'missing_opt_in_flag'
+      ? `node ${JSON.stringify(path.join(targetDir, 'install.mjs'))} relaunch`
+      : null;
+
   console.log(
     '\n[Install Complete]',
     JSON.stringify(
       {
         ok: true,
         targetDir,
+        appVersion: postEnv.appVersion,
+        cdpStatus,
+        launcherMode: resolveLauncherMode(postEnv),
+        launcherInfo,
+        remediation,
         userSynced: syncUser,
         backupCreated,
         argvStatus,
@@ -269,6 +319,24 @@ async function runInstall() {
       2
     )
   );
+}
+
+async function runRelaunch() {
+  const channel = getArg('--channel', 'auto');
+  const force = hasFlag('--force');
+  const targetDir = path.resolve(getArg('--target-dir', resolveDefaultTargetDir()));
+  const res = await relaunchAntigravityWithCdp({
+    channel,
+    force,
+    targetDir,
+    detectEnvironment,
+    inspectLiveWindow
+  });
+  const stream = res.exitCode === 0 ? console.log : console.error;
+  stream(JSON.stringify(res.payload, null, 2));
+  if (res.exitCode !== 0) {
+    process.exit(res.exitCode);
+  }
 }
 
 async function runVerify() {
@@ -284,6 +352,11 @@ async function runVerify() {
   spawnSync(process.execPath, daemonArgs, { stdio: 'inherit' });
   const env = await detectEnvironment(channel);
   const live = await inspectLiveWindow(env);
+  const cdpStatus = live.reachable ? 'ready' : env.cdpStatus;
+  const remediation =
+    !live.reachable && cdpStatus === 'missing_opt_in_flag'
+      ? `node ${JSON.stringify(path.join(targetDir, 'install.mjs'))} relaunch`
+      : null;
   const ok = Boolean(live.reachable && (live.state?.hasStyle || live.pages === 0));
   console.log(
     JSON.stringify(
@@ -291,6 +364,8 @@ async function runVerify() {
         ok,
         version: live.state?.version || null,
         themeStyle: Boolean(live.state?.hasStyle),
+        cdpStatus,
+        remediation,
         safeMode,
         channel,
         live
@@ -358,11 +433,12 @@ async function runUninstall() {
   const realDaemon = path.join(targetDir, 'core', 'daemon.mjs');
 
   uninstallSystemService(targetDir);
+  removeCdpLaunchers();
 
   if (fs.existsSync(userConfigPath) && fs.existsSync(realDaemon)) {
     try {
       const origRaw = fs.readFileSync(userConfigPath, 'utf8');
-      const cfg = JSON.parse(origRaw);
+      const cfg = JSON.parse(stripUtf8Bom(origRaw));
       cfg.enabled = false;
       fs.writeFileSync(userConfigPath, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
       spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', realDaemon, '--once'], {
@@ -373,7 +449,7 @@ async function runUninstall() {
     } catch {}
   }
   console.log(
-    `[Uninstall] Stopped daemon, removed autostart services, and restored original English UI. User config in ${path.join(targetDir, 'user')} is preserved.`
+    `[Uninstall] Stopped daemon, removed autostart services & CDP launchers, and restored original English UI. User config in ${path.join(targetDir, 'user')} is preserved.`
   );
 }
 
@@ -393,6 +469,9 @@ switch (subcommand) {
     break;
   case 'install':
     await runInstall();
+    break;
+  case 'relaunch':
+    await runRelaunch();
     break;
   case 'verify':
     await runVerify();
@@ -417,7 +496,8 @@ switch (subcommand) {
   }
   default:
     console.log(`antigravity-codex-theme CLI Usage:
-  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only theme,i18n,metrics,fixes] [--without <list>] [--minimal] [--sync-user]
+  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only theme,i18n,metrics,fixes] [--without <list>] [--minimal] [--with-launcher] [--sync-user]
+  node install.mjs relaunch       [--channel auto|stable|insiders] [--force]
   node install.mjs doctor         [--channel auto|stable|insiders]
   node install.mjs verify         [--safe-mode] [--channel auto|stable|insiders]
   node install.mjs rollback
