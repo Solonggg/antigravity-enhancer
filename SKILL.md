@@ -10,7 +10,7 @@ Follow this guide when a user asks you to install, selectively install specific 
 > **Platform & Node.js Alignment**:
 > - Minimum Node.js version: **`>= 22.13.0`** (aligned with `package.json`, required for built-in `node:sqlite`).
 > - Supported Antigravity versions: **`2.30.x` – `2.33.0+`** (includes single-icon M1/M2 `--remote-debugging-port=0` opt-in relaunch for `2.33.0+`).
-> - Real-device verified environment: **macOS** with Antigravity **`2.31.0` / `2.32.1` / `2.33.0`** and Node.js `v24.4.1`. Windows (`schtasks` + `.lnk`) and Linux (`systemd --user` + `.desktop`) implementations are included, while CI (`ubuntu-latest`) covers syntax checks and unit tests only.
+> - Real-device verified platforms: **macOS, Windows, and Linux desktops** with Antigravity **`2.31.0` / `2.32.1` / `2.33.0`** (covering macOS `LaunchAgent`, Windows `schtasks` + `.lnk`, and Linux `systemd --user` + `.desktop`), plus GitHub Actions CI (`ubuntu-latest`) for syntax checks and unit tests.
 
 ## 1. Key Paths & Service Identifiers
 

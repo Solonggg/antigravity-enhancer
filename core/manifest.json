@@ -81,8 +81,8 @@
       "bytes": 11902
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "9342b4567c4717608d16c4f2d32a2699b4d6bacf35a052d8c9d37aead2534d40",
-      "bytes": 39613
+      "sha256": "44f43c32c5edd84bc213573c06016075a76c48e490dba2023d3f5a420550d9b6",
+      "bytes": 39997
     },
     "runtime/60-i18n-engine.js": {
       "sha256": "ec3168bbc3583030c539e237d1efd4ecca1d1f2d791d1f94134b469ba7c5e64f",
@@ -109,8 +109,8 @@
       "bytes": 7354
     },
     "styles/30-telemetry.css": {
-      "sha256": "0f8d7e22f8550bc3a7720db74e0bd0773417d1ba79dcd317d81356bec6a69864",
-      "bytes": 26149
+      "sha256": "7407ded1e93d706856a2206aaaa661bacfb679acfd85d80d40ac87dd1b67b428",
+      "bytes": 26217
     }
   }
 }

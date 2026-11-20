@@ -772,7 +772,7 @@
   box-sizing: border-box;
   width: max-content;
   min-width: 280px;
-  max-width: min(420px, calc(100vw - 24px));
+  max-width: min(560px, calc(100vw - 24px));
   padding: 9px 11px;
   border-radius: 10px;
   background-color: var(--ag-tmt-bg) !important;
@@ -860,6 +860,10 @@
   color: var(--ag-tmt-ink) !important;
   text-align: right;
   word-break: keep-all;
+}
+
+#ag-turn-metrics-tooltip .ag-tmt-nowrap {
+  white-space: nowrap;
 }
 
 #ag-turn-metrics-tooltip .ag-tmt-sub {

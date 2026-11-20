@@ -542,6 +542,7 @@
     if (t.lastCtx > 0) {
       const ctxCls = t.ctxPct >= 90 ? 'ag-tmt-ctx-crit' : t.ctxPct >= 75 ? 'ag-tmt-ctx-warn' : '';
       const ctxVal =
+        '<span class="ag-tmt-nowrap">' +
         escapeStatusHtml(t.lastCtx.toLocaleString('en-US')) +
         ' / ' +
         escapeStatusHtml(t.limitStr) +
@@ -549,13 +550,14 @@
         ctxCls +
         '">(' +
         escapeStatusHtml(String(t.ctxPct)) +
-        '%)</span>';
+        '%)</span></span>';
       rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">当前上下文</span><span class="ag-tmt-val">' + ctxVal + '</span></div>');
     }
     if (t.outTok > 0) {
       const outVal =
+        '<span class="ag-tmt-nowrap">' +
         escapeStatusHtml(t.outTok.toLocaleString('en-US')) +
-        ' <span class="ag-tmt-sub">(思考 ' +
+        '</span> <span class="ag-tmt-nowrap ag-tmt-sub">(思考 ' +
         escapeStatusHtml(t.thinkTok.toLocaleString('en-US')) +
         ' + 正文/工具 ' +
         escapeStatusHtml(t.respTok.toLocaleString('en-US')) +
@@ -565,12 +567,15 @@
     const promptSum = t.inTok + t.cacheWrite + t.cacheRead;
     if (promptSum > 0) {
       const inVal =
-        '新增 ' +
+        '<span class="ag-tmt-nowrap">新增 ' +
         escapeStatusHtml(t.inTok.toLocaleString('en-US')) +
-        (t.cacheWrite > 0 ? ' + 写缓存 ' + escapeStatusHtml(t.cacheWrite.toLocaleString('en-US')) : '') +
-        ' + 读缓存 ' +
+        '</span>' +
+        (t.cacheWrite > 0
+          ? ' <span class="ag-tmt-nowrap">+ 写缓存 ' + escapeStatusHtml(t.cacheWrite.toLocaleString('en-US')) + '</span>'
+          : '') +
+        ' <span class="ag-tmt-nowrap">+ 读缓存 ' +
         escapeStatusHtml(t.cacheRead.toLocaleString('en-US')) +
-        ' <span class="ag-tmt-sub">(命中率 ' +
+        '</span> <span class="ag-tmt-nowrap ag-tmt-sub">(命中率 ' +
         escapeStatusHtml(t.cacheRate) +
         ')</span>';
       rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">本轮累计输入</span><span class="ag-tmt-val">' + inVal + '</span></div>');
@@ -578,16 +583,17 @@
     if (t.tps > 0 || t.totDur > 0) {
       const spdVal =
         (t.tps > 0
-          ? escapeStatusHtml(String(t.tps)) +
+          ? '<span class="ag-tmt-nowrap">' +
+            escapeStatusHtml(String(t.tps)) +
             ' tok/s <span class="ag-tmt-sub">(端到端 ' +
             escapeStatusHtml(String(t.e2eTps)) +
-            ' tok/s)</span> · '
+            ' tok/s)</span></span> · '
           : '') +
-        '流式 ' +
+        '<span class="ag-tmt-nowrap">流式 ' +
         escapeStatusHtml(String(t.streamDur)) +
         's / 总计 ' +
         escapeStatusHtml(String(t.totDur)) +
-        's';
+        's</span>';
       rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">速度与耗时</span><span class="ag-tmt-val">' + spdVal + '</span></div>');
     }
 
@@ -663,6 +669,7 @@
       const rect = badge.getBoundingClientRect();
       const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
       const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+      tt.style.left = '12px';
       const ttRect = tt.getBoundingClientRect();
       const ttW = tt.offsetWidth || ttRect.width || 320;
       const ttH = tt.offsetHeight || ttRect.height || 130;
