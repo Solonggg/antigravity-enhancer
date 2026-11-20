@@ -14,7 +14,7 @@
 </p>
 
 <p>
-  不修改安装包本体，通过本地 CDP 实时注入 Codex 昼夜主题、1,860+ 条中文界面、四态会话指示与每轮 Token 拆解。<br>
+  不修改安装包，通过本地 CDP 实时注入 Codex 昼夜主题、中文界面、四态会话指示与每轮 Token 统计。<br>
   核心代码拆分为 27 个独立模块，支持 <code>--only</code> 按需安装与 Fork 自由定制。
 </p>
 
@@ -34,6 +34,8 @@
 </p>
 
 </div>
+
+https://github.com/user-attachments/assets/e42ae3d6-c261-442c-bc6d-3c14ff830664
 
 ![Codex 浅色与深色模式对比](assets/light-dark-themes.png)
 
