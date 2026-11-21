@@ -65,7 +65,7 @@
     }
 
     const CONTAINER_IMMUTABLE_EXCLUDE_SELECTOR =
-      'code, pre, kbd, samp, style, script, noscript, [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, #ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics';
+      'code, pre, kbd, samp, style, script, noscript, [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, #ag-live-metrics-pill, .ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics';
     const TEXT_IMMUTABLE_EXCLUDE_SELECTOR = 'textarea, input, ' + CONTAINER_IMMUTABLE_EXCLUDE_SELECTOR;
 
     const mergedExcludeParts = splitTopLevelSelectors(DEFAULT_EXCLUDE_I18N);
@@ -235,6 +235,7 @@
     const RE_AVAILABLE_AI_CREDITS = /^Available AI Credits:\s*([^\r\n]{1,40})$/i;
     const RE_EXITED_CODE_ONLY = /^Exited with code\s+(-?\d+)(\.)?$/i;
     const RE_SUMMARY_EXITED_CODE = /^([^\r\n]{1,220}?)\s*·\s*Exited with code\s+(-?\d+)$/;
+    const RE_STARTED_SIDE_QUOTE = /^Started\s+(from|during)\s+[“"](.+)[”"]$/;
 
     function formatCompactDurationZh(str) {
       const s = String(str || '').trim();
@@ -529,6 +530,15 @@
         const mCred = trimmed.match(RE_AVAILABLE_AI_CREDITS);
         if (mCred) {
           return raw.replace(trimmed, () => '可用 AI 积分：' + mCred[1].trim());
+        }
+      }
+
+      if (firstUpper === 'S' && trimmed.length < 240) {
+        const mSideStart = trimmed.match(RE_STARTED_SIDE_QUOTE);
+        if (mSideStart) {
+          const quote = mSideStart[2].trim();
+          const zh = mSideStart[1] === 'during' ? '发起于「' + quote + '」期间' : '发起自「' + quote + '」';
+          return raw.replace(trimmed, () => zh);
         }
       }
 

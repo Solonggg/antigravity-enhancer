@@ -33,7 +33,7 @@
 
   const DEFAULT_PRESET = boot.preset || 'codex-pure-white';
   const DEFAULT_EXCLUDE_I18N =
-    'code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable="true"], [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, [class*="onyx-key"], .prose, .markdown, [class*="chat-message"], [class*="group/file-title"], [data-testid="conversation-row-sidebar"] a[href^="/c/"], [data-testid="conversation-row-sidebar"] span.truncate, [data-testid="conversation-row-history"] a[href^="/c/"], [data-testid="conversation-row-history"] span.truncate, [data-testid="conversation-navigator-turn"], #ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics';
+    'code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable="true"], [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, [class*="onyx-key"], .prose, .markdown, [class*="chat-message"], [class*="group/file-title"], [data-testid="conversation-row-sidebar"] a[href^="/c/"], [data-testid="conversation-row-sidebar"] span.truncate, [data-testid="conversation-row-history"] a[href^="/c/"], [data-testid="conversation-row-history"] span.truncate, [data-testid="conversation-navigator-turn"], #ag-live-metrics-pill, .ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics';
 
   const SELECTORS = Object.assign(
     {
@@ -191,11 +191,11 @@
   }
 
   if (!ENABLED) {
-    for (const id of ['ag-codex-theme', 'ag-user-theme-vars', 'ag-user-custom-style', 'ag-live-metrics-pill', 'ag-live-metrics-tooltip', 'ag-turn-metrics-tooltip']) {
+    for (const id of ['ag-codex-theme', 'ag-user-theme-vars', 'ag-user-custom-style', 'ag-live-metrics-pill', 'ag-side-metrics-pill', 'ag-live-metrics-tooltip', 'ag-turn-metrics-tooltip']) {
       const el = document.getElementById(id);
       if (el) el.remove();
     }
-    document.querySelectorAll('.ag-turn-metrics').forEach((el) => el.remove());
+    document.querySelectorAll('.ag-turn-metrics, .ag-live-metrics-pill').forEach((el) => el.remove());
     if (window.__ag_i18n_observer) {
       try { window.__ag_i18n_observer.disconnect(); } catch (e) {}
       window.__ag_i18n_observer = null;

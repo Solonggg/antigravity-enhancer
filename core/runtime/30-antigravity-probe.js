@@ -37,9 +37,11 @@
     );
   }
 
-  function getSelectedModelLabel() {
+  function getSelectedModelLabel(scopeEl) {
     try {
-      const el = document.querySelector('[data-testid="model-selector-trigger"]');
+      const el =
+        (scopeEl && scopeEl.querySelector ? scopeEl.querySelector('[data-testid="model-selector-trigger"]') : null) ||
+        document.querySelector('[data-testid="model-selector-trigger"]');
       if (!el) return '';
       const fk = Object.keys(el).find(
         (k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
@@ -63,13 +65,22 @@
     }
   }
 
-  function readLiveCascadeRuntimeState(expectedCid) {
+  function readLiveCascadeRuntimeState(expectedCid, scopeBox, scopeContainer) {
     try {
       const box =
+        scopeBox ||
         document.getElementById(SELECTORS.inputBoxId) ||
         document.querySelector('[data-testid="model-selector-trigger"]');
+      const queryRoot = scopeContainer && scopeContainer.querySelectorAll ? scopeContainer : document;
+      const isSideDraft = Boolean(
+        !expectedCid &&
+          scopeContainer &&
+          scopeContainer.getAttribute &&
+          scopeContainer.getAttribute('data-testid') === 'side-question-tab-content'
+      );
+
       let aspState = null;
-      if (box) {
+      if (box && !isSideDraft) {
         const fk = Object.keys(box).find(
           (k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
         );
@@ -88,11 +99,11 @@
       }
 
       const loadingText = selectBestLoadingText(
-        Array.from(document.querySelectorAll('[data-testid="agent-loading"]')).map(
+        Array.from(queryRoot.querySelectorAll('[data-testid="agent-loading"]')).map(
           (el) => el.innerText || el.textContent || ''
         )
       );
-      const stopScope = document.getElementById(SELECTORS.inputBoxId) || box;
+      const stopScope = box || document.getElementById(SELECTORS.inputBoxId);
       const stopBtnActive = Boolean(
         stopScope &&
           stopScope.querySelector(
@@ -175,9 +186,10 @@
     }
   }
 
-  function readActiveStreamProgressLen() {
+  function readActiveStreamProgressLen(scopeContainer) {
     try {
-      const nodes = document.querySelectorAll('[data-markdown-root], .prose');
+      const root = scopeContainer && scopeContainer.querySelectorAll ? scopeContainer : document;
+      const nodes = root.querySelectorAll('[data-markdown-root], .prose');
       if (!nodes.length) return 0;
       const lastNode = nodes[nodes.length - 1];
       const txtLen = lastNode && lastNode.textContent ? lastNode.textContent.length : 0;

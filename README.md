@@ -20,7 +20,7 @@
 
 <p>
   <a href="https://github.com/nkjDSLcvanv/antigravity-codex-theme/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/nkjDSLcvanv/antigravity-codex-theme/ci.yml?branch=main&label=CI&labelColor=363636&logo=githubactions&logoColor=white" alt="CI"></a>
-  <img src="https://img.shields.io/static/v1?label=Antigravity&message=2.30.x%20~%202.33.0%2B&color=2B7FFF&labelColor=363636" alt="Antigravity 2.30.x ~ 2.33.0+">
+  <img src="https://img.shields.io/static/v1?label=Antigravity&message=2.30.x%20~%202.34.0%2B&color=2B7FFF&labelColor=363636" alt="Antigravity 2.30.x ~ 2.34.0+">
   <img src="https://img.shields.io/static/v1?label=Node.js&message=%3E%3D%2022.13.0&color=339933&labelColor=363636&logo=nodedotjs&logoColor=white" alt="Node.js >= 22.13.0">
   <img src="https://img.shields.io/static/v1?label=platform&message=macOS%20%C2%B7%20Windows%20%C2%B7%20Linux&color=4B5563&labelColor=363636" alt="macOS · Windows · Linux">
   <img src="https://img.shields.io/static/v1?label=version&message=v1.1.0&color=2B7FFF&labelColor=363636" alt="version v1.1.0">
@@ -40,19 +40,19 @@ https://github.com/user-attachments/assets/e42ae3d6-c261-442c-bc6d-3c14ff830664
 ![Codex 浅色与深色模式对比](assets/light-dark-themes.png)
 
 - 提供浅色 (`codex-pure-white`) 与深色 (`codex-dark`) 两套配色，无外部字体依赖，随 IDE 明暗外观自动切换。
-- 底部工具栏实时指示会话状态与用量摘要，支持展开两级明细面板；每轮回复末尾附带 Token 统计，悬停约 `80ms` 显示详情拆解卡。
-- 内置 `1,860+` 条中文界面词条；4 个核心模块相互独立，可通过 `--only` 按需安装。
+- 底部工具栏实时指示会话状态与用量摘要，支持展开两级明细面板；每轮回复末尾附带 Token 统计，悬停约 `80ms` 显示详情拆解卡，并同步支持右侧旁路提问（Side Question）面板。
+- 内置 `1,900+` 条中文界面词条；4 个核心模块相互独立，可通过 `--only` 按需安装。
 
 ![一级概览、二级详情、上下文预警及每轮对话尾部统计](assets/telemetry-bento-panels.png)
 
 ## 快速安装
 
-> 前置要求：**Node.js >= 22.13.0**（与 [package.json](package.json) 一致）与 Google Antigravity（`2.30.x` 至 `2.33.0+`），已在 **macOS / Windows / Linux 桌面端**完成实机安装与卸载验证。安装仅部署至 `~/.gemini/antigravity/codex-theme`、配置本地调试端口并注册后台自启，**不修改安装包本体**；若安装前应用已在无调试端口状态下运行，重启一次或在外部终端执行 `node install.mjs relaunch` 即可生效。
+> 前置要求：**Node.js >= 22.13.0**（与 [package.json](package.json) 一致）与 Google Antigravity（`2.30.x` 至 `2.34.0+`），已在 **macOS / Windows / Linux 桌面端**完成实机安装与卸载验证。安装仅部署至 `~/.gemini/antigravity/codex-theme`、配置本地调试端口并注册后台自启，**不修改安装包本体**；若安装前应用已在无调试端口状态下运行，重启一次或在外部终端执行 `node install.mjs relaunch` 即可生效。
 
 <details>
 <summary>查看各平台实测细节与 Antigravity 2.33.0+ 调试端口说明</summary>
 
-- **实机验证范围**：已在 macOS、Windows 与 Linux 桌面端完成安装、实时注入与卸载还原测试（覆盖 Antigravity `2.31.0` / `2.32.1` / `2.33.0`、macOS `LaunchAgent`、Windows `schtasks` / VBS / 注册表与 `.lnk` 参数配置、Linux `systemd --user` 与 `.desktop` 启动项）；GitHub Actions CI 在 `ubuntu-latest` 上持续执行 `npm run check` 与 `npm test`。
+- **实机验证范围**：已在 macOS、Windows 与 Linux 桌面端完成安装、实时注入与卸载还原测试（覆盖 Antigravity `2.31.0` / `2.32.1` / `2.33.0` / `2.34.0`、macOS `LaunchAgent`、Windows `schtasks` / VBS / 注册表与 `.lnk` 参数配置、Linux `systemd --user` 与 `.desktop` 启动项）；GitHub Actions CI 在 `ubuntu-latest` 上持续执行 `npm run check` 与 `npm test`。
 - **Antigravity `2.33.0+` 适配**：新版本默认关闭本地 `DevToolsActivePort`，需携带 `--remote-debugging-port=0` 启动。macOS 默认采用单图标模式，后台守护进程仅在冷启动前 `12s`（自动更新重启时 `25s`）内补参接力重启，不中断已在运行中的会话；Windows 与 Linux 则为快捷方式或 `.desktop` 启动项追加该参数，并保留 `~/.antigravity/argv.json` 兼容写入。
 
 </details>
@@ -87,8 +87,8 @@ node install.mjs install --only i18n,metrics
 | 模块 | 说明 |
 | :--- | :--- |
 | `theme` | Codex 浅色 (`codex-pure-white`) 与深色 (`codex-dark`) 昼夜主题 |
-| `i18n` | 中文界面本地化（`1,860+` 条词条，`WeakMap` 原地更新） |
-| `metrics` | 实时会话状态指示、一/二级用量统计面板与每轮对话尾部统计 |
+| `i18n` | 中文界面本地化（`1,900+` 条词条，`WeakMap` 原地更新） |
+| `metrics` | 实时会话状态指示、一/二级用量统计面板与每轮对话尾部统计（含旁路提问面板） |
 | `fixes` | 设置弹窗路由死锁修复与 `Cmd/Ctrl + -/=/0` 界面缩放快捷键 |
 
 **1. 跳过 `assets/` 与 `tests/`，仅拉取运行核心文件（全平台通用）：**
@@ -186,7 +186,7 @@ node install.mjs install --only i18n --minimal
 
 ### 中文界面汉化
 
-内置 `1,860+` 条界面词条，覆盖 Antigravity `2.30.x` 至 `2.33.0+` 的设置面板、菜单、权限选项、侧边栏、插件管理与工具审批状态。通过 `WeakMap` 在原文本节点直接替换，不克隆节点，不影响 React 事件绑定。可通过 [user/i18n.override.json](user/i18n.override.json) 自定义或覆盖词条，也可在配置中关闭 `i18n` 恢复英文界面。
+内置 `1,900+` 条界面词条，覆盖 Antigravity `2.30.x` 至 `2.34.0+` 的设置面板（含 Orchestrator 设置与沙箱权限）、菜单、权限选项、侧边栏、旁路提问、插件管理与工具审批状态。通过 `WeakMap` 在原文本节点直接替换，不克隆节点，不影响 React 事件绑定。可通过 [user/i18n.override.json](user/i18n.override.json) 自定义或覆盖词条，也可在配置中关闭 `i18n` 恢复英文界面。
 
 ### Codex 昼夜主题与实用修复
 
@@ -241,7 +241,7 @@ antigravity-codex-theme/
 │   ├── installer/              # 模块分组 / Manifest 校验与打包 / 环境探测 / 跨平台自启与 CDP 启动管理
 │   ├── daemon.mjs              # 后台服务入口
 │   ├── shared.mjs              # 公共工具函数
-│   ├── i18n.json               # 1,860+ 界面词典
+│   ├── i18n.json               # 1,900+ 界面词典
 │   └── manifest.json           # core/ 文件 SHA-256 清单
 ├── tests/                      # 27 项 node:test 单元测试
 ├── user/                       # 个人配置与热重载目录
@@ -274,12 +274,12 @@ antigravity-codex-theme/
 
 ## English Overview
 
-`antigravity-codex-theme` provides Codex light and dark themes, Chinese UI localization, and live session telemetry for Google Antigravity (`2.30.x` to `2.33.0+`). The codebase is organized into 27 modules under `core/{daemon,runtime,styles,installer}` with 27 `node:test` unit tests, supporting hot-reloaded customization in `user/` as well as deeper modifications in `core/`.
+`antigravity-codex-theme` provides Codex light and dark themes, Chinese UI localization, and live session telemetry for Google Antigravity (`2.30.x` to `2.34.0+`). The codebase is organized into 27 modules under `core/{daemon,runtime,styles,installer}` with 27 `node:test` unit tests, supporting hot-reloaded customization in `user/` as well as deeper modifications in `core/`.
 
 - Light (`codex-pure-white`) and dark (`codex-dark`) themes with zero external font dependencies and automatic light/dark switching.
-- A live bottom status bar tracking four session states (ready, running, waiting or retrying, error) via React Fiber probes, Language Server logs, and SQLite telemetry, paired with two-level usage panels and per-turn token stats with an `80ms` hover breakdown card.
-- Chinese UI localization (`1,860+` entries) applied in place through a `WeakMap` observer, customizable via `user/i18n.override.json`.
+- A live bottom status bar tracking four session states (ready, running, waiting or retrying, error) via React Fiber probes, Language Server logs, and SQLite telemetry, paired with two-level usage panels and per-turn token stats with an `80ms` hover breakdown card across both main conversations and Side Question panes.
+- Chinese UI localization (`1,900+` entries) applied in place through a `WeakMap` observer, customizable via `user/i18n.override.json`.
 - Selective module installation via `--only` (`theme`, `i18n`, `metrics`, `fixes`), Git sparse checkout, and `--minimal` pruning.
-- Antigravity `2.33.0+` support with a single-icon `--remote-debugging-port=0` cold-start relay (`cdpAutoRelaunch`) and `node install.mjs relaunch` with active-WAL protection. End-to-end installation and uninstall are verified across macOS, Windows, and Linux desktops (Antigravity `2.31.0`, `2.32.1`, and `2.33.0`; requires Node.js `>= 22.13.0`), alongside Ubuntu CI syntax checks and unit tests.
+- Antigravity `2.33.0+` / `2.34.0+` support with a single-icon `--remote-debugging-port=0` cold-start relay (`cdpAutoRelaunch`) and `node install.mjs relaunch` with active-WAL protection. End-to-end installation and uninstall are verified across macOS, Windows, and Linux desktops (Antigravity `2.31.0`, `2.32.1`, `2.33.0`, and `2.34.0`; requires Node.js `>= 22.13.0`), alongside Ubuntu CI syntax checks and unit tests.
 
 Early research drew inspiration from [Anarcadia/chuanban-antigravity-theme-patch](https://github.com/Anarcadia/chuanban-antigravity-theme-patch) (MIT) for CDP runtime injection, `WeakMap` localization, SQLite telemetry, and `2.33.0` opt-in launch handling. This repository rebuilds the architecture into modular components and adds the Codex light/dark themes, four-state session monitor, two-level usage panels, per-turn hover cards, and selective installs under the [MIT License](LICENSE).

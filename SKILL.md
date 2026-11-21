@@ -9,8 +9,8 @@ Follow this guide when a user asks you to install, selectively install specific 
 
 > **Platform & Node.js Alignment**:
 > - Minimum Node.js version: **`>= 22.13.0`** (aligned with `package.json`, required for built-in `node:sqlite`).
-> - Supported Antigravity versions: **`2.30.x` – `2.33.0+`** (includes single-icon M1/M2 `--remote-debugging-port=0` opt-in relaunch for `2.33.0+`).
-> - Real-device verified platforms: **macOS, Windows, and Linux desktops** with Antigravity **`2.31.0` / `2.32.1` / `2.33.0`** (covering macOS `LaunchAgent`, Windows `schtasks` + `.lnk`, and Linux `systemd --user` + `.desktop`), plus GitHub Actions CI (`ubuntu-latest`) for syntax checks and unit tests.
+> - Supported Antigravity versions: **`2.30.x` – `2.34.0+`** (includes single-icon M1/M2 `--remote-debugging-port=0` opt-in relaunch for `2.33.0+`).
+> - Real-device verified platforms: **macOS, Windows, and Linux desktops** with Antigravity **`2.31.0` / `2.32.1` / `2.33.0` / `2.34.0`** (covering macOS `LaunchAgent`, Windows `schtasks` + `.lnk`, and Linux `systemd --user` + `.desktop`), plus GitHub Actions CI (`ubuntu-latest`) for syntax checks and unit tests.
 
 ## 1. Key Paths & Service Identifiers
 
@@ -31,8 +31,8 @@ Users can install all features or only the modules they request:
 | Feature ID | Config Keys | Purpose |
 | :--- | :--- | :--- |
 | `theme` | `modules.theme` | Codex pure-white light & charcoal-dark themes (`00-base.css`, `10-light-codex.css`, `20-dark-codex.css`, `20-theme-sync.js`, including Swarm iframe sync) |
-| `i18n` | `modules.i18n` | 1,860+ Chinese UI localization entries (`core/i18n.json`, `60-i18n-engine.js`, preserving English model names & reasoning effort labels) |
-| `metrics` | `modules.metrics` | 4-state session status indicator (`会话状态`), L1/L2 expandable usage panels, and per-turn footer stats |
+| `i18n` | `modules.i18n` | 1,900+ Chinese UI localization entries (`core/i18n.json`, `60-i18n-engine.js`, preserving English model names & reasoning effort labels) |
+| `metrics` | `modules.metrics` | 4-state session status indicator (`会话状态`), L1/L2 expandable usage panels, and per-turn footer stats (main conversation & Side Question pane) |
 | `fixes` | `modules.deadlockHealer`, `modules.zoomShortcuts` | Settings modal router deadlock fix & `Cmd/Ctrl + -/=/0` zoom shortcuts (`10-guards.js`) |
 
 ## 3. Standard & Selective Workflows

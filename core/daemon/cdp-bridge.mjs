@@ -171,13 +171,37 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
       try {
         const ws = new WebSocket(wsUrl);
         let msgId = 1;
-        let activeCascadeId = '';
-        let lastPushedHash = '';
-        let lastPendingActive = false;
+        let activeCascadeIds = [];
+        const pushedSessions = new Map();
         let evalScriptId = null;
         let hostConfirmed = isSwarmIframe;
         let currentTargetUrl = target.url || '';
         const pendingCallbacks = new Map();
+
+        const parseCascadeIdList = (raw) => {
+          const out = [];
+          const pushId = (val) => {
+            const s = String(val || '').trim();
+            if (/^[0-9a-f-]{36}$/i.test(s) && !out.includes(s)) out.push(s);
+          };
+          if (Array.isArray(raw)) {
+            for (const item of raw) pushId(item);
+            return out.slice(0, 6);
+          }
+          const str = String(raw || '').trim();
+          if (!str) return out;
+          if (str.startsWith('[')) {
+            try {
+              const parsed = JSON.parse(str);
+              if (Array.isArray(parsed)) {
+                for (const item of parsed) pushId(item);
+                return out.slice(0, 6);
+              }
+            } catch {}
+          }
+          for (const part of str.split(/[,\s]+/)) pushId(part);
+          return out.slice(0, 6);
+        };
 
         const send = (method, params = {}) =>
           new Promise((resolve) => {
@@ -268,59 +292,76 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
           const { activeConfig } = bundleCtrl.getState();
           if (!hasSqlite() || !activeConfig.modules.metrics || !activeConfig.enabled) return;
 
-          if (!activeCascadeId || force) {
+          if (activeCascadeIds.length === 0 || force) {
             const evalRes = await send('Runtime.evaluate', {
               expression: `(function(){
-                if (window.__ag_watched_cascade_id) return window.__ag_watched_cascade_id;
+                if (typeof window.__ag_get_watched_cascade_ids === 'function') {
+                  const list = window.__ag_get_watched_cascade_ids();
+                  if (Array.isArray(list)) return list;
+                }
+                const out = [];
+                const add = (id) => {
+                  const s = String(id || '').trim();
+                  if (/^[0-9a-f-]{36}$/i.test(s) && !out.includes(s)) out.push(s);
+                };
+                if (window.__ag_watched_cascade_id) add(window.__ag_watched_cascade_id);
                 const m = window.location.pathname.match(/\\/c\\/([0-9a-f-]{36})/i);
-                if (m) return m[1];
-                if (document.querySelector('[data-testid="home-greeting"], [data-testid="home-splash-content"]')) return '';
-                const el = document.querySelector('[data-testid=conversation-row-sidebar][data-selected=true]');
-                return el ? (el.getAttribute('data-cascade-id') || '') : '';
+                if (m) {
+                  add(m[1]);
+                } else if (!document.querySelector('[data-testid="home-greeting"], [data-testid="home-splash-content"]')) {
+                  const el = document.querySelector('[data-testid=conversation-row-sidebar][data-selected=true]');
+                  if (el) add(el.getAttribute('data-cascade-id'));
+                }
+                document.querySelectorAll('[data-testid="side-question-tab-conversation"][data-cascade-id]').forEach((el) => {
+                  if (!el.querySelector('[data-testid="side-question-tab-empty"]')) {
+                    add(el.getAttribute('data-cascade-id'));
+                  }
+                });
+                return out;
               })()`,
               returnByValue: true
             });
-            const detected = String(evalRes?.result?.result?.value || '').trim();
-            if (/^[0-9a-f-]{36}$/i.test(detected)) {
-              activeCascadeId = detected;
-            } else {
-              activeCascadeId = '';
-              lastPushedHash = '';
-              lastPendingActive = false;
+            const detected = parseCascadeIdList(evalRes?.result?.result?.value);
+            activeCascadeIds = detected;
+            for (const existingCid of [...pushedSessions.keys()]) {
+              if (!activeCascadeIds.includes(existingCid)) {
+                pushedSessions.delete(existingCid);
+              }
             }
           }
-          if (!activeCascadeId) return;
+          if (activeCascadeIds.length === 0) return;
 
-          const rawSig = getDbSignature(activeCascadeId, endpoint.conversationsDir) || 'empty';
-          const lsSig = lastPendingActive ? getLsLogSig(endpoint.lsLogFile) : '';
-          const sessionKey = `${activeCascadeId}@${rawSig}|lim:${activeConfig.manualContextLimit || 0}:${activeConfig.fallbackContextLimit || 256000}|ly:${activeConfig.telemetryLayout}:${activeConfig.telemetryCacheMode}${lsSig ? `|ls:${lsSig}` : ''}`;
-          if (!force && sessionKey === lastPushedHash) return;
+          for (const cid of activeCascadeIds) {
+            const prev = pushedSessions.get(cid) || { hash: '', pendingActive: false };
+            const rawSig = getDbSignature(cid, endpoint.conversationsDir) || 'empty';
+            const lsSig = prev.pendingActive ? getLsLogSig(endpoint.lsLogFile) : '';
+            const sessionKey = `${cid}@${rawSig}|lim:${activeConfig.manualContextLimit || 0}:${activeConfig.fallbackContextLimit || 256000}|ly:${activeConfig.telemetryLayout}:${activeConfig.telemetryCacheMode}${lsSig ? `|ls:${lsSig}` : ''}`;
+            if (!force && sessionKey === prev.hash) continue;
 
-          const payload = metricsReader.parseConversationMetrics(activeCascadeId, endpoint.conversationsDir, {
-            lsLogFile: endpoint.lsLogFile,
-            lsSig
-          });
-          if (!payload || payload.transientError) {
-            if (force && payload?.cachedPayload) {
-              await send('Runtime.evaluate', {
-                expression: `(window.__ag_last_daemon_hb = Date.now(), window.__ag_render_metrics && window.__ag_render_metrics(${JSON.stringify(payload.cachedPayload)}))`,
-                returnByValue: false
-              });
+            const payload = metricsReader.parseConversationMetrics(cid, endpoint.conversationsDir, {
+              lsLogFile: endpoint.lsLogFile,
+              lsSig
+            });
+            if (!payload || payload.transientError) {
+              if (force && payload?.cachedPayload) {
+                await send('Runtime.evaluate', {
+                  expression: `(window.__ag_last_daemon_hb = Date.now(), window.__ag_render_metrics && window.__ag_render_metrics(${JSON.stringify(payload.cachedPayload)}))`,
+                  returnByValue: false
+                });
+              }
+              continue;
             }
-            return;
+
+            const nextPendingActive = Boolean(
+              payload.stats &&
+                (payload.stats.generatingPending || payload.stats.compactingNow || payload.stats.pendingRetrying)
+            );
+            await send('Runtime.evaluate', {
+              expression: `(window.__ag_last_daemon_hb = Date.now(), window.__ag_render_metrics && window.__ag_render_metrics(${JSON.stringify(payload)}))`,
+              returnByValue: false
+            });
+            pushedSessions.set(cid, { hash: sessionKey, pendingActive: nextPendingActive });
           }
-
-          const nextPendingActive = Boolean(
-            payload.stats &&
-              (payload.stats.generatingPending || payload.stats.compactingNow || payload.stats.pendingRetrying)
-          );
-          lastPendingActive = nextPendingActive;
-
-          await send('Runtime.evaluate', {
-            expression: `(window.__ag_last_daemon_hb = Date.now(), window.__ag_render_metrics && window.__ag_render_metrics(${JSON.stringify(payload)}))`,
-            returnByValue: false
-          });
-          lastPushedHash = sessionKey;
         };
 
         const checkAndInject = async () => {
@@ -399,15 +440,19 @@ export function createCdpManager({ bundleCtrl, metricsReader, hasSqlite, runOnce
               return;
             }
             if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agRequestMetrics') {
-              const nextId = String(msg.params.payload || '').trim();
-              if (/^[0-9a-f-]{36}$/i.test(nextId)) {
-                activeCascadeId = nextId;
-                lastPushedHash = '';
+              const nextIds = parseCascadeIdList(msg.params.payload);
+              activeCascadeIds = nextIds;
+              for (const existingCid of [...pushedSessions.keys()]) {
+                if (!activeCascadeIds.includes(existingCid)) {
+                  pushedSessions.delete(existingCid);
+                }
+              }
+              if (activeCascadeIds.length > 0) {
+                for (const cid of activeCascadeIds) {
+                  const prev = pushedSessions.get(cid);
+                  if (prev) pushedSessions.set(cid, { hash: '', pendingActive: prev.pendingActive });
+                }
                 syncMetricsForSession(true);
-              } else {
-                activeCascadeId = '';
-                lastPushedHash = '';
-                lastPendingActive = false;
               }
               return;
             }

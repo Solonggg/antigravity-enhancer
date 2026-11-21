@@ -9,8 +9,8 @@
       "bytes": 3766
     },
     "daemon/cdp-bridge.mjs": {
-      "sha256": "adf42ca6a95f58fd259b28015821f57c77810df152f9d8361769a16e397a86b1",
-      "bytes": 24512
+      "sha256": "53395d3d15acc9a736bfb5162b4bdeccb50cbf5adbd431c0cddb6164a049c3e0",
+      "bytes": 26632
     },
     "daemon/cdp-relaunch.mjs": {
       "sha256": "51e9a4212942252547594c3294a6cccba426d081b5934a69fab3068aa21370c1",
@@ -37,8 +37,8 @@
       "bytes": 19694
     },
     "i18n.json": {
-      "sha256": "92b03889a880aba83fc0c4e5401a21292857179d90157dd475d1ae0ce334a2e5",
-      "bytes": 113681
+      "sha256": "22f5e7c475d9110c228eaeb94f23a1e60b34918b347d7c726c77d1ae298fd065",
+      "bytes": 117134
     },
     "installer/cdp-launch.mjs": {
       "sha256": "4bc60b99a16c62b63058a775f121ecb465ab546579b38f3470a6af4808910193",
@@ -61,8 +61,8 @@
       "bytes": 13336
     },
     "runtime/00-head.js": {
-      "sha256": "5bf113255aeff6d12c4ed767d2ae9e2835252d949a27b47971437293406df856",
-      "bytes": 12186
+      "sha256": "37f0e9dbde77034d0b34cea57370d0e9463bf4a1a8b2634c771af174d0fed601",
+      "bytes": 12256
     },
     "runtime/10-guards.js": {
       "sha256": "f4aedd3e4c615f638fe213c3c9304e51467dd6eceb4ae57b7085db47f6155087",
@@ -73,20 +73,20 @@
       "bytes": 6481
     },
     "runtime/30-antigravity-probe.js": {
-      "sha256": "dce13709f4ae44626298ece4a1f5b66c97792ec42466b53bcd577743949d4122",
-      "bytes": 7244
+      "sha256": "df553bf2ee72675ca24e9f94ff1a0cd797571e728032c32d2ea1994302545514",
+      "bytes": 7875
     },
     "runtime/40-status-machine.js": {
       "sha256": "a51d9c7db5b64e488af435adb4469d88ebf38ad52eb423180842939490b62efb",
       "bytes": 11902
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "44f43c32c5edd84bc213573c06016075a76c48e490dba2023d3f5a420550d9b6",
-      "bytes": 39997
+      "sha256": "defdc3c471a38476e1a43642c0556ed204ee45fca1256e907da6157370e17eb8",
+      "bytes": 51173
     },
     "runtime/60-i18n-engine.js": {
-      "sha256": "ec3168bbc3583030c539e237d1efd4ecca1d1f2d791d1f94134b469ba7c5e64f",
-      "bytes": 37101
+      "sha256": "cd47a833fe2df838b3a33ab6fa967c71d70707fd175650c098e8e3d58f1f53d2",
+      "bytes": 37588
     },
     "runtime/90-tail.js": {
       "sha256": "9e9ab5e1219797d146d9c1cf62144aa629cf057a83796c0ddab64c3e47c858b3",
@@ -97,8 +97,8 @@
       "bytes": 7088
     },
     "styles/00-base.css": {
-      "sha256": "1e727250b373f6a46f26a46955e8270fa624318fcdfc9f0623b2ebdd1b847e55",
-      "bytes": 14907
+      "sha256": "f0bba9e219a971d68f31d16bf125a576f17f790065b7f256a3bf7c9fb792f26a",
+      "bytes": 14992
     },
     "styles/10-light-codex.css": {
       "sha256": "604503205029bb79494946920dcd7baef73050f9709a0cd02ecbd2245ca16275",
@@ -109,8 +109,8 @@
       "bytes": 7354
     },
     "styles/30-telemetry.css": {
-      "sha256": "7407ded1e93d706856a2206aaaa661bacfb679acfd85d80d40ac87dd1b67b428",
-      "bytes": 26217
+      "sha256": "6d5fe7a2a9dad5def0d1de232073b90fb9c621a5f84bec34a7151543349b9e4c",
+      "bytes": 27476
     }
   }
 }

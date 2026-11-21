@@ -14,7 +14,7 @@
   align-items: center !important;
 }
 
-#antigravity\.agentSidePanelInputBox div[data-ag-row-mode="middle"] > div:first-child > *:not(#ag-live-metrics-pill) {
+#antigravity\.agentSidePanelInputBox div[data-ag-row-mode="middle"] > div:first-child > *:not(#ag-live-metrics-pill):not(.ag-live-metrics-pill) {
   flex-shrink: 0 !important;
 }
 
@@ -23,7 +23,7 @@
   margin-left: auto !important;
 }
 
-#ag-live-metrics-pill {
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) {
   position: relative;
   display: none;
   align-items: center;
@@ -51,13 +51,13 @@
   cursor: pointer;
 }
 
-#ag-live-metrics-pill:hover,
-#ag-live-metrics-pill:hover #ag-live-metrics-text {
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill):hover,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill):hover :is(#ag-live-metrics-text, .ag-live-metrics-text) {
   opacity: 1 !important;
   color: #0D0D0D !important;
 }
 
-#ag-live-metrics-pill[data-ag-row-mode="bottom"] {
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill)[data-ag-row-mode="bottom"] {
   flex: 0 0 auto !important;
   align-self: stretch !important;
   box-sizing: border-box !important;
@@ -73,7 +73,7 @@
   border-top: 1px dashed rgba(0, 0, 0, 0.12) !important;
 }
 
-#ag-live-metrics-pill #ag-live-metrics-text {
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) :is(#ag-live-metrics-text, .ag-live-metrics-text) {
   display: block;
   min-width: 0;
   max-width: 100%;
@@ -87,33 +87,33 @@
   color: inherit !important;
 }
 
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-sep,
-#ag-live-metrics-pill .ag-sep {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-sep,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-sep {
   margin: 0 2px;
   opacity: 0.45 !important;
 }
 
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-warn,
-#ag-live-metrics-pill .ag-ctx-warn {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-warn,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-warn {
   color: #B45309 !important;
   font-weight: 600 !important;
 }
 
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-crit,
-#ag-live-metrics-pill .ag-ctx-crit {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-crit,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-crit {
   color: #DC2626 !important;
   font-weight: 700 !important;
 }
 
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-compacted,
-#ag-live-metrics-pill .ag-ctx-compacted {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-compacted,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-compacted {
   color: #059669 !important;
   font-weight: 600 !important;
 }
 
 /* 4-State Session Status Indicator */
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot,
-#ag-live-metrics-pill .ag-ctx-pending-dot {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot {
   display: inline-block;
   width: 5.5px;
   height: 5.5px;
@@ -125,27 +125,27 @@
   transition: background-color 0.35s ease, box-shadow 0.35s ease, opacity 0.25s ease;
 }
 
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-idle,
-#ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-idle {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-idle,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-idle {
   opacity: 0.92;
   animation: none !important;
 }
 
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-running,
-#ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-running {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-running,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-running {
   box-shadow: 0 0 0 2px rgba(43, 127, 255, 0.22);
   animation: ag-pulse-dot 1.4s ease-in-out infinite;
 }
 
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-slow,
-#ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-slow {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-slow,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-slow {
   background-color: #F59E0B !important;
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.26);
   animation: ag-pulse-dot 1.25s ease-in-out infinite;
 }
 
-#antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-error,
-#ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-error {
+#antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-error,
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-error {
   background-color: #DC2626 !important;
   box-shadow: 0 0 0 2.5px rgba(220, 38, 38, 0.24);
   animation: ag-pulse-dot 1.05s ease-in-out infinite;
@@ -156,53 +156,53 @@
   50% { opacity: 1; }
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill) {
   color: #C8CAD4 !important;
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill:hover,
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill:hover #ag-live-metrics-text {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill):hover,
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill):hover :is(#ag-live-metrics-text, .ag-live-metrics-text) {
   color: #FFFFFF !important;
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill[data-ag-row-mode="bottom"] {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill)[data-ag-row-mode="bottom"] {
   border-top-color: rgba(255, 255, 255, 0.14) !important;
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-warn,
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill .ag-ctx-warn {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-warn,
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-warn {
   color: #FBBF24 !important;
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-crit,
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill .ag-ctx-crit {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-crit,
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-crit {
   color: #F87171 !important;
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-compacted,
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill .ag-ctx-compacted {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-compacted,
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-compacted {
   color: #34D399 !important;
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot,
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill .ag-ctx-pending-dot {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot,
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot {
   background-color: #60A5FA !important;
   box-shadow: 0 0 0 1.5px rgba(96, 165, 250, 0.20);
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-running,
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-running {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-running,
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-running {
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.26);
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-slow,
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-slow {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-slow,
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-slow {
   background-color: #FBBF24 !important;
   box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.26);
 }
 
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-error,
-:is(html[data-ag-theme-mode="dark"] body, body.dark) #ag-live-metrics-pill .ag-ctx-pending-dot.ag-dot-error {
+:is(html[data-ag-theme-mode="dark"] body, body.dark) #antigravity\.agentSidePanelInputBox :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-error,
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#ag-live-metrics-pill, .ag-live-metrics-pill) .ag-ctx-pending-dot.ag-dot-error {
   background-color: #F87171 !important;
   box-shadow: 0 0 0 2.5px rgba(248, 113, 113, 0.26);
 }
