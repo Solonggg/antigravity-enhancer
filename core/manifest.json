@@ -1,6 +1,6 @@
 {
   "name": "antigravity-codex-theme",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minNodeVersion": "22.13.0",
   "fullMetricsNodeVersion": "22.13.0",
   "files": {
@@ -21,7 +21,7 @@
       "bytes": 2123
     },
     "daemon/paths.mjs": {
-      "sha256": "3f360e5aca6272c22167a87cef0e245be0e89c8a38e33221286daf6861e76d4b",
+      "sha256": "e0980c5d54e162096465e1b1fb4c6e6c4fd6e0ead5a952494ec90f67705333b7",
       "bytes": 13379
     },
     "daemon/protobuf.mjs": {
@@ -41,7 +41,7 @@
       "bytes": 117134
     },
     "installer/cdp-launch.mjs": {
-      "sha256": "4bc60b99a16c62b63058a775f121ecb465ab546579b38f3470a6af4808910193",
+      "sha256": "8b63ba4676bbca083fd154687c7784d6279a951c869de4d6fcaf19c56ce61e12",
       "bytes": 28826
     },
     "installer/env.mjs": {
@@ -61,7 +61,7 @@
       "bytes": 13336
     },
     "runtime/00-head.js": {
-      "sha256": "37f0e9dbde77034d0b34cea57370d0e9463bf4a1a8b2634c771af174d0fed601",
+      "sha256": "dbd0e103f52a779c5b2626f81cd4d24df892818ade4114d8617417687576e468",
       "bytes": 12256
     },
     "runtime/10-guards.js": {
