@@ -156,7 +156,7 @@ node install.mjs install --only i18n --minimal
 
 ![会话状态：就绪、执行中、等待或重试、连接或执行异常](assets/led-status-states.png)
 
-*会话状态：就绪、执行中、等待或重试、连接或执行异常*
+<p align="center"><em>会话状态：就绪、执行中、等待或重试、连接或执行异常</em></p>
 
 #### 用量面板与上下文预警
 
@@ -174,7 +174,7 @@ node install.mjs install --only i18n --minimal
 
 ![白日模式下状态栏三种自适应布局](assets/telemetry-layouts.png)
 
-*状态栏三种自适应布局：默认紧凑、详细模式与窄侧栏自动换行*
+<p align="center"><em>状态栏三种自适应布局：默认紧凑、详细模式与窄侧栏自动换行</em></p>
 
 #### 每轮对话尾部统计
 
@@ -182,7 +182,7 @@ node install.mjs install --only i18n --minimal
 
 ![每轮对话尾部统计悬浮详情卡](assets/turn-hover-card.png)
 
-*每轮助手回复尾部统计与 80ms 悬浮详情卡*
+<p align="center"><em>每轮助手回复尾部统计与悬浮详情卡</em></p>
 
 ### 中文界面汉化
 
