@@ -25,11 +25,12 @@ const NOT_FOUND_COOLDOWN_MS = 25000;
 const MAX_REMOTE_SESSIONS = 24;
 const SSH_TIMEOUT_MS = 8000;
 const SSH_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
+export const MAX_SYNTH_CHECKPOINT_BYTES = 4 * 1024 * 1024;
 
 // Remote read-only Python extractor: strips all conversation/prompt/checkpoint
 // text on the remote server and emits only compact numeric/status metadata JSON.
 export const REMOTE_PY_EXTRACTOR = `
-import base64, json, os, sqlite3, sys
+import base64, json, os, sqlite3, sys, urllib.parse
 
 def read_varint(buf, i):
     val = shift = 0
@@ -104,7 +105,8 @@ def extract_cp_summary_len(buf):
                     elif wt2 == 2:
                         ln2, vs2 = read_varint(buf, j)
                         j = vs2 + ln2
-                        if fn2 == 5 and ln2 >= 0: return ln2
+                        if ln2 < 0 or j > m: break
+                        if fn2 == 5: return ln2
                     elif wt2 == 1: j += 8
                     elif wt2 == 5: j += 4
                     else: break
@@ -141,34 +143,38 @@ if sig == prev_sig:
     print(json.dumps({"found": True, "unchanged": True, "sig": sig}))
     sys.exit(0)
 b64 = lambda b: base64.b64encode(b).decode("ascii") if b else None
-con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=0.5)
-cur = con.cursor()
-cnt, max_idx = cur.execute("SELECT COUNT(*), COALESCE(MAX(idx), -1) FROM gen_metadata").fetchone()
-if cnt == 0 or max_idx < 0:
-    print(json.dumps({"found": True, "sig": sig, "metaStat": {"cnt": 0, "maxIdx": -1}}))
-    sys.exit(0)
-u_idxs = [r[0] for r in cur.execute("SELECT idx FROM steps WHERE step_type = 14 ORDER BY idx ASC").fetchall()]
-last_u = u_idxs[-1] if u_idxs else -1
-u_meta = None
-if last_u >= 0:
-    r = cur.execute("SELECT metadata, length(step_payload) FROM steps WHERE idx = ?", (last_u,)).fetchone()
-    if r: u_meta = {"metadata": b64(filter_proto(r[0], META_KEEP)), "plen": r[1] or 0}
-s_cnt, s_max = cur.execute("SELECT COUNT(*), COALESCE(MAX(idx), -1) FROM steps").fetchone()
-cp = cur.execute("SELECT idx, status, metadata, step_payload FROM steps WHERE step_type = 23 AND status = 3 ORDER BY idx DESC LIMIT 1").fetchone()
-cp_row = {"idx": cp[0], "status": cp[1], "metadata": b64(filter_proto(cp[2], META_KEEP)), "summaryLen": extract_cp_summary_len(cp[3])} if cp else None
-act = [{"idx": r[0], "step_type": r[1], "status": r[2], "metadata": b64(filter_proto(r[3], META_KEEP)), "plen": r[4] or 0} for r in cur.execute("SELECT idx, step_type, status, metadata, length(step_payload) FROM steps WHERE status IN (1, 2, 8, 9, 11) ORDER BY idx DESC LIMIT 10").fetchall()]
-def pack_step(r):
-    if not r: return None
-    err = r[3][:240] if isinstance(r[3], (bytes, bytearray)) else (r[3].encode("utf-8")[:240] if isinstance(r[3], str) else None)
-    sp = r[4][:1024] if (r[1] == 17 and isinstance(r[4], (bytes, bytearray))) else None
-    return {"idx": r[0], "step_type": r[1], "status": r[2], "error_details": b64(err), "step_payload": b64(sp), "metadata": b64(filter_proto(r[5], META_KEEP))}
-m_row = pack_step(cur.execute("SELECT idx, step_type, status, error_details, CASE WHEN step_type = 17 THEN step_payload ELSE NULL END, metadata FROM steps WHERE step_type IN (15, 17, 23) ORDER BY idx DESC LIMIT 1").fetchone())
-nu_row = pack_step(cur.execute("SELECT idx, step_type, status, error_details, CASE WHEN step_type = 17 THEN step_payload ELSE NULL END, metadata FROM steps WHERE step_type != 14 ORDER BY idx DESC LIMIT 1").fetchone())
-lg = cur.execute("SELECT size, length(data) FROM gen_metadata WHERE idx = ?", (max_idx,)).fetchone()
-lg_row = {"size": lg[0], "dlen": lg[1] or 0} if lg else None
-t_cnt = cur.execute("SELECT COUNT(*) FROM steps WHERE step_type = 15 AND idx > ?", (last_u,)).fetchone()[0]
-g_rows = [{"idx": r[0], "data": b64(filter_proto(r[1], GEN_KEEP))} for r in cur.execute("SELECT idx, data FROM gen_metadata WHERE idx >= ? ORDER BY idx ASC", (start_idx,)).fetchall()]
-print(json.dumps({"found": True, "sig": sig, "metaStat": {"cnt": cnt, "maxIdx": max_idx}, "userStepIdxs": u_idxs, "lastUserMetaRow": u_meta, "stepStat": {"cnt": s_cnt, "maxIdx": s_max}, "lastCpRow": cp_row, "activeStepRows": act, "lastModelStepRow": m_row, "latestNonUserStep": nu_row, "lastGenMetaRow": lg_row, "turnStat": {"cnt": t_cnt}, "startIdx": start_idx, "genRows": g_rows}))
+uri = "file:" + urllib.parse.quote(p, safe="/:") + "?mode=ro"
+con = sqlite3.connect(uri, uri=True, timeout=0.5)
+try:
+    cur = con.cursor()
+    cnt, max_idx = cur.execute("SELECT COUNT(*), COALESCE(MAX(idx), -1) FROM gen_metadata").fetchone()
+    if cnt == 0 or max_idx < 0:
+        print(json.dumps({"found": True, "sig": sig, "metaStat": {"cnt": 0, "maxIdx": -1}}))
+        sys.exit(0)
+    u_idxs = [r[0] for r in cur.execute("SELECT idx FROM steps WHERE step_type = 14 ORDER BY idx ASC").fetchall()]
+    last_u = u_idxs[-1] if u_idxs else -1
+    u_meta = None
+    if last_u >= 0:
+        r = cur.execute("SELECT metadata, length(step_payload) FROM steps WHERE idx = ?", (last_u,)).fetchone()
+        if r: u_meta = {"metadata": b64(filter_proto(r[0], META_KEEP)), "plen": r[1] or 0}
+    s_cnt, s_max = cur.execute("SELECT COUNT(*), COALESCE(MAX(idx), -1) FROM steps").fetchone()
+    cp = cur.execute("SELECT idx, status, metadata, step_payload FROM steps WHERE step_type = 23 AND status = 3 ORDER BY idx DESC LIMIT 1").fetchone()
+    cp_row = {"idx": cp[0], "status": cp[1], "metadata": b64(filter_proto(cp[2], META_KEEP)), "summaryLen": extract_cp_summary_len(cp[3])} if cp else None
+    act = [{"idx": r[0], "step_type": r[1], "status": r[2], "metadata": b64(filter_proto(r[3], META_KEEP)), "plen": r[4] or 0} for r in cur.execute("SELECT idx, step_type, status, metadata, length(step_payload) FROM steps WHERE status IN (1, 2, 8, 9, 11) ORDER BY idx DESC LIMIT 10").fetchall()]
+    def pack_step(r):
+        if not r: return None
+        err = r[3][:240] if isinstance(r[3], (bytes, bytearray)) else (r[3].encode("utf-8")[:240] if isinstance(r[3], str) else None)
+        sp = r[4][:1024] if (r[1] == 17 and isinstance(r[4], (bytes, bytearray))) else None
+        return {"idx": r[0], "step_type": r[1], "status": r[2], "error_details": b64(err), "step_payload": b64(sp), "metadata": b64(filter_proto(r[5], META_KEEP))}
+    m_row = pack_step(cur.execute("SELECT idx, step_type, status, error_details, CASE WHEN step_type = 17 THEN step_payload ELSE NULL END, metadata FROM steps WHERE step_type IN (15, 17, 23) ORDER BY idx DESC LIMIT 1").fetchone())
+    nu_row = pack_step(cur.execute("SELECT idx, step_type, status, error_details, CASE WHEN step_type = 17 THEN step_payload ELSE NULL END, metadata FROM steps WHERE step_type != 14 ORDER BY idx DESC LIMIT 1").fetchone())
+    lg = cur.execute("SELECT size, length(data) FROM gen_metadata WHERE idx = ?", (max_idx,)).fetchone()
+    lg_row = {"size": lg[0], "dlen": lg[1] or 0} if lg else None
+    t_cnt = cur.execute("SELECT COUNT(*) FROM steps WHERE step_type = 15 AND idx > ?", (last_u,)).fetchone()[0]
+    g_rows = [{"idx": r[0], "data": b64(filter_proto(r[1], GEN_KEEP))} for r in cur.execute("SELECT idx, data FROM gen_metadata WHERE idx >= ? ORDER BY idx ASC", (start_idx,)).fetchall()]
+    print(json.dumps({"found": True, "sig": sig, "metaStat": {"cnt": cnt, "maxIdx": max_idx}, "userStepIdxs": u_idxs, "lastUserMetaRow": u_meta, "stepStat": {"cnt": s_cnt, "maxIdx": s_max}, "lastCpRow": cp_row, "activeStepRows": act, "lastModelStepRow": m_row, "latestNonUserStep": nu_row, "lastGenMetaRow": lg_row, "turnStat": {"cnt": t_cnt}, "startIdx": start_idx, "genRows": g_rows}))
+finally:
+    con.close()
 `.trim();
 
 const REMOTE_PY_B64 = Buffer.from(REMOTE_PY_EXTRACTOR, 'utf8').toString('base64');
@@ -205,7 +211,7 @@ function encodeVarintBytes(v) {
 }
 
 export function synthesizeCheckpointPayload(summaryLen) {
-  const len = Math.max(0, Number(summaryLen) || 0);
+  const len = Math.min(Math.max(0, Math.floor(Number(summaryLen) || 0)), MAX_SYNTH_CHECKPOINT_BYTES);
   if (len <= 0) return null;
   // Field 30 (tag = (30 << 3) | 2 = 242), subfield 5 (tag = (5 << 3) | 2 = 42) of length `len`
   const innerTag = encodeVarintBytes((5 << 3) | 2);

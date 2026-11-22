@@ -9,11 +9,13 @@
     "theme": true,
     "i18n": true,
     "metrics": true,
+    "sshRemote": false,
     "deadlockHealer": true,
     "zoomShortcuts": true,
     "cdpAutoRelaunch": true,
     "customCss": true,
     "customJs": true
   },
+  "sshHosts": [],
   "themeVars": {}
 }

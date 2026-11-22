@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  MAX_SYNTH_CHECKPOINT_BYTES,
   validateSshHost,
   normalizeSshHosts,
   synthesizeCheckpointPayload,
@@ -85,6 +86,19 @@ test('synthesizeCheckpointPayload preserves checkpoint summary byte length witho
   });
   assert.equal(parsed.idx, 12);
   assert.equal(parsed.summaryBytes, 4096);
+
+  assert.equal(synthesizeCheckpointPayload(0), null);
+  assert.equal(synthesizeCheckpointPayload(-10), null);
+  assert.equal(synthesizeCheckpointPayload(NaN), null);
+
+  const clamped = synthesizeCheckpointPayload(MAX_SYNTH_CHECKPOINT_BYTES * 8);
+  const parsedClamped = parseCheckpointStepInfo({
+    idx: 13,
+    status: 3,
+    metadata: null,
+    step_payload: clamped
+  });
+  assert.equal(parsedClamped.summaryBytes, MAX_SYNTH_CHECKPOINT_BYTES);
 });
 
 test('mergeRemoteSnapshot and createVirtualRemoteDb integrate with sqlite-metrics in memory', () => {

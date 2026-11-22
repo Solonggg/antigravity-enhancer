@@ -33,8 +33,8 @@
       "bytes": 21966
     },
     "daemon/ssh-remote.mjs": {
-      "sha256": "c6f9c20d914547ade956d470e86cce6b9a7bd7b302f3e0b63e03b1929e8ab8eb",
-      "bytes": 18083
+      "sha256": "4915c2323ec6ade10eaa66c56afbc830ef7ed243df467b1457e013a40ccc4145",
+      "bytes": 18428
     },
     "daemon/telemetry-renderer.mjs": {
       "sha256": "186e438512a681e2eccbbdbc15f771ce30f7602af6a27f5d56ee6dda1d636ef7",

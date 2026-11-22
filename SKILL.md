@@ -32,7 +32,7 @@ Users can install all features or only the modules they request:
 | :--- | :--- | :--- |
 | `theme` | `modules.theme` | Codex pure-white light & charcoal-dark themes (`00-base.css`, `10-light-codex.css`, `20-dark-codex.css`, `20-theme-sync.js`, including Swarm iframe sync) |
 | `i18n` | `modules.i18n` | 1,900+ Chinese UI localization entries (`core/i18n.json`, `60-i18n-engine.js`, preserving English model names & reasoning effort labels) |
-| `metrics` | `modules.metrics` | 4-state session status indicator (`会话状态`), L1/L2 expandable usage panels, and per-turn footer stats (main conversation & Side Question pane) |
+| `metrics` | `modules.metrics`, `modules.sshRemote` | 4-state session status indicator (`会话状态`), L1/L2 expandable usage panels, and per-turn footer stats (main conversation, Side Question pane, and opt-in in-memory SSH Remote telemetry via `sshHosts`) |
 | `fixes` | `modules.deadlockHealer`, `modules.zoomShortcuts` | Settings modal router deadlock fix & `Cmd/Ctrl + -/=/0` zoom shortcuts (`10-guards.js`) |
 
 ## 3. Standard & Selective Workflows
@@ -86,7 +86,8 @@ If `--safe-mode` works cleanly, inspect `~/.gemini/antigravity/codex-theme/user/
 
 ### Configuration Tweaks (Hot-Reloaded in ~2.5s)
 Edit `~/.gemini/antigravity/codex-theme/user/config.json`:
-- **Toggle individual modules**: `"modules": { "theme": true, "i18n": true, "metrics": true, "deadlockHealer": true, "zoomShortcuts": true, "cdpAutoRelaunch": true }`
+- **Toggle individual modules**: `"modules": { "theme": true, "i18n": true, "metrics": true, "sshRemote": false, "deadlockHealer": true, "zoomShortcuts": true, "cdpAutoRelaunch": true }`
+- **Enable opt-in SSH Remote telemetry** (reads remote SQLite via read-only `python3` over `ssh`, strips all conversation text remotely, zero local `.db` copy): set `"modules": { "sshRemote": true }` and `"sshHosts": ["your-ssh-host"]`
 - **Switch status bar density**: `"telemetryLayout": "detailed"` (`"compact"` is default)
 - **Switch cache metric mode**: `"telemetryCacheMode": "step"` (`"session"` is default)
 - **Disable entire plugin cleanly**: `"enabled": false`
