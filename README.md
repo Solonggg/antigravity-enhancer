@@ -40,7 +40,7 @@ https://github.com/user-attachments/assets/e42ae3d6-c261-442c-bc6d-3c14ff830664
 ![Codex 浅色与深色模式对比](assets/light-dark-themes.png)
 
 - 提供浅色 (`codex-pure-white`) 与深色 (`codex-dark`) 两套配色，无外部字体依赖，随 IDE 明暗外观自动切换。
-- 底部工具栏实时指示会话状态与用量摘要，支持展开两级明细面板；每轮回复末尾附带 Token 统计，悬停约 `80ms` 显示详情拆解卡，并同步支持右侧旁路提问（Side Question）面板。
+- 底部工具栏实时指示会话状态与用量摘要，支持展开两级明细面板；每轮回复末尾附带 Token 统计，悬停约 `80ms` 显示详情拆解卡，并同步支持右侧旁路提问（Side Question）与 **SSH Remote 远端会话**（[查看配置](#ssh-remote-远端会话统计)）。
 - 内置 `1,900+` 条中文界面词条；4 个核心模块相互独立，可通过 `--only` 按需安装。
 
 ![一级概览、二级详情、上下文预警及每轮对话尾部统计](assets/telemetry-bento-panels.png)
@@ -184,6 +184,21 @@ node install.mjs install --only i18n --minimal
 
 <p align="center"><em>每轮助手回复尾部统计与悬浮详情卡</em></p>
 
+#### SSH Remote 远端会话统计
+
+通过 SSH Remote 连接远端开发机使用 Antigravity 时，会话数据库位于远端主机，默认无法读取统计信息。开启 `sshRemote` 后，后台服务会通过 `ssh` 在远端以只读 `python3`（`sqlite3` `mode=ro`）直接读取最新 WAL 状态，**在远端剥离全部对话正文、Prompt 与 Checkpoint 摘要文本**，仅回传脱敏后的数值与状态元数据并在本地纯内存解析，不调用 `scp`，不在本地磁盘拷贝或残留任何 `.db` 文件。
+
+该功能默认关闭且不扫描 `~/.ssh/config`。前置要求远端具备 `python3` 且本地可无密码 SSH 登录，在 `~/.gemini/antigravity/codex-theme/user/config.json` 中显式配置主机名后约 2.5 秒热重载生效：
+
+```json
+{
+  "modules": {
+    "sshRemote": true
+  },
+  "sshHosts": ["node032"]
+}
+```
+
 ### 中文界面汉化
 
 内置 `1,900+` 条界面词条，覆盖 Antigravity `2.30.x` 至 `2.34.0+` 的设置面板（含 Orchestrator 设置与沙箱权限）、菜单、权限选项、侧边栏、旁路提问、插件管理与工具审批状态。通过 `WeakMap` 在原文本节点直接替换，不克隆节点，不影响 React 事件绑定。可通过 [user/i18n.override.json](user/i18n.override.json) 自定义或覆盖词条，也可在配置中关闭 `i18n` 恢复英文界面。
@@ -208,7 +223,7 @@ node install.mjs install --only i18n --minimal
   - `telemetryLayout`：`"compact"`（默认紧凑样式）或 `"detailed"`（显示 `TTFT`、精确上下文与 `Out`）
   - `telemetryCacheMode`：`"session"`（会话累计命中率）或 `"step"`（单步命中率）
   - `modules`：独立控制 `theme`、`i18n`、`metrics`、`sshRemote`、`deadlockHealer`、`zoomShortcuts`、`cdpAutoRelaunch`、`customCss`、`customJs` 开关
-  - `sshHosts`（配合 `modules.sshRemote: true`，默认关闭）：在 SSH Remote 会话场景下显式指定远端主机别名或地址（如 `["node032"]`，不扫描 `~/.ssh/config`）。开启后通过 `ssh` 在远端以只读 `python3` 读取 SQLite 并仅回传脱敏后的数值与状态元数据，不在本地拷贝或落盘 `.db` 文件（远端需具备 `python3` 与无密码 SSH 登录）
+  - `sshHosts`（配合 `modules.sshRemote: true`，默认关闭）：显式指定远端 SSH 主机别名或地址（如 `["node032"]`），开启远端只读会话统计（详见 [SSH Remote 远端会话统计](#ssh-remote-远端会话统计)）
 - [user/i18n.override.json](user/i18n.override.json)：追加或覆盖界面翻译词条。
 - [user/custom.css](user/custom.css) 与 [user/custom.js](user/custom.js)：注入自定义样式与前端脚本钩子，支持热重载自动清理。
 
