@@ -435,7 +435,7 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
           ? '会话状态：执行中 · 新一步执行中'
           : '会话状态：就绪 · 悬停或点击查看统计';
       const safeDotTitle = statusTitle.replace(/"/g, '&quot;');
-      const statusDotHtml = `<span class="${statusDotClass}" title="${safeDotTitle}"></span>`;
+      const statusDotHtml = `<span class="${statusDotClass}" aria-label="${safeDotTitle}"></span>`;
 
       const turns = buildTurnSummaries(valid, userStepIdxs, manualLim, fallbackLim);
       const inlineHtml = buildInlineTelemetryHtml({

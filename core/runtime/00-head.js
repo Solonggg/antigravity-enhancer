@@ -12,7 +12,7 @@
   if (window.top !== window && !IS_SWARM_PLUGIN_FRAME) return;
   if (!boot || typeof boot !== 'object') return;
 
-  const PATCH_VERSION = boot.version || '1.2.1';
+  const PATCH_VERSION = boot.version || '1.3.0';
   const ENABLED = boot.enabled !== false;
   const CSS_TEXT = boot.cssText || '';
   const CUSTOM_CSS_TEXT = boot.customCss || '';
@@ -34,7 +34,7 @@
 
   const DEFAULT_PRESET = boot.preset || 'codex-pure-white';
   const DEFAULT_EXCLUDE_I18N =
-    'code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable="true"], [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, [class*="onyx-key"], .prose, .markdown, [class*="chat-message"], [class*="group/file-title"], [data-testid="conversation-row-sidebar"] a[href^="/c/"], [data-testid="conversation-row-sidebar"] span.truncate, [data-testid="conversation-row-history"] a[href^="/c/"], [data-testid="conversation-row-history"] span.truncate, [data-testid="conversation-navigator-turn"], #ag-live-metrics-pill, .ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics, .ag-prompt-ghost-overlay, .ag-prompt-ghost-text, .ag-prompt-ghost-kbd';
+    'code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable="true"], [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, [class*="onyx-key"], .prose, .markdown, [class*="chat-message"], [class*="group/file-title"], [data-testid="conversation-row-sidebar"] a[href^="/c/"], [data-testid="conversation-row-sidebar"] span.truncate, [data-testid="conversation-row-history"] a[href^="/c/"], [data-testid="conversation-row-history"] span.truncate, [data-testid="conversation-navigator-turn"], #ag-live-metrics-pill, .ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics, .ag-prompt-ghost-overlay, .ag-prompt-ghost-text, .ag-prompt-ghost-kbd, #ag-settings-nav-wrap, #ag-settings-pane, #ag-settings-model-menu, #ag-settings-effort-menu';
 
   const SELECTORS = Object.assign(
     {
@@ -192,12 +192,27 @@
   }
 
   if (!ENABLED) {
-    for (const id of ['ag-codex-theme', 'ag-user-theme-vars', 'ag-user-custom-style', 'ag-live-metrics-pill', 'ag-side-metrics-pill', 'ag-live-metrics-tooltip', 'ag-turn-metrics-tooltip']) {
+    for (const id of [
+      'ag-codex-theme',
+      'ag-user-theme-vars',
+      'ag-user-custom-style',
+      'ag-live-metrics-pill',
+      'ag-side-metrics-pill',
+      'ag-live-metrics-tooltip',
+      'ag-turn-metrics-tooltip',
+      'ag-settings-nav-divider',
+      'ag-settings-nav-wrap',
+      'ag-settings-pane',
+      'ag-settings-model-menu',
+      'ag-settings-effort-menu'
+    ]) {
       const el = document.getElementById(id);
       if (el) el.remove();
     }
     document.querySelectorAll('.ag-turn-metrics, .ag-live-metrics-pill, .ag-prompt-ghost-overlay').forEach((el) => el.remove());
     document.querySelectorAll('[data-ag-has-suggestion]').forEach((el) => el.removeAttribute('data-ag-has-suggestion'));
+    document.querySelectorAll('[data-ag-codex-settings-open]').forEach((el) => el.removeAttribute('data-ag-codex-settings-open'));
+    document.querySelectorAll('[data-ag-settings-right-pane]').forEach((el) => el.removeAttribute('data-ag-settings-right-pane'));
     if (window.__ag_i18n_observer) {
       try { window.__ag_i18n_observer.disconnect(); } catch (e) {}
       window.__ag_i18n_observer = null;

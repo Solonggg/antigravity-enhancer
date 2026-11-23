@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   isAllowedOrigin as sharedIsAllowedOrigin,
@@ -14,10 +15,37 @@ import {
 import { ROOT_DIR } from './paths.mjs';
 import { createCdpRelaunchController } from './cdp-relaunch.mjs';
 
+export const ALLOWED_EXTERNAL_LINKS = Object.freeze({
+  github: 'https://github.com/nkjDSLcvanv/antigravity-codex-theme',
+  feedback: 'https://x.com/shehxuhxjx66088/status/2124698149742883293?a=EQtEZD2AMCGaj9bBRIo&s=20'
+});
+
+export function openAllowlistedExternalLink(key, { execFileFn = execFile, platform = process.platform } = {}) {
+  const url = Object.prototype.hasOwnProperty.call(ALLOWED_EXTERNAL_LINKS, key)
+    ? ALLOWED_EXTERNAL_LINKS[key]
+    : '';
+  if (!url) return { ok: false, url: '' };
+  try {
+    if (platform === 'darwin') {
+      execFileFn('open', [url], { timeout: 5000 }, () => {});
+    } else if (platform === 'win32') {
+      execFileFn('rundll32.exe', ['url.dll,FileProtocolHandler', url], { timeout: 5000, windowsHide: true }, () => {});
+    } else {
+      execFileFn('xdg-open', [url], { timeout: 5000 }, () => {});
+    }
+    return { ok: true, url };
+  } catch {
+    return { ok: false, url };
+  }
+}
+
 const __bridgeDir = path.dirname(fileURLToPath(import.meta.url));
 let getLsLogSig = () => '';
 let getDbSignature = () => null;
 let createSshRemoteController = () => ({ getRemoteMetricsSource: () => null });
+let checkForUpdates = async () => ({ ok: false, status: 'error', error: 'updater unavailable' });
+let applyPluginUpdate = async () => ({ ok: false, applied: false, error: 'updater unavailable' });
+let updateApplyInFlight = false;
 if (fs.existsSync(path.join(__bridgeDir, 'ls-log.mjs'))) {
   try {
     const lsMod = await import('./ls-log.mjs');
@@ -36,6 +64,13 @@ if (fs.existsSync(path.join(__bridgeDir, 'ssh-remote.mjs'))) {
     if (typeof sshMod.createSshRemoteController === 'function') {
       createSshRemoteController = sshMod.createSshRemoteController;
     }
+  } catch {}
+}
+if (fs.existsSync(path.join(__bridgeDir, 'updater.mjs'))) {
+  try {
+    const updMod = await import('./updater.mjs');
+    if (typeof updMod.checkForUpdates === 'function') checkForUpdates = updMod.checkForUpdates;
+    if (typeof updMod.applyPluginUpdate === 'function') applyPluginUpdate = updMod.applyPluginUpdate;
   } catch {}
 }
 
@@ -507,6 +542,11 @@ export function createCdpManager({
             await send('Runtime.addBinding', { name: '__agRequestMetrics' });
             await send('Runtime.addBinding', { name: '__agSyncHostThemeMode' });
             await send('Runtime.addBinding', { name: '__agRequestPromptSuggestion' });
+            await send('Runtime.addBinding', { name: '__agGetSettingsState' });
+            await send('Runtime.addBinding', { name: '__agUpdateSettings' });
+            await send('Runtime.addBinding', { name: '__agOpenExternalUrl' });
+            await send('Runtime.addBinding', { name: '__agCheckPluginUpdate' });
+            await send('Runtime.addBinding', { name: '__agApplyPluginUpdate' });
           }
           await updateNewDocScript();
           const ok = await inject();
@@ -597,6 +637,211 @@ export function createCdpManager({
                   try {
                     await send('Runtime.evaluate', {
                       expression: `if (typeof window.__ag_on_prompt_suggestion === 'function') { window.__ag_on_prompt_suggestion(${JSON.stringify(reqId)}, ${payloadJson}); }`,
+                      returnByValue: false
+                    });
+                  } catch {}
+                }
+              })();
+              return;
+            }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agOpenExternalUrl') {
+              if (isSwarmIframe || !hostConfirmed) return;
+              let req = {};
+              try {
+                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
+              } catch {}
+              const key = String(req?.key || '').trim();
+              if (key) openAllowlistedExternalLink(key);
+              return;
+            }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agCheckPluginUpdate') {
+              if (isSwarmIframe || !hostConfirmed) return;
+              let req = {};
+              try {
+                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
+              } catch {}
+              const reqId = String(req?.reqId || '');
+              void (async () => {
+                let out;
+                try {
+                  out = await checkForUpdates({ targetDir: ROOT_DIR });
+                } catch (err) {
+                  out = { ok: false, status: 'error', error: err?.message || String(err || 'Check failed') };
+                }
+                if (ws.readyState === WebSocket.OPEN) {
+                  const payloadJson = JSON.stringify(out)
+                    .replace(/\u2028/g, '\\u2028')
+                    .replace(/\u2029/g, '\\u2029');
+                  try {
+                    await send('Runtime.evaluate', {
+                      expression: `if (typeof window.__ag_on_settings_state === 'function') { window.__ag_on_settings_state(${JSON.stringify(reqId)}, ${payloadJson}); }`,
+                      returnByValue: false
+                    });
+                  } catch {}
+                }
+              })();
+              return;
+            }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agApplyPluginUpdate') {
+              if (isSwarmIframe || !hostConfirmed) return;
+              let req = {};
+              try {
+                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
+              } catch {}
+              const reqId = String(req?.reqId || '');
+              const ref = typeof req?.ref === 'string' && req.ref.trim() ? req.ref.trim() : 'main';
+              void (async () => {
+                let out;
+                if (updateApplyInFlight) {
+                  out = { ok: false, applied: false, error: 'Update already in progress' };
+                } else {
+                  updateApplyInFlight = true;
+                  try {
+                    out = await applyPluginUpdate({ targetDir: ROOT_DIR, ref, scheduleRestart: true });
+                  } catch (err) {
+                    out = { ok: false, applied: false, error: err?.message || String(err || 'Update failed') };
+                  } finally {
+                    updateApplyInFlight = false;
+                  }
+                }
+                if (ws.readyState === WebSocket.OPEN) {
+                  const payloadJson = JSON.stringify(out)
+                    .replace(/\u2028/g, '\\u2028')
+                    .replace(/\u2029/g, '\\u2029');
+                  try {
+                    await send('Runtime.evaluate', {
+                      expression: `if (typeof window.__ag_on_settings_state === 'function') { window.__ag_on_settings_state(${JSON.stringify(reqId)}, ${payloadJson}); }`,
+                      returnByValue: false
+                    });
+                  } catch {}
+                }
+              })();
+              return;
+            }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agGetSettingsState') {
+              if (isSwarmIframe || !hostConfirmed) return;
+              let req = {};
+              try {
+                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
+              } catch {}
+              const reqId = String(req?.reqId || '');
+              const includeModels = req?.includeModels !== false;
+              const refreshModels = Boolean(req?.refreshModels);
+              const forceReload = Boolean(req?.forceReload);
+              void (async () => {
+                if (forceReload) {
+                  try {
+                    bundleCtrl.rebuildBundleIfNeeded(true);
+                  } catch {}
+                  if (promptSuggester && typeof promptSuggester.syncState === 'function') {
+                    try {
+                      promptSuggester.syncState();
+                    } catch {}
+                  }
+                  for (const entry of attachedTargets.values()) {
+                    if (!entry.hostConfirmed) continue;
+                    try {
+                      if (entry.updateNewDocScript) await entry.updateNewDocScript();
+                      if (entry.inject) await entry.inject();
+                      if (entry.syncMetricsForSession) await entry.syncMetricsForSession(true);
+                    } catch {}
+                  }
+                }
+                const { activeConfig, cachedPatchVersion } = bundleCtrl.getState();
+                const agyStatus =
+                  promptSuggester && typeof promptSuggester.getStatus === 'function'
+                    ? promptSuggester.getStatus()
+                    : { available: false, running: false, starting: false, ready: false, warmed: false, activeModel: '' };
+                let modelsInfo = null;
+                if (includeModels && promptSuggester && typeof promptSuggester.listModels === 'function') {
+                  try {
+                    modelsInfo = await promptSuggester.listModels({ force: refreshModels });
+                  } catch {}
+                }
+                const out = {
+                  ok: true,
+                  version: cachedPatchVersion,
+                  config: {
+                    enabled: activeConfig.enabled,
+                    telemetryLayout: activeConfig.telemetryLayout,
+                    telemetryCacheMode: activeConfig.telemetryCacheMode,
+                    promptSuggestionModel: activeConfig.promptSuggestionModel,
+                    sshHosts: Array.isArray(activeConfig.sshHosts) ? activeConfig.sshHosts : [],
+                    modules: Object.assign({}, activeConfig.modules)
+                  },
+                  agyStatus,
+                  modelsInfo
+                };
+                if (ws.readyState === WebSocket.OPEN) {
+                  const payloadJson = JSON.stringify(out)
+                    .replace(/\u2028/g, '\\u2028')
+                    .replace(/\u2029/g, '\\u2029');
+                  try {
+                    await send('Runtime.evaluate', {
+                      expression: `if (typeof window.__ag_on_settings_state === 'function') { window.__ag_on_settings_state(${JSON.stringify(reqId)}, ${payloadJson}); }`,
+                      returnByValue: false
+                    });
+                  } catch {}
+                }
+              })();
+              return;
+            }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agUpdateSettings') {
+              if (isSwarmIframe || !hostConfirmed) return;
+              let req = {};
+              try {
+                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
+              } catch {}
+              const reqId = String(req?.reqId || '');
+              const patch = req?.patch && typeof req.patch === 'object' ? req.patch : {};
+              void (async () => {
+                const writeRes =
+                  typeof bundleCtrl.updateUserConfig === 'function'
+                    ? bundleCtrl.updateUserConfig(patch)
+                    : { ok: false, error: 'updateUserConfig unavailable' };
+                if (writeRes.ok) {
+                  if (promptSuggester && typeof promptSuggester.syncState === 'function') {
+                    promptSuggester.syncState();
+                  }
+                  const { activeConfig } = bundleCtrl.getState();
+                  if (!activeConfig.enabled) {
+                    targetThemeModes.clear();
+                  }
+                  for (const entry of attachedTargets.values()) {
+                    if (!entry.hostConfirmed) continue;
+                    try {
+                      if (entry.updateNewDocScript) await entry.updateNewDocScript();
+                      if (entry.inject) await entry.inject();
+                      if (entry.syncMetricsForSession) await entry.syncMetricsForSession(true);
+                    } catch {}
+                  }
+                }
+                const { activeConfig, cachedPatchVersion } = bundleCtrl.getState();
+                const agyStatus =
+                  promptSuggester && typeof promptSuggester.getStatus === 'function'
+                    ? promptSuggester.getStatus()
+                    : { available: false, running: false, starting: false, ready: false, warmed: false, activeModel: '' };
+                const out = {
+                  ok: Boolean(writeRes.ok),
+                  error: writeRes.error || '',
+                  version: cachedPatchVersion,
+                  config: {
+                    enabled: activeConfig.enabled,
+                    telemetryLayout: activeConfig.telemetryLayout,
+                    telemetryCacheMode: activeConfig.telemetryCacheMode,
+                    promptSuggestionModel: activeConfig.promptSuggestionModel,
+                    sshHosts: Array.isArray(activeConfig.sshHosts) ? activeConfig.sshHosts : [],
+                    modules: Object.assign({}, activeConfig.modules)
+                  },
+                  agyStatus
+                };
+                if (ws.readyState === WebSocket.OPEN) {
+                  const payloadJson = JSON.stringify(out)
+                    .replace(/\u2028/g, '\\u2028')
+                    .replace(/\u2029/g, '\\u2029');
+                  try {
+                    await send('Runtime.evaluate', {
+                      expression: `if (typeof window.__ag_on_settings_state === 'function') { window.__ag_on_settings_state(${JSON.stringify(reqId)}, ${payloadJson}); }`,
                       returnByValue: false
                     });
                   } catch {}

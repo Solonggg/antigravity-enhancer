@@ -1901,5 +1901,10 @@
   "Started during the main conversation": "发起于主对话期间",
   "Started during the subagent conversation": "发起于子智能体对话期间",
   "Started from": "发起自",
-  "Started during": "发起于"
+  "Started during": "发起于",
+  "See plans": "查看套餐",
+  "Too many requests, please try again in a bit!": "请求过于频繁，请稍后再试！",
+  "Resource exhausted": "配额已耗尽",
+  "Quota exhausted": "配额已耗尽",
+  "Model quota exhausted": "模型配额已耗尽"
 }

@@ -68,6 +68,9 @@ test('getSparseCheckoutPaths and getExcludedCoreRelPaths partition modules accur
   const paths = getSparseCheckoutPaths(onlyI18n.selected);
   assert.ok(paths.includes('/core/i18n.json'));
   assert.ok(paths.includes('/core/runtime/60-i18n-engine.js'));
+  assert.ok(paths.includes('/core/styles/45-settings-ui.css'));
+  assert.ok(paths.includes('/core/runtime/75-settings-ui.js'));
+  assert.ok(paths.includes('/core/daemon/updater.mjs'));
   assert.ok(!paths.includes('/core/styles/10-light-codex.css'));
   assert.ok(!paths.includes('/core/runtime/50-telemetry-ui.js'));
 
@@ -101,6 +104,11 @@ test('Assembled partial runtime bundles execute without ReferenceError when opti
       name: 'suggest-only',
       parts: ['00-head.js', '70-prompt-suggestions.js', '90-tail.js'],
       modules: { theme: false, i18n: false, metrics: false, promptSuggestions: true, deadlockHealer: false, zoomShortcuts: false }
+    },
+    {
+      name: 'settings-ui',
+      parts: ['00-head.js', '75-settings-ui.js', '90-tail.js'],
+      modules: { theme: false, i18n: true, metrics: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false }
     }
   ];
 

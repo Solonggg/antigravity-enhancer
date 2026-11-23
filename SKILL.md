@@ -53,6 +53,10 @@ node install.mjs install
 
 # Or install only selected modules (e.g., i18n + session status/telemetry without Codex theme)
 node install.mjs install --only i18n,metrics
+
+# Check for or apply SHA-256 verified updates directly from GitHub (preserves user/ config)
+node install.mjs update --check
+node install.mjs update
 ```
 Optional flags:
 - `--only theme,i18n,metrics,fixes,suggest`: enable only the specified feature groups (`suggest` is opt-in and off by default unless listed)
@@ -85,8 +89,8 @@ node --disable-warning=ExperimentalWarning install.mjs verify --safe-mode
 ```
 If `--safe-mode` works cleanly, inspect `~/.gemini/antigravity/codex-theme/user/` rather than `core/`.
 
-### Configuration Tweaks (Hot-Reloaded in ~2.5s)
-Edit `~/.gemini/antigravity/codex-theme/user/config.json`:
+### Configuration Tweaks (Embedded Settings UI or Hot-Reloaded `user/config.json`)
+Users can toggle modules, pick prompt-suggestion models, edit `sshHosts`, trigger manual reload, and check/apply plugin updates visually inside Antigravity under **Settings → Codex Theme** (`设置 → Codex 主题`), or edit `~/.gemini/antigravity/codex-theme/user/config.json`:
 - **Toggle individual modules**: `"modules": { "theme": true, "i18n": true, "metrics": true, "sshRemote": false, "promptSuggestions": false, "deadlockHealer": true, "zoomShortcuts": true, "cdpAutoRelaunch": true }`
 - **Enable opt-in prompt suggestions** (zero overhead / no `agy` process when disabled): set `"modules": { "promptSuggestions": true }` (optional `"promptSuggestionModel": "gemini-3.8-flash-low"`)
 - **Enable opt-in SSH Remote telemetry** (reads remote SQLite via read-only `python3` over `ssh`, strips all conversation text remotely, zero local `.db` copy): set `"modules": { "sshRemote": true }` and `"sshHosts": ["your-ssh-host"]`

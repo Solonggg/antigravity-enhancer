@@ -221,6 +221,83 @@
       /^This deletes\s+(\d+)\s+call recordings?\s*\(([\d.]+\s*MB)\)\s+from your machine\.\s*You can't undo this\.$/i;
     const RE_USED_LIMIT = /^You have used (some|all|most) of your (weekly|5-hour|five-hour|daily) limit,?\s*it will fully refresh in (.*)\.?$/i;
     const RE_NOT_USED_LIMIT = /^You have not used any of your (weekly|5-hour|five-hour|daily) limit\.?$/i;
+    const RE_QUOTA_RESET_SWITCH =
+      /^Your quota for (.+?) will reset on (.+?)\.\s*Switch to another available model to continue\.?$/i;
+    const RE_QUOTA_REACHED_SWITCH =
+      /^Your quota for (.+?) has been reached\.\s*Switch to another available model to continue\.?$/i;
+    const RE_QUOTA_NEED_CREDITS =
+      /^You need (?:at least (\d+)|more) AI Credits to send messages\.\s*To continue using (.+?) now, purchase more AI Credits\.?\s*/i;
+    const RE_QUOTA_BASELINE_REFRESH =
+      /^Your plan['’]s baseline quota will refresh on (.+?)\.(?=\s|$)\s*/i;
+    const RE_QUOTA_ENABLE_OVERAGES =
+      /^To continue using (.+?) now, enable AI Credit overages\.(?=\s|$)\s*/i;
+    const RE_QUOTA_UPGRADE_PLAN =
+      /^You can upgrade to a (higher )?Google AI (Ultra|Pro) plan to receive (higher|the highest) rate limits\.?$/i;
+
+    function formatQuotaModelZh(rawModel) {
+      const m = String(rawModel || '').trim();
+      return !m || /^this model$/i.test(m) ? '该模型' : m;
+    }
+
+    function translateQuotaExhaustedZh(trimmed) {
+      if (!trimmed || (!trimmed.includes('quota') && !trimmed.includes('AI Credit'))) return null;
+      const mReset = trimmed.match(RE_QUOTA_RESET_SWITCH);
+      if (mReset) {
+        const mod = formatQuotaModelZh(mReset[1]);
+        return (mod === '该模型' ? '该模型' : mod + ' ') + '的配额将于 ' + mReset[2].trim() + ' 重置。请切换至其他可用模型继续。';
+      }
+      const mReached = trimmed.match(RE_QUOTA_REACHED_SWITCH);
+      if (mReached) {
+        const mod = formatQuotaModelZh(mReached[1]);
+        return (mod === '该模型' ? '该模型' : mod + ' ') + '的配额已用尽。请切换至其他可用模型继续。';
+      }
+
+      let rest = trimmed;
+      const parts = [];
+
+      const mCredits = rest.match(RE_QUOTA_NEED_CREDITS);
+      if (mCredits) {
+        const needPart = mCredits[1] ? '至少 ' + mCredits[1] + ' ' : '更多 ';
+        const mod = formatQuotaModelZh(mCredits[2]);
+        parts.push(
+          '发送消息需要' + needPart + 'AI 点数。如需立即继续使用' + (mod === '该模型' ? '该模型' : ' ' + mod) + '，请购买更多 AI 点数。'
+        );
+        rest = rest.slice(mCredits[0].length);
+      }
+
+      const mRefresh = rest.match(RE_QUOTA_BASELINE_REFRESH);
+      if (mRefresh) {
+        parts.push('当前方案的基础配额将于 ' + mRefresh[1].trim() + ' 刷新。');
+        rest = rest.slice(mRefresh[0].length);
+      }
+
+      const mOver = rest.match(RE_QUOTA_ENABLE_OVERAGES);
+      if (mOver) {
+        const mod = formatQuotaModelZh(mOver[1]);
+        parts.push('如需立即继续使用' + (mod === '该模型' ? '该模型' : ' ' + mod) + '，请开启 AI 点数超额抵扣。');
+        rest = rest.slice(mOver[0].length);
+      }
+
+      if (parts.length === 0) return null;
+
+      rest = rest.trim();
+      if (rest) {
+        const exactRest = DICT[rest] || (rest.endsWith('.') ? DICT[rest.slice(0, -1)] : undefined);
+        if (typeof exactRest === 'string') {
+          parts.push(exactRest.endsWith('。') ? exactRest : exactRest + '。');
+        } else {
+          const mUp = rest.match(RE_QUOTA_UPGRADE_PLAN);
+          if (mUp) {
+            const higherPrefix = mUp[1] ? '更高的 ' : '';
+            const limitDesc = mUp[3].toLowerCase() === 'the highest' ? '最高速率配额' : '更高的配额速率限制';
+            parts.push('您可以升级到' + higherPrefix + 'Google AI ' + mUp[2] + ' 方案以获得' + limitDesc + '。');
+          } else {
+            parts.push(rest);
+          }
+        }
+      }
+      return parts.join('');
+    }
     const RE_ARIA_BRANCH = /^Branch, current:\s*(.*)$/i;
     const RE_ARIA_PROJECT = /^Select project(?:, current)?:\s*(.*)$/i;
     const RE_ARIA_LOCATION = /^(?:Where the agent runs, current|Select location(?:, current)?):\s*(.*)$/i;
@@ -450,6 +527,8 @@
             '这将从您的设备中删除 $1 条通话录音（$2），此操作无法撤销。'
           );
         }
+        const mQuotaT = translateQuotaExhaustedZh(trimmed);
+        if (mQuotaT) return raw.replace(trimmed, () => mQuotaT);
       } else if (firstUpper === 'E' || firstUpper === 'R' || firstUpper === 'L') {
         if (firstUpper === 'R') {
           const mResets = trimmed.match(RE_RESETS_IN);
@@ -526,6 +605,8 @@
           const type = typeMap[mNotUsed[1].toLowerCase()] || mNotUsed[1];
           return '您尚未消耗任何' + type + '额度。';
         }
+        const mQuotaY = translateQuotaExhaustedZh(trimmed);
+        if (mQuotaY) return raw.replace(trimmed, () => mQuotaY);
       } else if (firstUpper === 'A') {
         const mCred = trimmed.match(RE_AVAILABLE_AI_CREDITS);
         if (mCred) {

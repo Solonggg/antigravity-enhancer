@@ -392,7 +392,8 @@
     }
 
     const boxRect = inputBox.getBoundingClientRect();
-    const rowWidth = Math.round(boxRect.width || 0);
+    const rowRect = row.getBoundingClientRect();
+    const rowWidth = Math.round(rowRect.width || boxRect.width || 0);
     if (resetHysteresis) ps.rowMode = '';
     const prevMode = ps.rowMode || '';
 
@@ -403,13 +404,19 @@
       leftUsed += Math.ceil(ch.getBoundingClientRect().width || 0);
     }
     const rightUsed = Math.ceil(rightGroup.getBoundingClientRect().width || 0);
-    const freeWidth = rowWidth - leftUsed - rightUsed - 32;
+    const freeWidth = rowWidth - leftUsed - rightUsed - 16;
 
-    const threshold = prevMode === 'middle' ? 168 : 202;
+    const textEl = pill.querySelector('.ag-live-metrics-text');
+    const measuredTextWidth = textEl ? Math.ceil(textEl.scrollWidth || 0) : 0;
+    const isDetailed =
+      boot.telemetryLayout === 'detailed' ||
+      Boolean(boot.userConfig && boot.userConfig.telemetryLayout === 'detailed');
+    const neededWidth = measuredTextWidth > 24 ? measuredTextWidth + 28 : isDetailed ? 390 : 204;
+    const threshold = prevMode === 'middle' ? Math.max(168, neededWidth - 6) : Math.max(202, neededWidth + 18);
     const mode = rowWidth > 0 && freeWidth >= threshold ? 'middle' : 'bottom';
-    const sig = mode + ':' + Math.round(rowWidth / 8);
+    const sig = mode + ':' + Math.round(rowWidth / 8) + ':' + Math.round(neededWidth / 16);
 
-    if (forceLayout || ps.layoutSig !== sig || !pill.isConnected || !inputBox.contains(pill)) {
+    if (forceLayout || ps.rowMode !== mode || ps.layoutSig !== sig || !pill.isConnected || !inputBox.contains(pill)) {
       ps.rowMode = mode;
       ps.layoutSig = sig;
       row.setAttribute('data-ag-row-mode', mode);
@@ -579,10 +586,12 @@
       pill.style.display = showPill ? 'inline-flex' : 'none';
 
       const textEl = pill.querySelector('.ag-live-metrics-text');
+      let inlineTextChanged = false;
       if (textEl && hasInlineData) {
         if (textEl.getAttribute('data-ag-raw-html') !== m.inlineHtml) {
           textEl.setAttribute('data-ag-raw-html', m.inlineHtml);
           textEl.innerHTML = m.inlineHtml;
+          inlineTextChanged = true;
         }
       } else if (textEl && !hasInlineData && showPill) {
         const fallbackLabel =
@@ -600,7 +609,11 @@
         if (textEl.getAttribute('data-ag-raw-html') !== fallbackHtml) {
           textEl.setAttribute('data-ag-raw-html', fallbackHtml);
           textEl.innerHTML = fallbackHtml;
+          inlineTextChanged = true;
         }
+      }
+      if (inlineTextChanged && showPill) {
+        ensureMetricsPillForPane(pane, false, false);
       }
 
       const dotEl = pill.querySelector('.ag-ctx-pending-dot');
@@ -617,12 +630,18 @@
         if (dotEl.className !== targetClass) {
           dotEl.className = targetClass;
         }
-        if (dotEl.title !== snap.dotTitle) {
-          dotEl.title = snap.dotTitle;
+        if (dotEl.hasAttribute('title')) {
+          dotEl.removeAttribute('title');
+        }
+        if (dotEl.getAttribute('aria-label') !== snap.dotTitle) {
+          dotEl.setAttribute('aria-label', snap.dotTitle);
         }
       }
-      if (pill.title !== snap.dotTitle) {
-        pill.title = snap.dotTitle;
+      if (pill.hasAttribute('title')) {
+        pill.removeAttribute('title');
+      }
+      if (pill.getAttribute('aria-label') !== snap.dotTitle) {
+        pill.setAttribute('aria-label', snap.dotTitle);
       }
     }
 
@@ -1100,6 +1119,7 @@
         if (textEl && textEl.getAttribute('data-ag-raw-html') !== payload.inlineHtml) {
           textEl.setAttribute('data-ag-raw-html', payload.inlineHtml);
           textEl.innerHTML = payload.inlineHtml;
+          ensureMetricsPillForPane(pane, false, false);
         }
       }
       if (payload.tooltipHtml && (window.__ag_tt_owner_pane || 'main') === pane.key) {

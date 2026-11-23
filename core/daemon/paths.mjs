@@ -15,7 +15,7 @@ export const CORE_DIR = path.join(ROOT_DIR, 'core');
 export const STYLES_DIR = path.join(CORE_DIR, 'styles');
 export const RUNTIME_DIR = path.join(CORE_DIR, 'runtime');
 export const USER_DIR = path.join(ROOT_DIR, 'user');
-export const BASE_VERSION = '1.2.1';
+export const BASE_VERSION = '1.3.0';
 
 export function parseDaemonCliArgs(argv = process.argv.slice(2)) {
   const hasFlag = (f) => argv.some((a) => a === f || a.startsWith(f + '='));
@@ -149,6 +149,63 @@ export function resolveActiveChannelEndpoints(channelMode = 'auto', userCfg = {}
   ];
 }
 
+const EDITABLE_MODULE_KEYS = new Set([
+  'theme',
+  'i18n',
+  'metrics',
+  'promptSuggestions',
+  'sshRemote',
+  'deadlockHealer',
+  'zoomShortcuts',
+  'cdpAutoRelaunch',
+  'customCss',
+  'customJs'
+]);
+const VALID_SSH_HOST_RE = /^[a-zA-Z0-9_@][a-zA-Z0-9._:@-]{0,127}$/;
+const VALID_SUGGEST_MODEL_RE = /^[a-zA-Z0-9._:/-]{2,80}$/;
+
+export function sanitizeConfigPatch(currentCfg, patch) {
+  const base = currentCfg && typeof currentCfg === 'object' ? JSON.parse(JSON.stringify(currentCfg)) : {};
+  if (!patch || typeof patch !== 'object') return base;
+
+  if (patch.modules && typeof patch.modules === 'object') {
+    const nextModules = base.modules && typeof base.modules === 'object' ? { ...base.modules } : {};
+    for (const [k, v] of Object.entries(patch.modules)) {
+      if (EDITABLE_MODULE_KEYS.has(k) && typeof v === 'boolean') {
+        nextModules[k] = v;
+      }
+    }
+    base.modules = nextModules;
+  }
+
+  if (patch.telemetryLayout === 'compact' || patch.telemetryLayout === 'detailed') {
+    base.telemetryLayout = patch.telemetryLayout;
+  }
+  if (patch.telemetryCacheMode === 'session' || patch.telemetryCacheMode === 'step') {
+    base.telemetryCacheMode = patch.telemetryCacheMode;
+  }
+  if (typeof patch.promptSuggestionModel === 'string') {
+    const m = patch.promptSuggestionModel.trim();
+    if (m && !m.startsWith('-') && VALID_SUGGEST_MODEL_RE.test(m)) {
+      base.promptSuggestionModel = m;
+    }
+  }
+  if (Array.isArray(patch.sshHosts)) {
+    const out = [];
+    const seen = new Set();
+    for (const raw of patch.sshHosts) {
+      const h = String(raw || '').trim();
+      if (!h || h.startsWith('-') || !VALID_SSH_HOST_RE.test(h) || seen.has(h)) continue;
+      seen.add(h);
+      out.push(h);
+      if (out.length >= 32) break;
+    }
+    base.sshHosts = out;
+  }
+
+  return base;
+}
+
 export function createBundleController({ safeMode = false, cliChannel = null, hasSqlite = false, cliOpts = {} } = {}) {
   let cachedBundleSig = '';
   let cachedInjectScript = '';
@@ -182,7 +239,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     endpoints: []
   };
 
-  function rebuildBundleIfNeeded() {
+  function rebuildBundleIfNeeded(force = false) {
     const styleFiles = listSortedFiles(STYLES_DIR, '.css');
     const runtimeFiles = listSortedFiles(RUNTIME_DIR, '.js');
     const coreFiles = [...styleFiles, path.join(CORE_DIR, 'i18n.json'), ...runtimeFiles];
@@ -201,7 +258,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       userFiles.map(getFileMtimeSig).join('|') +
       `|safe:${safeMode}|cli:${cliChannel || ''}|sqlite:${hasSqlite}`;
 
-    if (sig === cachedBundleSig && cachedInjectScript) {
+    if (!force && sig === cachedBundleSig && cachedInjectScript) {
       return false;
     }
 
@@ -318,6 +375,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       const base = path.basename(filePath);
       if (base === '30-telemetry.css') return Boolean(modules.metrics);
       if (base === '40-prompt-suggestions.css') return Boolean(modules.promptSuggestions);
+      if (base === '45-settings-ui.css') return Boolean(enabled);
       return modules.theme !== false;
     });
     const baseCss = activeStyleFiles.map((f) => readTextSafe(f, '')).join('\n\n');
@@ -342,6 +400,8 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
           preset,
           telemetryLayout,
           telemetryCacheMode,
+          promptSuggestionModel,
+          sshHosts: activeConfig.sshHosts,
           modules,
           themeVars,
           selectors: activeConfig.selectors
@@ -373,6 +433,8 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
         telemetryLayout,
         telemetryCacheMode,
         contextLimit,
+        promptSuggestionModel,
+        sshHosts: activeConfig.sshHosts,
         modules,
         themeVars
       },
@@ -387,8 +449,35 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     return true;
   }
 
+  function updateUserConfig(patch) {
+    if (safeMode) return { ok: false, error: 'safeMode enabled' };
+    const cfgPath = path.join(USER_DIR, 'config.json');
+    try {
+      fs.mkdirSync(USER_DIR, { recursive: true });
+      const current = readJsonSafe(cfgPath, {});
+      const next = sanitizeConfigPatch(current, patch);
+      const serialized = JSON.stringify(next, null, 2) + '\n';
+      const tmpPath = `${cfgPath}.tmp.${process.pid}.${Date.now()}`;
+      fs.writeFileSync(tmpPath, serialized, 'utf8');
+      try {
+        fs.renameSync(tmpPath, cfgPath);
+      } catch {
+        fs.writeFileSync(cfgPath, serialized, 'utf8');
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {}
+      }
+      cachedBundleSig = '';
+      rebuildBundleIfNeeded();
+      return { ok: true, config: activeConfig };
+    } catch (err) {
+      return { ok: false, error: err?.message || String(err || 'write failed') };
+    }
+  }
+
   return {
     rebuildBundleIfNeeded,
+    updateUserConfig,
     getState: () => ({
       activeConfig,
       cachedInjectScript,

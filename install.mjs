@@ -37,6 +37,7 @@ import {
   restartSystemService,
   uninstallSystemService
 } from './core/installer/service.mjs';
+import { checkForUpdates, applyPluginUpdate } from './core/daemon/updater.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -461,6 +462,35 @@ async function runUninstall() {
   );
 }
 
+async function runUpdate() {
+  const targetDir = path.resolve(getArg('--target-dir', resolveDefaultTargetDir()));
+  const checkOnly = hasFlag('--check');
+  const refArg = getArg('--ref', null);
+  const checkRes = await checkForUpdates({ targetDir });
+  if (checkOnly || !checkRes.ok) {
+    console.log(JSON.stringify(checkRes, null, 2));
+    if (!checkRes.ok) process.exitCode = 1;
+    return;
+  }
+  const ref = refArg || checkRes.targetRef || 'main';
+  if (!refArg && !checkRes.updateAvailable && !checkRes.canSyncMain) {
+    console.log(JSON.stringify({ ...checkRes, applied: false, message: 'Already up to date' }, null, 2));
+    return;
+  }
+  const applyRes = await applyPluginUpdate({ targetDir, ref, scheduleRestart: false });
+  if (!applyRes.ok) {
+    console.error(JSON.stringify(applyRes, null, 2));
+    process.exit(1);
+  }
+  const installScript = path.join(targetDir, 'install.mjs');
+  if (fs.existsSync(installScript)) {
+    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', installScript, 'install', '--target-dir', targetDir], {
+      stdio: 'inherit'
+    });
+  }
+  console.log(JSON.stringify(applyRes, null, 2));
+}
+
 switch (subcommand) {
   case 'build-manifest': {
     const m = buildManifest(__dirname);
@@ -477,6 +507,9 @@ switch (subcommand) {
     break;
   case 'install':
     await runInstall();
+    break;
+  case 'update':
+    await runUpdate();
     break;
   case 'relaunch':
     await runRelaunch();
@@ -505,6 +538,7 @@ switch (subcommand) {
   default:
     console.log(`antigravity-codex-theme CLI Usage:
   node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only theme,i18n,metrics,fixes,suggest] [--without <list>] [--minimal] [--with-launcher] [--sync-user]
+  node install.mjs update         [--check] [--ref <branch|tag>]
   node install.mjs relaunch       [--channel auto|stable|insiders] [--force]
   node install.mjs doctor         [--channel auto|stable|insiders]
   node install.mjs verify         [--safe-mode] [--channel auto|stable|insiders]

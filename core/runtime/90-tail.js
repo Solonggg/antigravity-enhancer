@@ -64,6 +64,9 @@
     if (typeof mountPromptSuggestions === 'function') {
       mountPromptSuggestions();
     }
+    if (typeof mountCodexSettingsUi === 'function') {
+      mountCodexSettingsUi();
+    }
     ensureStylesAtEndOfHead();
   }
 

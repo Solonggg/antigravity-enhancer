@@ -8,12 +8,224 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const MAX_TURNS_PER_WORKER = 40;
 const WARMUP_TIMEOUT_MS = 75000;
 const TURN_TIMEOUT_MS = 30000;
+const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
+const MODELS_FETCH_TIMEOUT_MS = 12000;
 const CACHE_LIMIT = 100;
+
+const EFFORT_RANK = Object.freeze({
+  minimal: 1,
+  low: 2,
+  medium: 3,
+  high: 4,
+  xhigh: 5,
+  max: 6
+});
+
+const EFFORT_DISPLAY = Object.freeze({
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra High',
+  max: 'Max'
+});
+
+export const DEFAULT_MODEL_FAMILIES = Object.freeze([
+  {
+    key: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    recommended: true,
+    defaultEffort: 'Low',
+    efforts: [
+      { label: 'Low', id: 'gemini-3.8-flash-low' },
+      { label: 'Medium', id: 'gemini-3.8-flash-medium' },
+      { label: 'High', id: 'gemini-3.8-flash-high' }
+    ]
+  },
+  {
+    key: 'gemini-4-neon',
+    name: 'Gemini 4 Neon',
+    recommended: false,
+    defaultEffort: 'Medium',
+    efforts: [
+      { label: 'Low', id: 'gemini-4-neon-low' },
+      { label: 'Medium', id: 'gemini-4-neon-medium' },
+      { label: 'High', id: 'gemini-4-neon-high' },
+      { label: 'Extra High', id: 'gemini-4-neon-xhigh' }
+    ]
+  },
+  {
+    key: 'gemini-4-carbon',
+    name: 'Gemini 4 Carbon',
+    recommended: false,
+    defaultEffort: 'Medium',
+    efforts: [
+      { label: 'Low', id: 'gemini-4-carbon-low' },
+      { label: 'Medium', id: 'gemini-4-carbon-medium' },
+      { label: 'High', id: 'gemini-4-carbon-high' }
+    ]
+  },
+  {
+    key: 'gemini-4-argon',
+    name: 'Gemini 4 Argon',
+    recommended: false,
+    defaultEffort: 'Medium',
+    efforts: [
+      { label: 'Low', id: 'gemini-4-argon-low' },
+      { label: 'Medium', id: 'gemini-4-argon-medium' },
+      { label: 'High', id: 'gemini-4-argon-high' }
+    ]
+  },
+  {
+    key: 'gemini-4-hydrogen',
+    name: 'Gemini 4 Hydrogen',
+    recommended: false,
+    defaultEffort: 'Medium',
+    efforts: [
+      { label: 'Low', id: 'gemini-4-hydrogen-low' },
+      { label: 'Medium', id: 'gemini-4-hydrogen-medium' },
+      { label: 'High', id: 'gemini-4-hydrogen-high' },
+      { label: 'Extra High', id: 'gemini-4-hydrogen-xhigh' }
+    ]
+  },
+  {
+    key: 'claude-opus-5-5',
+    name: 'Claude Opus 5.5',
+    recommended: false,
+    defaultEffort: 'Medium',
+    efforts: [
+      { label: 'Low', id: 'claude-opus-5-5-low' },
+      { label: 'Medium', id: 'claude-opus-5-5-medium' },
+      { label: 'High', id: 'claude-opus-5-5-high' }
+    ]
+  },
+  {
+    key: 'claude-sonnet-5-5',
+    name: 'Claude Sonnet 5.5',
+    recommended: false,
+    defaultEffort: 'Medium',
+    efforts: [
+      { label: 'Low', id: 'claude-sonnet-5-5-low' },
+      { label: 'Medium', id: 'claude-sonnet-5-5-medium' },
+      { label: 'High', id: 'claude-sonnet-5-5-high' }
+    ]
+  },
+  {
+    key: 'gpt-oss-120b',
+    name: 'GPT-OSS 120B (Medium)',
+    recommended: false,
+    singleId: 'gpt-oss-120b-medium',
+    efforts: []
+  }
+]);
+
+export function deriveEffortFromModelId(modelId) {
+  const m = String(modelId || '').trim().toLowerCase().match(/-(low|medium|high|xhigh|max)$/);
+  return m ? m[1] : 'low';
+}
+
+function normalizeEffortKey(raw) {
+  const low = String(raw || '').trim().toLowerCase().replace(/\s+/g, '');
+  if (low === 'minimal') return 'minimal';
+  if (low === 'low') return 'low';
+  if (low === 'medium') return 'medium';
+  if (low === 'high') return 'high';
+  if (low === 'xhigh' || low === 'extrahigh' || low === 'extra') return 'xhigh';
+  if (low === 'max') return 'max';
+  return '';
+}
+
+export function parseAgyModelsOutput(rawOutput, { includeOrchestrator = false } = {}) {
+  const cleaned = String(rawOutput || '')
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .split('\n')
+    .map((line) => {
+      const parts = line.split('\r');
+      return parts[parts.length - 1].trim();
+    })
+    .filter(Boolean);
+
+  const familyMap = new Map();
+  const seenIds = new Set();
+
+  for (const line of cleaned) {
+    const m = line.match(/^([a-zA-Z0-9][a-zA-Z0-9._:/-]{2,80})\s{2,}(.+)$/);
+    if (!m) continue;
+    const id = m[1].trim();
+    const displayName = m[2].trim();
+    if (!id || !displayName || seenIds.has(id)) continue;
+    if (!includeOrchestrator && (/orchestrator/i.test(id) || /^Orchestrator\b/i.test(displayName))) {
+      continue;
+    }
+    seenIds.add(id);
+
+    const effMatch = displayName.match(/^(.*?)\s*\((Minimal|Low|Medium|High|XHigh|Extra\s*High|Max)\)\s*$/i);
+    const baseName = effMatch ? effMatch[1].trim() : displayName;
+    const effKey = effMatch ? normalizeEffortKey(effMatch[2]) : '';
+    const familyKey = baseName.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-|-$/g, '') || id;
+
+    let fam = familyMap.get(familyKey);
+    if (!fam) {
+      fam = {
+        key: familyKey,
+        name: baseName,
+        rawSingleName: displayName,
+        recommended: /gemini\s*3\.8\s*flash/i.test(baseName),
+        entries: []
+      };
+      familyMap.set(familyKey, fam);
+    }
+    fam.entries.push({
+      id,
+      displayName,
+      effKey,
+      label: effKey ? EFFORT_DISPLAY[effKey] : ''
+    });
+  }
+
+  const families = [];
+  for (const fam of familyMap.values()) {
+    const hasDistinctEfforts = fam.entries.length > 1 && fam.entries.every((e) => Boolean(e.effKey));
+    if (hasDistinctEfforts) {
+      fam.entries.sort((a, b) => (EFFORT_RANK[a.effKey] || 99) - (EFFORT_RANK[b.effKey] || 99));
+      const defaultEntry =
+        (fam.recommended && fam.entries.find((e) => e.effKey === 'low')) ||
+        fam.entries.find((e) => e.effKey === 'medium') ||
+        fam.entries[0];
+      families.push({
+        key: fam.key,
+        name: fam.name,
+        recommended: fam.recommended,
+        defaultEffort: defaultEntry ? defaultEntry.label : '',
+        efforts: fam.entries.map((e) => ({ label: e.label, id: e.id }))
+      });
+    } else {
+      const first = fam.entries[0];
+      families.push({
+        key: fam.key,
+        name: first.displayName,
+        recommended: fam.recommended,
+        singleId: first.id,
+        efforts: []
+      });
+    }
+  }
+
+  families.sort((a, b) => {
+    if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
+    return 0;
+  });
+
+  return families;
+}
 
 export const PROMPT_SUGGEST_SYSTEM_INSTRUCTION = [
   '你是一个聊天输入框的「下一句提示词预测器」（类似 Claude Code 的 Prompt Suggestions）。',
@@ -96,11 +308,14 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
   let pending = null;
   let starting = false;
   let restartTimer = null;
+  let modelsCache = null;
+  let modelsCacheAt = 0;
+  let modelsInFlight = null;
   const queue = [];
   const cache = new Map();
 
-  function getAgyBin() {
-    if (agyBinCache !== undefined) return agyBinCache;
+  function getAgyBin({ refresh = false } = {}) {
+    if (!refresh && agyBinCache !== undefined) return agyBinCache;
     agyBinCache = resolveBin() || '';
     return agyBinCache;
   }
@@ -252,13 +467,14 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
         ? ''
         : `${path.join(os.homedir(), '.local', 'bin')}:/opt/homebrew/bin:/usr/local/bin:`;
       const useShell = isWin && /\.(cmd|bat)$/i.test(bin);
+      const effortFlag = deriveEffortFromModelId(model);
       child = spawn(
         bin,
         [
           '--model',
           model,
           '--effort',
-          'low',
+          effortFlag,
           '--disable-slash-commands',
           '--input-format',
           'stream-json',
@@ -403,10 +619,84 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
     return suggestion;
   }
 
+  async function listModels({ force = false } = {}) {
+    const now = Date.now();
+    const bin = getAgyBin({ refresh: force });
+    if (!bin) {
+      return {
+        available: false,
+        fetched: false,
+        families: DEFAULT_MODEL_FAMILIES
+      };
+    }
+    if (!force && modelsCache && now - modelsCacheAt < MODELS_CACHE_TTL_MS) {
+      return {
+        available: true,
+        fetched: true,
+        cached: true,
+        families: modelsCache
+      };
+    }
+    if (modelsInFlight) return modelsInFlight;
+
+    modelsInFlight = (async () => {
+      try {
+        const isWin = process.platform === 'win32';
+        const extraPath = isWin
+          ? ''
+          : `${path.join(os.homedir(), '.local', 'bin')}:/opt/homebrew/bin:/usr/local/bin:`;
+        const useShell = isWin && /\.(cmd|bat)$/i.test(bin);
+        const { stdout } = await execFileAsync(bin, ['models'], {
+          cwd: os.tmpdir(),
+          timeout: MODELS_FETCH_TIMEOUT_MS,
+          maxBuffer: 512 * 1024,
+          shell: useShell,
+          windowsHide: true,
+          env: {
+            ...process.env,
+            PATH: extraPath ? `${extraPath}${process.env.PATH || ''}` : process.env.PATH
+          }
+        });
+        const parsed = parseAgyModelsOutput(stdout);
+        if (parsed.length > 0) {
+          modelsCache = parsed;
+          modelsCacheAt = Date.now();
+          return {
+            available: true,
+            fetched: true,
+            cached: false,
+            families: parsed
+          };
+        }
+      } catch {}
+      return {
+        available: true,
+        fetched: false,
+        families: modelsCache || DEFAULT_MODEL_FAMILIES
+      };
+    })();
+
+    try {
+      return await modelsInFlight;
+    } finally {
+      modelsInFlight = null;
+    }
+  }
+
   return {
     syncState,
     suggest,
     stop,
-    getStatus: () => ({ ready, warmed, turns, cacheSize: cache.size })
+    listModels,
+    getStatus: () => ({
+      available: Boolean(getAgyBin()),
+      running: Boolean(proc && !proc.killed && proc.exitCode === null),
+      starting,
+      ready,
+      warmed,
+      turns,
+      activeModel,
+      cacheSize: cache.size
+    })
   };
 }
