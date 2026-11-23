@@ -33,7 +33,7 @@
   height: 22px;
   margin-left: auto;
   margin-right: auto;
-  padding: 0 12px;
+  padding: 0 6px;
   border-left: none;
   justify-content: center;
   font-family: var(--font-mono, "SF Mono", Menlo, Monaco, ui-monospace, SFMono-Regular, "PingFang SC", Consolas, monospace) !important;
@@ -67,16 +67,24 @@
   min-height: 22px !important;
   max-height: 22px !important;
   margin: 2px 4px 1px 4px !important;
-  padding: 2px 4px 0 6px !important;
-  justify-content: flex-start !important;
+  padding: 2px 8px 0 8px !important;
+  justify-content: center !important;
   border-left: none !important;
   border-top: 1px dashed rgba(0, 0, 0, 0.12) !important;
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+:is(#ag-live-metrics-pill, .ag-live-metrics-pill)[data-ag-row-mode="bottom"] :is(#ag-live-metrics-text, .ag-live-metrics-text) {
+  pointer-events: auto !important;
+  cursor: pointer !important;
 }
 
 :is(#ag-live-metrics-pill, .ag-live-metrics-pill) :is(#ag-live-metrics-text, .ag-live-metrics-text) {
   display: block;
   min-width: 0;
   max-width: 100%;
+  padding: 2px 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

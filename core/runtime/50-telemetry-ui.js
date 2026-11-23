@@ -9,9 +9,13 @@
       if (staleEl) staleEl.remove();
     }
     document.querySelectorAll('.ag-live-metrics-pill').forEach((el) => el.remove());
+    document.querySelectorAll('[data-ag-row-mode]').forEach((el) => el.removeAttribute('data-ag-row-mode'));
     if (window.__ag_pane_states && typeof window.__ag_pane_states === 'object') {
       for (const k of Object.keys(window.__ag_pane_states)) {
         const ps = window.__ag_pane_states[k];
+        if (ps && ps.roRaf && typeof cancelAnimationFrame === 'function') {
+          try { cancelAnimationFrame(ps.roRaf); } catch (e) {}
+        }
         if (ps && ps.ro) {
           try { ps.ro.disconnect(); } catch (e) {}
         }
@@ -41,6 +45,7 @@
         layoutSig: '',
         ro: null,
         roObserved: null,
+        roRaf: 0,
         lastSnap: null
       };
     }
@@ -160,10 +165,18 @@
     if (!pill || !tt) return;
     try {
       const rect = pill.getBoundingClientRect();
+      const textEl = pill.querySelector('.ag-live-metrics-text');
+      const textRect = textEl ? textEl.getBoundingClientRect() : null;
+      const anchorRect = textRect && textRect.width > 0 && textRect.height > 0 ? textRect : rect;
       const box = inputBox || pill.closest('[id="' + SELECTORS.inputBoxId + '"]') || document.getElementById(SELECTORS.inputBoxId);
       const boxRect = box ? box.getBoundingClientRect() : null;
       const anchorTop = rect.height > 0 ? rect.top : boxRect ? boxRect.top : 0;
-      const anchorLeft = rect.width > 0 ? rect.left + rect.width / 2 : boxRect ? boxRect.left + boxRect.width / 2 : 0;
+      const anchorLeft =
+        anchorRect && anchorRect.width > 0
+          ? anchorRect.left + anchorRect.width / 2
+          : boxRect
+          ? boxRect.left + boxRect.width / 2
+          : 0;
       const ttW = tt.offsetWidth || tt.getBoundingClientRect().width || 332;
       const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
       const vh = window.innerHeight || document.documentElement.clientHeight || 800;
@@ -270,22 +283,101 @@
     return { tt, pane };
   }
 
+  function isMetricsPillEl(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.id === 'ag-live-metrics-pill' || el.id === 'ag-side-metrics-pill') return true;
+    return Boolean(el.classList && el.classList.contains('ag-live-metrics-pill'));
+  }
+
+  function getNonPillChildren(el) {
+    const out = [];
+    if (!el || !el.children) return out;
+    for (let i = 0; i < el.children.length; i++) {
+      const ch = el.children[i];
+      if (!isMetricsPillEl(ch)) out.push(ch);
+    }
+    return out;
+  }
+
+  function isHorizontalFlexContainer(el) {
+    if (!el || typeof window.getComputedStyle !== 'function') return true;
+    try {
+      const cs = window.getComputedStyle(el);
+      const disp = cs && cs.display ? String(cs.display) : '';
+      const dir = cs && cs.flexDirection ? String(cs.flexDirection) : '';
+      return disp.includes('flex') && dir.startsWith('row');
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function isVerticalFlowContainer(el) {
+    if (!el || typeof window.getComputedStyle !== 'function') return true;
+    try {
+      const cs = window.getComputedStyle(el);
+      const disp = cs && cs.display ? String(cs.display) : '';
+      const dir = cs && cs.flexDirection ? String(cs.flexDirection) : '';
+      if (disp.includes('flex')) return dir.startsWith('column');
+      return disp !== 'inline' && disp !== 'inline-block' && !disp.includes('inline-grid');
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function clearStaleRowModes(inputBox, activeRow, activePill) {
+    if (!inputBox || !inputBox.querySelectorAll) return;
+    try {
+      inputBox.querySelectorAll('[data-ag-row-mode]').forEach((el) => {
+        if (el !== activeRow && el !== activePill) {
+          el.removeAttribute('data-ag-row-mode');
+        }
+      });
+    } catch (e) {}
+  }
+
   function findInputToolbarContext(inputBox) {
     if (!inputBox) return null;
     const modelTrigger = inputBox.querySelector('[data-testid="model-selector-trigger"]');
     if (!modelTrigger) return null;
 
-    let row = modelTrigger.parentElement;
-    for (let i = 0; i < 6 && row && row !== inputBox; i++, row = row.parentElement) {
-      if (row.children && row.children.length >= 2) {
-        const leftGroup = row.firstElementChild;
-        const rightGroup = row.lastElementChild;
-        if (leftGroup && rightGroup && leftGroup !== rightGroup && leftGroup.contains(modelTrigger)) {
-          return { row, leftGroup, rightGroup };
-        }
+    const extractPair = (candidate) => {
+      if (!candidate || candidate === inputBox || !inputBox.contains(candidate) || isMetricsPillEl(candidate)) {
+        return null;
       }
+      const kids = getNonPillChildren(candidate);
+      if (kids.length < 2) return null;
+      const leftGroup = kids[0];
+      const rightGroup = kids[kids.length - 1];
+      if (!leftGroup || !rightGroup || leftGroup === rightGroup) return null;
+      if (!leftGroup.contains(modelTrigger)) return null;
+      return { row: candidate, leftGroup, rightGroup };
+    };
+
+    // Prefer Antigravity's canonical composer footer row so inner dropdown/tooltip siblings
+    // mounted around model-selector-trigger can never hijack row detection.
+    if (modelTrigger.closest) {
+      const explicitRow = modelTrigger.closest('.agy-composer-footer, [data-agent-composer-root]');
+      const explicitCtx = extractPair(explicitRow);
+      if (explicitCtx) return explicitCtx;
     }
-    return null;
+
+    // Structural fallback: pick the outermost full-width horizontal row inside inputBox
+    // whose parent flows vertically (so bottom-mode stacking never lands inside a flex-row).
+    const boxWidth = inputBox.getBoundingClientRect ? Math.round(inputBox.getBoundingClientRect().width || 0) : 0;
+    let best = null;
+    let row = modelTrigger.parentElement;
+    for (let i = 0; i < 12 && row && row !== inputBox; i++, row = row.parentElement) {
+      const ctx = extractPair(row);
+      if (!ctx) continue;
+      if (!isHorizontalFlexContainer(row)) continue;
+      if (row.parentElement && !isVerticalFlowContainer(row.parentElement)) continue;
+      if (boxWidth > 0 && row.getBoundingClientRect) {
+        const rw = Math.round(row.getBoundingClientRect().width || 0);
+        if (rw > 0 && rw < boxWidth * 0.7) continue;
+      }
+      best = ctx;
+    }
+    return best;
   }
 
   function ensureMetricsPillForPane(pane, forceLayout = false, resetHysteresis = false) {
@@ -400,7 +492,7 @@
     let leftUsed = 0;
     for (let i = 0; i < leftGroup.children.length; i++) {
       const ch = leftGroup.children[i];
-      if (ch === pill) continue;
+      if (ch === pill || isMetricsPillEl(ch)) continue;
       leftUsed += Math.ceil(ch.getBoundingClientRect().width || 0);
     }
     const rightUsed = Math.ceil(rightGroup.getBoundingClientRect().width || 0);
@@ -411,14 +503,24 @@
     const isDetailed =
       boot.telemetryLayout === 'detailed' ||
       Boolean(boot.userConfig && boot.userConfig.telemetryLayout === 'detailed');
-    const neededWidth = measuredTextWidth > 24 ? measuredTextWidth + 28 : isDetailed ? 390 : 204;
-    const threshold = prevMode === 'middle' ? Math.max(168, neededWidth - 6) : Math.max(202, neededWidth + 18);
-    const mode = rowWidth > 0 && freeWidth >= threshold ? 'middle' : 'bottom';
+    const neededWidth = measuredTextWidth > 24 ? measuredTextWidth + 20 : 204;
+    const threshold = prevMode === 'middle' ? Math.max(168, neededWidth) : Math.max(202, neededWidth + 24);
+    const mode = !isDetailed && rowWidth > 0 && freeWidth >= threshold ? 'middle' : 'bottom';
     const sig = mode + ':' + Math.round(rowWidth / 8) + ':' + Math.round(neededWidth / 16);
 
-    if (forceLayout || ps.rowMode !== mode || ps.layoutSig !== sig || !pill.isConnected || !inputBox.contains(pill)) {
+    const isMountedCorrectly =
+      pill.isConnected &&
+      inputBox.contains(pill) &&
+      row.getAttribute('data-ag-row-mode') === mode &&
+      pill.getAttribute('data-ag-row-mode') === mode &&
+      (mode === 'middle'
+        ? pill.parentElement === leftGroup
+        : Boolean(row.parentElement && pill.parentElement === row.parentElement && row.nextElementSibling === pill));
+
+    if (forceLayout || !isMountedCorrectly || ps.rowMode !== mode || ps.layoutSig !== sig) {
       ps.rowMode = mode;
       ps.layoutSig = sig;
+      clearStaleRowModes(inputBox, row, pill);
       row.setAttribute('data-ag-row-mode', mode);
       pill.setAttribute('data-ag-row-mode', mode);
       if (mode === 'middle') {
@@ -433,18 +535,31 @@
     }
 
     if (ps.roObserved !== inputBox && typeof ResizeObserver !== 'undefined') {
+      if (ps.roRaf && typeof cancelAnimationFrame === 'function') {
+        try { cancelAnimationFrame(ps.roRaf); } catch (e) {}
+        ps.roRaf = 0;
+      }
       if (ps.ro) {
         try { ps.ro.disconnect(); } catch (e) {}
       }
       ps.roObserved = inputBox;
       ps.ro = new ResizeObserver(() => {
-        const curPane = getPaneByKey(paneKey);
-        if (!curPane) return;
-        ensureMetricsPillForPane(curPane, false, false);
-        const tt = document.getElementById('ag-live-metrics-tooltip');
-        const p = document.getElementById(pillId);
-        if (tt && p && tt.getAttribute('data-visible') === '1' && (window.__ag_tt_owner_pane || 'main') === paneKey) {
-          positionMetricsTooltip(p, tt, curPane.inputBox);
+        if (ps.roRaf) return;
+        const runLayout = () => {
+          ps.roRaf = 0;
+          const curPane = getPaneByKey(paneKey);
+          if (!curPane) return;
+          ensureMetricsPillForPane(curPane, false, false);
+          const tt = document.getElementById('ag-live-metrics-tooltip');
+          const p = document.getElementById(pillId);
+          if (tt && p && tt.getAttribute('data-visible') === '1' && (window.__ag_tt_owner_pane || 'main') === paneKey) {
+            positionMetricsTooltip(p, tt, curPane.inputBox);
+          }
+        };
+        if (typeof requestAnimationFrame === 'function') {
+          ps.roRaf = requestAnimationFrame(runLayout);
+        } else {
+          runLayout();
         }
       });
       try { ps.ro.observe(inputBox); } catch (e) {}
@@ -461,6 +576,10 @@
       if (stale) stale.remove();
       const ps = paneStates[k];
       if (ps) {
+        if (ps.roRaf && typeof cancelAnimationFrame === 'function') {
+          try { cancelAnimationFrame(ps.roRaf); } catch (e) {}
+          ps.roRaf = 0;
+        }
         if (ps.ro) {
           try { ps.ro.disconnect(); } catch (e) {}
           ps.ro = null;
@@ -583,7 +702,9 @@
     if (pill) {
       const hasInlineData = Boolean(m && m.hasData && m.inlineHtml);
       const showPill = Boolean(hasInlineData || routeVisible);
-      pill.style.display = showPill ? 'inline-flex' : 'none';
+      const nextDisplay = showPill ? 'inline-flex' : 'none';
+      const displayChanged = pill.style.display !== nextDisplay;
+      pill.style.display = nextDisplay;
 
       const textEl = pill.querySelector('.ag-live-metrics-text');
       let inlineTextChanged = false;
@@ -612,7 +733,7 @@
           inlineTextChanged = true;
         }
       }
-      if (inlineTextChanged && showPill) {
+      if ((inlineTextChanged || displayChanged) && showPill) {
         ensureMetricsPillForPane(pane, false, false);
       }
 
@@ -1315,8 +1436,13 @@
     try {
       hideTurnMetricsTooltip(true);
       document.querySelectorAll('.ag-turn-metrics, .ag-live-metrics-pill').forEach((el) => el.remove());
+      document.querySelectorAll('[data-ag-row-mode]').forEach((el) => el.removeAttribute('data-ag-row-mode'));
       for (const k of Object.keys(paneStates)) {
         const ps = paneStates[k];
+        if (ps && ps.roRaf && typeof cancelAnimationFrame === 'function') {
+          try { cancelAnimationFrame(ps.roRaf); } catch (e) {}
+          ps.roRaf = 0;
+        }
         if (ps && ps.ro) {
           ps.ro.disconnect();
           ps.ro = null;
@@ -1340,8 +1466,15 @@
     activeTurnBadgeEl = null;
     window.__ag_tt_pinned = false;
     window.__ag_tt_hover_opened_at = 0;
+    try {
+      document.querySelectorAll('[data-ag-row-mode]').forEach((el) => el.removeAttribute('data-ag-row-mode'));
+    } catch (e) {}
     for (const k of Object.keys(paneStates)) {
       const ps = paneStates[k];
+      if (ps && ps.roRaf && typeof cancelAnimationFrame === 'function') {
+        try { cancelAnimationFrame(ps.roRaf); } catch (e) {}
+        ps.roRaf = 0;
+      }
       if (ps && ps.ro) {
         try { ps.ro.disconnect(); } catch (e) {}
         ps.ro = null;

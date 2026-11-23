@@ -1,6 +1,6 @@
 {
   "name": "antigravity-codex-theme",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "minNodeVersion": "22.13.0",
   "fullMetricsNodeVersion": "22.13.0",
   "files": {
@@ -21,7 +21,7 @@
       "bytes": 2123
     },
     "daemon/paths.mjs": {
-      "sha256": "a5ca8462ae48a837e1e12b1bfd16e42ea9275eaf24a50f957863f51bdcc42d7e",
+      "sha256": "e770da02479c9d9a2de3cfb76673d8c9fc38bacbbf42dfd8940bc9fd7490683d",
       "bytes": 17375
     },
     "daemon/prompt-suggest.mjs": {
@@ -53,7 +53,7 @@
       "bytes": 117394
     },
     "installer/cdp-launch.mjs": {
-      "sha256": "aa8cc71e08a4179b36f75e47a1d80c6fefacbe08a08b3ecbe7bbae3f955f361e",
+      "sha256": "40f301d7f6d63ccbb6b169ada5aec39e500520da5ce63ce8e1e7f105063a5134",
       "bytes": 28826
     },
     "installer/env.mjs": {
@@ -73,7 +73,7 @@
       "bytes": 13336
     },
     "runtime/00-head.js": {
-      "sha256": "4ccb7cc51751f83feb6083d12df6331f5af8d3232cce9a0c1c62d0789a1dda31",
+      "sha256": "dcea4f2a181631476b569bad0cba70da4f090951e30d4ce96b3a7786c5fe023d",
       "bytes": 13063
     },
     "runtime/10-guards.js": {
@@ -93,8 +93,8 @@
       "bytes": 11902
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "24648ee8991e556d0043506d19330e5b5026c1a4480b1f9628592bf7334127ee",
-      "bytes": 52410
+      "sha256": "72bad06cc53c5eed6268e77c092e2dcc8cc6daecc6f415209121f235304b0749",
+      "bytes": 57905
     },
     "runtime/60-i18n-engine.js": {
       "sha256": "d1cc733a7ea3756b3984e7cac495122eb9280af45b048f1fe9bbf5e830d09013",
@@ -105,8 +105,8 @@
       "bytes": 13183
     },
     "runtime/75-settings-ui.js": {
-      "sha256": "9fa322c9f8b2d099726392e4a12ac6d0bd1179257fa8832dd5b55f8994bde2a3",
-      "bytes": 76970
+      "sha256": "d6f5247d8b782026a2545c42924ed5404dc54ba5b09015bba1b6c0de80030ebc",
+      "bytes": 77013
     },
     "runtime/90-tail.js": {
       "sha256": "f042c5b79dc1011c2c001445085ab56d0e4232198093691c3809bd8da90644a1",
@@ -129,8 +129,8 @@
       "bytes": 7354
     },
     "styles/30-telemetry.css": {
-      "sha256": "6d5fe7a2a9dad5def0d1de232073b90fb9c621a5f84bec34a7151543349b9e4c",
-      "bytes": 27476
+      "sha256": "ff76114fbded6c0ca9b99fba1a38bb9d7dcfcd66b3b70fecd3890cfff898d2ee",
+      "bytes": 27753
     },
     "styles/40-prompt-suggestions.css": {
       "sha256": "e0c9a7d7e146e2771fd8c93dd8ccf8c6e7d9d8114743508b3712b2be77fe9206",
