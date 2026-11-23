@@ -35,7 +35,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/e42ae3d6-c261-442c-bc6d-3c14ff830664
+https://github.com/user-attachments/assets/749990f3-f2ce-48e7-8f66-3d7c88a7d49d
 
 ![Codex 浅色与深色模式对比](assets/light-dark-themes.png)
 
