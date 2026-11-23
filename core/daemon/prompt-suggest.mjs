@@ -95,6 +95,7 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
   let buf = '';
   let pending = null;
   let starting = false;
+  let restartTimer = null;
   const queue = [];
   const cache = new Map();
 
@@ -113,10 +114,14 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
   function getTargetModel() {
     const cfg = typeof getConfig === 'function' ? getConfig() : null;
     const m = cfg && typeof cfg.promptSuggestionModel === 'string' ? cfg.promptSuggestionModel.trim() : '';
-    return m || 'gemini-3.8-flash-low';
+    return m && !m.startsWith('-') && /^[a-zA-Z0-9._:/-]+$/.test(m) ? m : 'gemini-3.8-flash-low';
   }
 
   function stop() {
+    if (restartTimer) {
+      clearTimeout(restartTimer);
+      restartTimer = null;
+    }
     const old = proc;
     proc = null;
     ready = false;
@@ -143,10 +148,18 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
     }
   }
 
+  function scheduleStart(delayMs) {
+    if (restartTimer) clearTimeout(restartTimer);
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      if (isEnabled()) ensureStarted();
+    }, delayMs);
+  }
+
   function restart() {
     stop();
     if (isEnabled()) {
-      setTimeout(() => ensureStarted(), 300);
+      scheduleStart(300);
     }
   }
 
@@ -215,6 +228,7 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
   }
 
   function ensureStarted() {
+    if (!isEnabled()) return false;
     const model = getTargetModel();
     if (proc && !proc.killed && proc.exitCode === null) {
       if (activeModel === model) return true;
@@ -233,10 +247,11 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
 
     let child;
     try {
-      const extraPath =
-        process.platform === 'win32'
-          ? ''
-          : `${path.join(os.homedir(), '.local', 'bin')}:/opt/homebrew/bin:/usr/local/bin:`;
+      const isWin = process.platform === 'win32';
+      const extraPath = isWin
+        ? ''
+        : `${path.join(os.homedir(), '.local', 'bin')}:/opt/homebrew/bin:/usr/local/bin:`;
+      const useShell = isWin && /\.(cmd|bat)$/i.test(bin);
       child = spawn(
         bin,
         [
@@ -253,6 +268,7 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
         {
           cwd: os.tmpdir(),
           stdio: ['pipe', 'pipe', 'pipe'],
+          shell: useShell,
           windowsHide: true,
           env: {
             ...process.env,
@@ -267,6 +283,9 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
 
     proc = child;
     starting = false;
+    if (child.stderr && typeof child.stderr.resume === 'function') {
+      child.stderr.resume();
+    }
 
     child.stdout.on('data', (chunk) => {
       buf += chunk.toString('utf8');
@@ -332,7 +351,7 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
         }
       }
       if (queue.length > 0 && isEnabled()) {
-        setTimeout(() => ensureStarted(), 800);
+        scheduleStart(800);
       }
     });
 

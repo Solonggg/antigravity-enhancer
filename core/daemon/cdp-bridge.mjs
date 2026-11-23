@@ -48,6 +48,50 @@ function getTargetOriginKey(urlStr) {
   }
 }
 
+export const SKIPPED_TARGET_BACKOFF_MS = Object.freeze([4000, 10000, 25000]);
+export const SKIPPED_TARGET_MAX_RETRIES = SKIPPED_TARGET_BACKOFF_MS.length;
+
+export function getNextSkippedTargetEntry(prevEntry, { origin, nowMs = Date.now(), timedOut = false } = {}) {
+  const sameOrigin = Boolean(prevEntry && prevEntry.origin === origin);
+  if (timedOut) {
+    const prevTimeouts = sameOrigin ? Number(prevEntry.timeoutCount || 0) : 0;
+    const delayMs = prevTimeouts < 3 ? 3000 : 12000;
+    return {
+      origin,
+      atMs: nowMs,
+      nextRetryAtMs: nowMs + delayMs,
+      attempts: sameOrigin ? Number(prevEntry.attempts || 0) : 0,
+      timeoutCount: prevTimeouts + 1,
+      exhausted: false
+    };
+  }
+  const attempts = (sameOrigin ? Number(prevEntry.attempts || 0) : 0) + 1;
+  if (attempts > SKIPPED_TARGET_MAX_RETRIES) {
+    return {
+      origin,
+      atMs: nowMs,
+      nextRetryAtMs: Number.POSITIVE_INFINITY,
+      attempts,
+      timeoutCount: 0,
+      exhausted: true
+    };
+  }
+  return {
+    origin,
+    atMs: nowMs,
+    nextRetryAtMs: nowMs + SKIPPED_TARGET_BACKOFF_MS[attempts - 1],
+    attempts,
+    timeoutCount: 0,
+    exhausted: false
+  };
+}
+
+export function isSkippedTargetCoolingDown(entry, currentOrigin, nowMs = Date.now()) {
+  if (!entry || entry.origin !== currentOrigin) return false;
+  if (entry.exhausted) return true;
+  return nowMs < Number(entry.nextRetryAtMs || 0);
+}
+
 export function acquireDaemonPidLock(cliChannel = null, runOnce = false) {
   if (runOnce) return;
   const pidKey = cliChannel || 'default';
@@ -244,7 +288,7 @@ export function createCdpManager({
         };
 
         const verifyHostTarget = async () => {
-          if (isSwarmIframe) return true;
+          if (isSwarmIframe) return { isHost: true, timedOut: false };
           const probe = await send('Runtime.evaluate', {
             expression: `(() => {
               const loc = window.location;
@@ -262,7 +306,8 @@ export function createCdpManager({
             })()`,
             returnByValue: true
           });
-          return probe?.result?.result?.value === true;
+          if (!probe) return { isHost: false, timedOut: true };
+          return { isHost: probe?.result?.result?.value === true, timedOut: false };
         };
 
         const updateNewDocScript = async () => {
@@ -432,9 +477,17 @@ export function createCdpManager({
           await send('Page.enable');
           await send('Runtime.enable');
 
-          const isHost = await verifyHostTarget();
+          const { isHost, timedOut } = await verifyHostTarget();
           if (!isHost) {
-            skippedNonHostTargets.set(target.id, { origin: getTargetOriginKey(currentTargetUrl), atMs: Date.now() });
+            const origin = getTargetOriginKey(currentTargetUrl);
+            skippedNonHostTargets.set(
+              target.id,
+              getNextSkippedTargetEntry(skippedNonHostTargets.get(target.id), {
+                origin,
+                nowMs: Date.now(),
+                timedOut
+              })
+            );
             try {
               ws.close();
             } catch {}
@@ -442,6 +495,7 @@ export function createCdpManager({
             finishAttach(false);
             return;
           }
+          skippedNonHostTargets.delete(target.id);
           hostConfirmed = true;
           const entryRef = attachedTargets.get(target.id);
           if (entryRef) entryRef.hostConfirmed = true;
@@ -673,8 +727,7 @@ export function createCdpManager({
           const skipped = skippedNonHostTargets.get(t.id);
           if (
             skipped &&
-            (Date.now() - (skipped.atMs || 0) > 12000 ||
-              !sharedIsAllowedOrigin(t.url, activeConfig.allowedOrigins) ||
+            (!sharedIsAllowedOrigin(t.url, activeConfig.allowedOrigins) ||
               getTargetOriginKey(t.url) !== skipped.origin)
           ) {
             skippedNonHostTargets.delete(t.id);
@@ -688,7 +741,7 @@ export function createCdpManager({
             !String(t.url || '').startsWith('devtools://') &&
             sharedIsAllowedOrigin(t.url, activeConfig.allowedOrigins) &&
             !String(t.title || '').includes('Launchpad') &&
-            skippedNonHostTargets.get(t.id)?.origin !== getTargetOriginKey(t.url)
+            !isSkippedTargetCoolingDown(skippedNonHostTargets.get(t.id), getTargetOriginKey(t.url), nowMs)
         );
 
         for (const page of pages) {

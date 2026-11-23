@@ -34,6 +34,7 @@ Users can install all features or only the modules they request:
 | `i18n` | `modules.i18n` | 1,900+ Chinese UI localization entries (`core/i18n.json`, `60-i18n-engine.js`, preserving English model names & reasoning effort labels) |
 | `metrics` | `modules.metrics`, `modules.sshRemote` | 4-state session status indicator (`会话状态`), L1/L2 expandable usage panels, and per-turn footer stats (main conversation, Side Question pane, and opt-in in-memory SSH Remote telemetry via `sshHosts`) |
 | `fixes` | `modules.deadlockHealer`, `modules.zoomShortcuts` | Settings modal router deadlock fix & `Cmd/Ctrl + -/=/0` zoom shortcuts (`10-guards.js`) |
+| `suggest` | `modules.promptSuggestions` | Opt-in (default `false`) Claude Code-style Ghost Text + `Tab`/`→` prompt suggestions via persistent background `agy` worker (`prompt-suggest.mjs`, `70-prompt-suggestions.js`, `40-prompt-suggestions.css`) |
 
 ## 3. Standard & Selective Workflows
 
@@ -54,7 +55,7 @@ node install.mjs install
 node install.mjs install --only i18n,metrics
 ```
 Optional flags:
-- `--only theme,i18n,metrics,fixes`: enable only the specified feature groups
+- `--only theme,i18n,metrics,fixes,suggest`: enable only the specified feature groups (`suggest` is opt-in and off by default unless listed)
 - `--without <features>`: exclude specific feature groups
 - `--minimal`: prune excluded feature files inside `~/.gemini/antigravity/codex-theme/core` and rebuild its manifest
 - `--with-launcher`: (macOS only) optionally create `~/Applications/Antigravity (Codex Theme).app`; by default macOS uses single-icon mode (`single-icon-m2-relay`) with no duplicate app icon
@@ -86,7 +87,8 @@ If `--safe-mode` works cleanly, inspect `~/.gemini/antigravity/codex-theme/user/
 
 ### Configuration Tweaks (Hot-Reloaded in ~2.5s)
 Edit `~/.gemini/antigravity/codex-theme/user/config.json`:
-- **Toggle individual modules**: `"modules": { "theme": true, "i18n": true, "metrics": true, "sshRemote": false, "deadlockHealer": true, "zoomShortcuts": true, "cdpAutoRelaunch": true }`
+- **Toggle individual modules**: `"modules": { "theme": true, "i18n": true, "metrics": true, "sshRemote": false, "promptSuggestions": false, "deadlockHealer": true, "zoomShortcuts": true, "cdpAutoRelaunch": true }`
+- **Enable opt-in prompt suggestions** (zero overhead / no `agy` process when disabled): set `"modules": { "promptSuggestions": true }` (optional `"promptSuggestionModel": "gemini-3.8-flash-low"`)
 - **Enable opt-in SSH Remote telemetry** (reads remote SQLite via read-only `python3` over `ssh`, strips all conversation text remotely, zero local `.db` copy): set `"modules": { "sshRemote": true }` and `"sshHosts": ["your-ssh-host"]`
 - **Switch status bar density**: `"telemetryLayout": "detailed"` (`"compact"` is default)
 - **Switch cache metric mode**: `"telemetryCacheMode": "step"` (`"session"` is default)

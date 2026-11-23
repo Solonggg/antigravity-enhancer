@@ -61,6 +61,9 @@
     if (typeof checkRouteAndMountMetrics === 'function') {
       checkRouteAndMountMetrics();
     }
+    if (typeof mountPromptSuggestions === 'function') {
+      mountPromptSuggestions();
+    }
     ensureStylesAtEndOfHead();
   }
 

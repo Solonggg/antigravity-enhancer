@@ -252,6 +252,9 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     const hasMetricsFiles =
       fs.existsSync(path.join(RUNTIME_DIR, '50-telemetry-ui.js')) &&
       fs.existsSync(path.join(CORE_DIR, 'daemon', 'sqlite-metrics.mjs'));
+    const hasPromptSuggestFiles =
+      fs.existsSync(path.join(RUNTIME_DIR, '70-prompt-suggestions.js')) &&
+      fs.existsSync(path.join(CORE_DIR, 'daemon', 'prompt-suggest.mjs'));
     const hasGuardsFile = fs.existsSync(path.join(RUNTIME_DIR, '10-guards.js'));
     if (!hasThemeFiles) modules.theme = false;
     if (!hasI18nFiles) modules.i18n = false;
@@ -259,6 +262,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       modules.metrics = false;
       modules.sshRemote = false;
     }
+    if (!hasPromptSuggestFiles) modules.promptSuggestions = false;
     if (!hasGuardsFile) {
       modules.deadlockHealer = false;
       modules.zoomShortcuts = false;
@@ -286,9 +290,10 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
         ', .monaco-editor, .monaco-diff-editor, .xterm, [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, [class*="onyx-key"]';
     }
 
+    const rawPromptModel = typeof userCfg.promptSuggestionModel === 'string' ? userCfg.promptSuggestionModel.trim() : '';
     const promptSuggestionModel =
-      typeof userCfg.promptSuggestionModel === 'string' && userCfg.promptSuggestionModel.trim()
-        ? userCfg.promptSuggestionModel.trim()
+      rawPromptModel && !rawPromptModel.startsWith('-') && /^[a-zA-Z0-9._:/-]+$/.test(rawPromptModel)
+        ? rawPromptModel
         : 'gemini-3.8-flash-low';
 
     activeConfig = {

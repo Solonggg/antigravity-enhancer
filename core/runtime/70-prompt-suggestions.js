@@ -18,7 +18,10 @@
     }
   }
 
-  if (!IS_SWARM_PLUGIN_FRAME && ENABLED && MODULES.promptSuggestions) {
+  function mountPromptSuggestions() {
+    cleanupPromptSuggestionsDom();
+    if (IS_SWARM_PLUGIN_FRAME || !ENABLED || !MODULES.promptSuggestions) return;
+    if (!document.body) return;
     (function initPromptSuggestions() {
       const OVERLAY_CLASS = 'ag-prompt-ghost-overlay';
       const HAS_SUGGESTION_ATTR = 'data-ag-has-suggestion';
@@ -395,6 +398,4 @@
         cleanupPromptSuggestionsDom();
       });
     })();
-  } else {
-    cleanupPromptSuggestionsDom();
   }

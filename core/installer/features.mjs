@@ -90,6 +90,23 @@ export const FEATURE_GROUPS = Object.freeze({
     sparsePaths: ['/core/runtime/10-guards.js'],
     coreRelPaths: ['runtime/10-guards.js'],
     aliases: ['fixes', 'fix', 'guards', 'deadlock', 'deadlockhealer', 'zoom', 'zoomshortcuts']
+  },
+  suggest: {
+    id: 'suggest',
+    label: '输入框下一句预测（Ghost Text + Tab 补全，默认关闭）',
+    defaultEnabled: false,
+    configKeys: ['promptSuggestions'],
+    sparsePaths: [
+      '/core/styles/40-prompt-suggestions.css',
+      '/core/runtime/70-prompt-suggestions.js',
+      '/core/daemon/prompt-suggest.mjs'
+    ],
+    coreRelPaths: [
+      'styles/40-prompt-suggestions.css',
+      'runtime/70-prompt-suggestions.js',
+      'daemon/prompt-suggest.mjs'
+    ],
+    aliases: ['suggest', 'suggestions', 'promptsuggestions', 'prompt-suggestions', 'ghost', 'ghosttext']
   }
 });
 
@@ -110,7 +127,7 @@ function parseFeatureTokenList(raw) {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   if (tokens.length === 0) {
-    throw new Error('Empty feature list. Expected one or more of: theme, i18n, metrics, fixes, all');
+    throw new Error('Empty feature list. Expected one or more of: theme, i18n, metrics, fixes, suggest, all');
   }
   const ids = [];
   for (const tok of tokens) {
@@ -119,7 +136,7 @@ function parseFeatureTokenList(raw) {
     }
     const resolved = ALIAS_TO_FEATURE.get(tok);
     if (!resolved) {
-      throw new Error(`Unknown feature "${tok}". Valid options: theme, i18n, metrics, fixes, all`);
+      throw new Error(`Unknown feature "${tok}". Valid options: theme, i18n, metrics, fixes, suggest, all`);
     }
     if (!ids.includes(resolved)) ids.push(resolved);
   }
@@ -129,12 +146,10 @@ function parseFeatureTokenList(raw) {
 export function parseFeatureSelection({ onlyArg = null, withoutArg = null } = {}) {
   const hasOnly = onlyArg !== null && onlyArg !== undefined && String(onlyArg).trim() !== '';
   const hasWithout = withoutArg !== null && withoutArg !== undefined && String(withoutArg).trim() !== '';
-  const selected = {
-    theme: true,
-    i18n: true,
-    metrics: true,
-    fixes: true
-  };
+  const selected = {};
+  for (const [id, meta] of Object.entries(FEATURE_GROUPS)) {
+    selected[id] = meta.defaultEnabled !== false;
+  }
 
   if (hasOnly) {
     for (const k of Object.keys(selected)) selected[k] = false;
@@ -163,7 +178,9 @@ export function parseFeatureSelection({ onlyArg = null, withoutArg = null } = {}
   };
 }
 
-export function getSparseCheckoutPaths(selected = { theme: true, i18n: true, metrics: true, fixes: true }) {
+export function getSparseCheckoutPaths(
+  selected = { theme: true, i18n: true, metrics: true, fixes: true, suggest: false }
+) {
   const out = [...BASE_SPARSE_PATHS];
   for (const [id, meta] of Object.entries(FEATURE_GROUPS)) {
     if (selected[id]) {

@@ -15,7 +15,7 @@
 
 <p>
   不修改安装包，通过本地 CDP 实时注入 Codex 昼夜主题、中文界面、四态会话指示与每轮 Token 统计。<br>
-  核心代码拆分为 28 个独立模块，支持 <code>--only</code> 按需安装与 Fork 自由定制。
+  核心代码拆分为 31 个独立模块，支持 <code>--only</code> 按需安装与 Fork 自由定制。
 </p>
 
 <p>
@@ -41,7 +41,7 @@ https://github.com/user-attachments/assets/e42ae3d6-c261-442c-bc6d-3c14ff830664
 
 - 提供浅色 (`codex-pure-white`) 与深色 (`codex-dark`) 两套配色，无外部字体依赖，随 IDE 明暗外观自动切换。
 - 底部工具栏实时指示会话状态与用量摘要，支持展开两级明细面板；每轮回复末尾附带 Token 统计，悬停约 `80ms` 显示详情拆解卡，并同步支持右侧旁路提问（Side Question）与 **SSH Remote 远端会话**（[查看配置](#ssh-remote-远端会话统计)）。
-- 内置 `1,900+` 条中文界面词条；4 个核心模块相互独立，可通过 `--only` 按需安装。
+- 内置 `1,900+` 条中文界面词条；核心模块相互独立，支持 `--only` 按需安装，并内置可选的输入框下一句预测（Ghost Text + `Tab` 补全，默认关闭）。
 
 ![一级概览、二级详情、上下文预警及每轮对话尾部统计](assets/telemetry-bento-panels.png)
 
@@ -74,7 +74,7 @@ node --disable-warning=ExperimentalWarning install.mjs doctor
 
 ### 按需安装
 
-支持通过 `--only` 从 `theme`、`i18n`、`metrics`、`fixes` 四个独立模块中按需组合：
+支持通过 `--only` 从 `theme`、`i18n`、`metrics`、`fixes` 四个默认模块及可选的 `suggest`（默认关闭）中按需组合：
 
 ```bash
 # 示例：仅启用中文界面与实时统计，保留 Antigravity 原生配色
@@ -90,6 +90,7 @@ node install.mjs install --only i18n,metrics
 | `i18n` | 中文界面本地化（`1,900+` 条词条，`WeakMap` 原地更新） |
 | `metrics` | 实时会话状态指示、一/二级用量统计面板与每轮对话尾部统计（含旁路提问面板及可选 SSH Remote 远端只读统计） |
 | `fixes` | 设置弹窗路由死锁修复与 `Cmd/Ctrl + -/=/0` 界面缩放快捷键 |
+| `suggest` | 输入框下一句预测（Ghost Text + `Tab` / `→` 补全，默认关闭，开启后通过后台 `agy` 预测） |
 
 **1. 跳过 `assets/` 与 `tests/`，仅拉取运行核心文件（全平台通用）：**
 
@@ -222,14 +223,15 @@ node install.mjs install --only i18n --minimal
   - `themeVars`：按需覆盖 `--background`、`--sidebar`、`--primary`、`--ag-composer-*`、`--ag-dark-*` 等 CSS 变量
   - `telemetryLayout`：`"compact"`（默认紧凑样式）或 `"detailed"`（显示 `TTFT`、精确上下文与 `Out`）
   - `telemetryCacheMode`：`"session"`（会话累计命中率）或 `"step"`（单步命中率）
-  - `modules`：独立控制 `theme`、`i18n`、`metrics`、`sshRemote`、`deadlockHealer`、`zoomShortcuts`、`cdpAutoRelaunch`、`customCss`、`customJs` 开关
+  - `modules`：独立控制 `theme`、`i18n`、`metrics`、`sshRemote`、`promptSuggestions`、`deadlockHealer`、`zoomShortcuts`、`cdpAutoRelaunch`、`customCss`、`customJs` 开关
+  - `promptSuggestionModel`（配合 `modules.promptSuggestions: true`，默认关闭）：指定输入框下一句预测使用的 `agy` 模型（默认 `"gemini-3.8-flash-low"`）；未开启 `promptSuggestions` 时不启动后台 `agy` 进程、不消耗额度，开启后可在输入框空态按 `Tab` / `→` 填入预测内容
   - `sshHosts`（配合 `modules.sshRemote: true`，默认关闭）：显式指定远端 SSH 主机别名或地址（如 `["node032"]`），开启远端只读会话统计（详见 [SSH Remote 远端会话统计](#ssh-remote-远端会话统计)）
 - [user/i18n.override.json](user/i18n.override.json)：追加或覆盖界面翻译词条。
 - [user/custom.css](user/custom.css) 与 [user/custom.js](user/custom.js)：注入自定义样式与前端脚本钩子，支持热重载自动清理。
 
 ### 源码定制（`core/` 目录）
 
-核心代码拆分为 28 个独立模块，配套 31 项 `node:test` 单元测试，可按职责定位修改：
+核心代码拆分为 31 个独立模块，配套 35 项 `node:test` 单元测试，可按职责定位修改：
 
 | 定制方向 | 对应文件 |
 | :--- | :--- |
@@ -251,15 +253,15 @@ node install.mjs build-manifest && npm run check && npm test && node install.mjs
 antigravity-codex-theme/
 ├── assets/                     # README 展示截图
 ├── core/
-│   ├── daemon/                 # 后台同步服务（配置热加载 / Protobuf 解析 / 重试日志 / 面板渲染 / SQLite / SSH Remote 远端只读提取 / CDP / 2.33.0 冷启动接力）
-│   ├── runtime/                # 按序拼接注入的前端脚本（生命周期 / 修复补丁 / 明暗同步 / 状态机 / 统计界面 / 汉化引擎）
-│   ├── styles/                 # 样式模块（基础结构 / Codex 浅色 / Codex 深色 / 状态与统计面板）
+│   ├── daemon/                 # 后台同步服务（配置热加载 / Protobuf 解析 / 重试日志 / 面板渲染 / SQLite / SSH Remote 远端只读提取 / 下一句预测 / CDP / 2.33.0 冷启动接力）
+│   ├── runtime/                # 按序拼接注入的前端脚本（生命周期 / 修复补丁 / 明暗同步 / 状态机 / 统计界面 / 汉化引擎 / 输入预测）
+│   ├── styles/                 # 样式模块（基础结构 / Codex 浅色 / Codex 深色 / 状态与统计面板 / 输入预测）
 │   ├── installer/              # 模块分组 / Manifest 校验与打包 / 环境探测 / 跨平台自启与 CDP 启动管理
 │   ├── daemon.mjs              # 后台服务入口
 │   ├── shared.mjs              # 公共工具函数
 │   ├── i18n.json               # 1,900+ 界面词典
 │   └── manifest.json           # core/ 文件 SHA-256 清单
-├── tests/                      # 31 项 node:test 单元测试
+├── tests/                      # 35 项 node:test 单元测试
 ├── user/                       # 个人配置与热重载目录
 ├── install.mjs                 # 安装、重启与运维 CLI
 ├── SKILL.md                    # AI Agent 操作说明
@@ -281,21 +283,21 @@ antigravity-codex-theme/
 
 在此基础上，本项目对代码结构与核心功能进行了重写与扩展，主要区别包括：
 
-- 将单文件实现重构为 `core/{daemon,runtime,styles,installer}` 下的 28 个独立模块，补充 31 项 `node:test` 单元测试与 GitHub Actions CI。
+- 将单文件实现重构为 `core/{daemon,runtime,styles,installer}` 下的 31 个独立模块，补充 35 项 `node:test` 单元测试与 GitHub Actions CI。
 - 重新设计无外部字体依赖的 Codex 浅色 / 深色双主题与双层圆角输入框。
-- 新增四态会话状态机（结合 React Fiber 状态探测、Language Server 重试日志与后台心跳监测）、可逐级展开的一/二级用量面板、每轮回复 `80ms` 悬浮详情卡，以及可选的 SSH Remote 远端只读统计。
+- 新增四态会话状态机（结合 React Fiber 状态探测、Language Server 重试日志与后台心跳监测）、可逐级展开的一/二级用量面板、每轮回复 `80ms` 悬浮详情卡，以及可选的 SSH Remote 远端只读统计与输入框下一句预测（`promptSuggestions`）。
 - 支持 `--only` / `--without` / `--minimal` / `sparse-paths` 按需安装，分离 `user/` 热重载配置层与 `core/` 模块层以便二次定制。
 
 本项目基于 [MIT License](LICENSE) 开源，欢迎自由 Fork 与定制。
 
 ## English Overview
 
-`antigravity-codex-theme` provides Codex light and dark themes, Chinese UI localization, and live session telemetry for Google Antigravity (`2.30.x` to `2.34.0+`). The codebase is organized into 28 modules under `core/{daemon,runtime,styles,installer}` with 31 `node:test` unit tests, supporting hot-reloaded customization in `user/` as well as deeper modifications in `core/`.
+`antigravity-codex-theme` provides Codex light and dark themes, Chinese UI localization, and live session telemetry for Google Antigravity (`2.30.x` to `2.34.0+`). The codebase is organized into 31 modules under `core/{daemon,runtime,styles,installer}` with 35 `node:test` unit tests, supporting hot-reloaded customization in `user/` as well as deeper modifications in `core/`.
 
 - Light (`codex-pure-white`) and dark (`codex-dark`) themes with zero external font dependencies and automatic light/dark switching.
 - A live bottom status bar tracking four session states (ready, running, waiting or retrying, error) via React Fiber probes, Language Server logs, and SQLite telemetry, paired with two-level usage panels and per-turn token stats with an `80ms` hover breakdown card across main conversations, Side Question panes, and opt-in SSH Remote sessions (`modules.sshRemote` + `sshHosts`, read-only remote Python extraction with zero local `.db` copy).
 - Chinese UI localization (`1,900+` entries) applied in place through a `WeakMap` observer, customizable via `user/i18n.override.json`.
-- Selective module installation via `--only` (`theme`, `i18n`, `metrics`, `fixes`), Git sparse checkout, and `--minimal` pruning.
+- Selective module installation via `--only` (`theme`, `i18n`, `metrics`, `fixes`, plus opt-in `suggest` for Ghost Text + `Tab` prompt suggestions powered by `agy`), Git sparse checkout, and `--minimal` pruning.
 - Antigravity `2.33.0+` / `2.34.0+` support with a single-icon `--remote-debugging-port=0` cold-start relay (`cdpAutoRelaunch`) and `node install.mjs relaunch` with active-WAL protection. End-to-end installation and uninstall are verified across macOS, Windows, and Linux desktops (Antigravity `2.31.0`, `2.32.1`, `2.33.0`, and `2.34.0`; requires Node.js `>= 22.13.0`), alongside Ubuntu CI syntax checks and unit tests.
 
 Early research drew inspiration from [Anarcadia/chuanban-antigravity-theme-patch](https://github.com/Anarcadia/chuanban-antigravity-theme-patch) (MIT) for CDP runtime injection, `WeakMap` localization, SQLite telemetry, and `2.33.0` opt-in launch handling. This repository rebuilds the architecture into modular components and adds the Codex light/dark themes, four-state session monitor, two-level usage panels, per-turn hover cards, and selective installs under the [MIT License](LICENSE).

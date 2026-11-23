@@ -196,7 +196,8 @@
       const el = document.getElementById(id);
       if (el) el.remove();
     }
-    document.querySelectorAll('.ag-turn-metrics, .ag-live-metrics-pill').forEach((el) => el.remove());
+    document.querySelectorAll('.ag-turn-metrics, .ag-live-metrics-pill, .ag-prompt-ghost-overlay').forEach((el) => el.remove());
+    document.querySelectorAll('[data-ag-has-suggestion]').forEach((el) => el.removeAttribute('data-ag-has-suggestion'));
     if (window.__ag_i18n_observer) {
       try { window.__ag_i18n_observer.disconnect(); } catch (e) {}
       window.__ag_i18n_observer = null;

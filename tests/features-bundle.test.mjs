@@ -18,21 +18,37 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
 
 test('parseFeatureSelection resolves --only and --without flags cleanly', () => {
+  const defaultSel = parseFeatureSelection();
+  assert.equal(defaultSel.explicit, false);
+  assert.deepEqual(defaultSel.selected, {
+    theme: true,
+    i18n: true,
+    metrics: true,
+    fixes: true,
+    suggest: false
+  });
+
   const onlyI18n = parseFeatureSelection({ onlyArg: 'i18n,metrics' });
   assert.equal(onlyI18n.explicit, true);
   assert.deepEqual(onlyI18n.selected, {
     theme: false,
     i18n: true,
     metrics: true,
-    fixes: false
+    fixes: false,
+    suggest: false
   });
   assert.deepEqual(onlyI18n.modulesPatch, {
     theme: false,
     i18n: true,
     metrics: true,
     deadlockHealer: false,
-    zoomShortcuts: false
+    zoomShortcuts: false,
+    promptSuggestions: false
   });
+
+  const onlySuggest = parseFeatureSelection({ onlyArg: 'i18n,suggest' });
+  assert.equal(onlySuggest.selected.suggest, true);
+  assert.equal(onlySuggest.modulesPatch.promptSuggestions, true);
 
   const withoutMetrics = parseFeatureSelection({ withoutArg: 'metrics,fixes' });
   assert.equal(withoutMetrics.explicit, true);
@@ -40,7 +56,8 @@ test('parseFeatureSelection resolves --only and --without flags cleanly', () => 
     theme: true,
     i18n: true,
     metrics: false,
-    fixes: false
+    fixes: false,
+    suggest: false
   });
 
   assert.throws(() => parseFeatureSelection({ onlyArg: 'nonexistent' }), /Unknown feature/);
@@ -78,7 +95,12 @@ test('Assembled partial runtime bundles execute without ReferenceError when opti
     {
       name: 'metrics-only',
       parts: ['00-head.js', '30-antigravity-probe.js', '40-status-machine.js', '50-telemetry-ui.js', '90-tail.js'],
-      modules: { theme: false, i18n: false, metrics: true, deadlockHealer: false, zoomShortcuts: false }
+      modules: { theme: false, i18n: false, metrics: true, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false }
+    },
+    {
+      name: 'suggest-only',
+      parts: ['00-head.js', '70-prompt-suggestions.js', '90-tail.js'],
+      modules: { theme: false, i18n: false, metrics: false, promptSuggestions: true, deadlockHealer: false, zoomShortcuts: false }
     }
   ];
 

@@ -236,6 +236,7 @@ async function runInstall() {
     'i18n',
     'metrics',
     'sshRemote',
+    'promptSuggestions',
     'deadlockHealer',
     'zoomShortcuts',
     'cdpAutoRelaunch',
@@ -262,6 +263,12 @@ async function runInstall() {
   }
   if (!fs.existsSync(path.join(targetCore, 'runtime', '50-telemetry-ui.js'))) {
     currentCfg.modules.metrics = false;
+  }
+  if (
+    !fs.existsSync(path.join(targetCore, 'runtime', '70-prompt-suggestions.js')) ||
+    !fs.existsSync(path.join(targetCore, 'daemon', 'prompt-suggest.mjs'))
+  ) {
+    currentCfg.modules.promptSuggestions = false;
   }
   if (!fs.existsSync(path.join(targetCore, 'runtime', '10-guards.js'))) {
     currentCfg.modules.deadlockHealer = false;
@@ -497,13 +504,13 @@ switch (subcommand) {
   }
   default:
     console.log(`antigravity-codex-theme CLI Usage:
-  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only theme,i18n,metrics,fixes] [--without <list>] [--minimal] [--with-launcher] [--sync-user]
+  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only theme,i18n,metrics,fixes,suggest] [--without <list>] [--minimal] [--with-launcher] [--sync-user]
   node install.mjs relaunch       [--channel auto|stable|insiders] [--force]
   node install.mjs doctor         [--channel auto|stable|insiders]
   node install.mjs verify         [--safe-mode] [--channel auto|stable|insiders]
   node install.mjs rollback
   node install.mjs uninstall
-  node install.mjs sparse-paths   [--only theme,i18n,metrics,fixes] [--without <list>] [--json]
+  node install.mjs sparse-paths   [--only theme,i18n,metrics,fixes,suggest] [--without <list>] [--json]
   node install.mjs build-manifest
   node install.mjs pack`);
     break;
