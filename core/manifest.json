@@ -5,12 +5,12 @@
   "fullMetricsNodeVersion": "22.13.0",
   "files": {
     "daemon.mjs": {
-      "sha256": "241ccab11170d4d74ee125d23562fc926c6260d9493392a43a59b6125b7d005b",
-      "bytes": 3766
+      "sha256": "0f0213664f5ae9908e20422d08292787fab1d4cc16be11a6c718fa609b3679d3",
+      "bytes": 4308
     },
     "daemon/cdp-bridge.mjs": {
-      "sha256": "d377a3948c675cda4124140c7896a815e12549676c4be884d09d6fd6cb0b78b9",
-      "bytes": 28121
+      "sha256": "601f253e599d87a824e648e2a019fce73f263bad9c791737224ec0977b296256",
+      "bytes": 30439
     },
     "daemon/cdp-relaunch.mjs": {
       "sha256": "51e9a4212942252547594c3294a6cccba426d081b5934a69fab3068aa21370c1",
@@ -21,8 +21,12 @@
       "bytes": 2123
     },
     "daemon/paths.mjs": {
-      "sha256": "0ab0073da51f62a4cd20899da2e621cf835255c34bd8fbc3e552b990dc09e248",
-      "bytes": 13567
+      "sha256": "6aed6baa77b7d2835baf1a28535284ea7e749f807a07f85f2554dea8b15a4523",
+      "bytes": 14016
+    },
+    "daemon/prompt-suggest.mjs": {
+      "sha256": "fd13e3ec259581c59f56386423bc19fa953ffac4d589b6b54a58e2b1c2c88e45",
+      "bytes": 10773
     },
     "daemon/protobuf.mjs": {
       "sha256": "9e1cff0e22d8361fc80a9b7d4076a0071b64bbab036386d644713e2d82cf3367",
@@ -65,8 +69,8 @@
       "bytes": 13336
     },
     "runtime/00-head.js": {
-      "sha256": "bd786385b9530ed515568cd86241084671cbbac2a373a8aff159129c8874fda4",
-      "bytes": 12256
+      "sha256": "00e7de0339845fff1ae54a0c06b63a616529703bcab6bf1a0d83380eae5373e0",
+      "bytes": 12359
     },
     "runtime/10-guards.js": {
       "sha256": "f4aedd3e4c615f638fe213c3c9304e51467dd6eceb4ae57b7085db47f6155087",
@@ -92,6 +96,10 @@
       "sha256": "cd47a833fe2df838b3a33ab6fa967c71d70707fd175650c098e8e3d58f1f53d2",
       "bytes": 37588
     },
+    "runtime/70-prompt-suggestions.js": {
+      "sha256": "7d012fb4b3e374b2934500640032c0388ec5f8e6d7b74bd8a242ebb0ce1a6378",
+      "bytes": 13115
+    },
     "runtime/90-tail.js": {
       "sha256": "9e9ab5e1219797d146d9c1cf62144aa629cf057a83796c0ddab64c3e47c858b3",
       "bytes": 2772
@@ -115,6 +123,10 @@
     "styles/30-telemetry.css": {
       "sha256": "6d5fe7a2a9dad5def0d1de232073b90fb9c621a5f84bec34a7151543349b9e4c",
       "bytes": 27476
+    },
+    "styles/40-prompt-suggestions.css": {
+      "sha256": "e0c9a7d7e146e2771fd8c93dd8ccf8c6e7d9d8114743508b3712b2be77fe9206",
+      "bytes": 2817
     }
   }
 }

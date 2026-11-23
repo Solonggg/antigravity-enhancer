@@ -10,6 +10,7 @@
     "i18n": true,
     "metrics": true,
     "sshRemote": false,
+    "promptSuggestions": false,
     "deadlockHealer": true,
     "zoomShortcuts": true,
     "cdpAutoRelaunch": true,

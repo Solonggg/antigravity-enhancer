@@ -162,11 +162,13 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     contextLimit: 'auto',
     manualContextLimit: 0,
     fallbackContextLimit: 256000,
+    promptSuggestionModel: 'gemini-3.8-flash-low',
     modules: {
       theme: true,
       i18n: true,
       metrics: Boolean(hasSqlite),
       sshRemote: false,
+      promptSuggestions: false,
       deadlockHealer: true,
       zoomShortcuts: true,
       cdpAutoRelaunch: true,
@@ -232,6 +234,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
         i18n: true,
         metrics: true,
         sshRemote: false,
+        promptSuggestions: false,
         deadlockHealer: true,
         zoomShortcuts: true,
         cdpAutoRelaunch: true,
@@ -283,6 +286,11 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
         ', .monaco-editor, .monaco-diff-editor, .xterm, [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, [class*="onyx-key"]';
     }
 
+    const promptSuggestionModel =
+      typeof userCfg.promptSuggestionModel === 'string' && userCfg.promptSuggestionModel.trim()
+        ? userCfg.promptSuggestionModel.trim()
+        : 'gemini-3.8-flash-low';
+
     activeConfig = {
       enabled,
       channel,
@@ -292,6 +300,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       contextLimit,
       manualContextLimit,
       fallbackContextLimit,
+      promptSuggestionModel,
       modules,
       sshHosts: Array.isArray(userCfg.sshHosts) ? userCfg.sshHosts : [],
       themeVars,
@@ -303,6 +312,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     const activeStyleFiles = styleFiles.filter((filePath) => {
       const base = path.basename(filePath);
       if (base === '30-telemetry.css') return Boolean(modules.metrics);
+      if (base === '40-prompt-suggestions.css') return Boolean(modules.promptSuggestions);
       return modules.theme !== false;
     });
     const baseCss = activeStyleFiles.map((f) => readTextSafe(f, '')).join('\n\n');
