@@ -10,7 +10,11 @@ import {
   isAllowedOrigin as sharedIsAllowedOrigin,
   readPortFromFile,
   fetchTargetsFromPort,
-  isConfirmedDaemonPid
+  isConfirmedDaemonPid,
+  isPidAlive,
+  findRunningDaemonPids,
+  getDaemonPidCandidateDirs,
+  terminateDaemonPids
 } from '../shared.mjs';
 import { ROOT_DIR } from './paths.mjs';
 import { createCdpRelaunchController } from './cdp-relaunch.mjs';
@@ -131,36 +135,121 @@ export function isSkippedTargetCoolingDown(entry, currentOrigin, nowMs = Date.no
   return nowMs < Number(entry.nextRetryAtMs || 0);
 }
 
-export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutdown = null) {
-  if (runOnce) return;
+const DAEMON_EXTRA_PATTERNS = ['theme-patch', 'antigravity-font-daemon.mjs', 'antigravity-codex-daemon.mjs'];
+const DAEMON_PID_PREFIXES = ['ag-theme-daemon-', 'ag-codex-daemon-'];
+
+export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutdown = null, options = {}) {
+  const {
+    platform = process.platform,
+    pidDir = os.tmpdir(),
+    pidDirs = null,
+    selfPid = process.pid,
+    registerSignals = true,
+    findRunningDaemonPidsImpl = findRunningDaemonPids,
+    isConfirmedDaemonPidImpl = isConfirmedDaemonPid,
+    terminateDaemonPidsImpl = terminateDaemonPids,
+    isPidAliveImpl = isPidAlive
+  } = options || {};
+
+  if (runOnce) {
+    return {
+      pidFile: null,
+      ownerPid: selfPid,
+      isOwner: () => true,
+      getOwnerPid: () => selfPid,
+      release: () => {}
+    };
+  }
+
   const pidKey = cliChannel || 'default';
-  const pidFile = path.join(os.tmpdir(), `ag-codex-daemon-${pidKey}.pid`);
+  const pidFile = path.join(pidDir, `ag-codex-daemon-${pidKey}.pid`);
+  const scanDirs = Array.isArray(pidDirs)
+    ? pidDirs
+    : getDaemonPidCandidateDirs({ platform, tmpDir: pidDir });
+
   try {
-    if (fs.existsSync(pidFile)) {
-      const oldPid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
-      if (isConfirmedDaemonPid(oldPid, ['antigravity-codex-daemon.mjs', 'codex-theme'])) {
+    const oldPids = new Set();
+
+    // 1. Collect confirmed daemon PIDs from existing .pid files across candidate temp dirs
+    for (const dir of scanDirs) {
+      try {
+        if (!dir || !fs.existsSync(dir)) continue;
+        for (const f of fs.readdirSync(dir)) {
+          if (!f.endsWith('.pid')) continue;
+          const matchesTargetFile = cliChannel
+            ? f === `ag-codex-daemon-${pidKey}.pid` || f.startsWith('ag-theme-daemon-')
+            : DAEMON_PID_PREFIXES.some((prefix) => f.startsWith(prefix));
+          if (!matchesTargetFile) continue;
+          const candidatePath = path.join(dir, f);
+          const oldPid = parseInt(fs.readFileSync(candidatePath, 'utf8').trim(), 10);
+          if (
+            Number.isInteger(oldPid) &&
+            oldPid > 0 &&
+            oldPid !== selfPid &&
+            isConfirmedDaemonPidImpl(oldPid, DAEMON_EXTRA_PATTERNS, {
+              platform,
+              excludePids: [selfPid],
+              isAliveImpl: isPidAliveImpl
+            })
+          ) {
+            oldPids.add(oldPid);
+          }
+        }
+      } catch {}
+    }
+
+    // 2. In default singleton mode, also sweep the real OS process table to catch orphaned daemons
+    //    whose .pid files were missing, overwritten, or written to a different TEMP directory.
+    if (!cliChannel) {
+      try {
+        for (const pid of findRunningDaemonPidsImpl({
+          platform,
+          excludePids: [selfPid],
+          extraPatterns: DAEMON_EXTRA_PATTERNS
+        })) {
+          if (Number.isInteger(pid) && pid > 0 && pid !== selfPid) {
+            oldPids.add(pid);
+          }
+        }
+      } catch {}
+    }
+
+    if (oldPids.size > 0) {
+      const termRes = terminateDaemonPidsImpl([...oldPids], {
+        platform,
+        excludePids: [selfPid],
+        isAliveImpl: isPidAliveImpl
+      });
+      if (termRes?.stopped?.length > 0) {
+        console.log(`[Daemon] Stopped previous daemon instance(s): ${termRes.stopped.join(', ')}`);
+      }
+      if (termRes?.stillAlive?.length > 0) {
+        console.warn(`[Daemon] Previous daemon PID(s) still alive after termination: ${termRes.stillAlive.join(', ')}`);
+      }
+    }
+
+    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+    fs.writeFileSync(pidFile, String(selfPid), 'utf8');
+  } catch {}
+
+  let shutdownRan = false;
+  const runShutdown = () => {
+    if (!shutdownRan) {
+      shutdownRan = true;
+      if (typeof onShutdown === 'function') {
         try {
-          process.kill(oldPid, 'SIGTERM');
+          onShutdown();
         } catch {}
       }
     }
-    fs.writeFileSync(pidFile, String(process.pid), 'utf8');
-    let shutdownRan = false;
-    const runShutdown = () => {
-      if (!shutdownRan) {
-        shutdownRan = true;
-        if (typeof onShutdown === 'function') {
-          try {
-            onShutdown();
-          } catch {}
-        }
+    try {
+      if (fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8').trim() === String(selfPid)) {
+        fs.unlinkSync(pidFile);
       }
-      try {
-        if (fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8').trim() === String(process.pid)) {
-          fs.unlinkSync(pidFile);
-        }
-      } catch {}
-    };
+    } catch {}
+  };
+
+  if (registerSignals) {
     process.on('exit', runShutdown);
     process.on('SIGINT', () => {
       runShutdown();
@@ -170,7 +259,29 @@ export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutd
       runShutdown();
       process.exit(0);
     });
-  } catch {}
+  }
+
+  const getOwnerPid = () => {
+    try {
+      if (!fs.existsSync(pidFile)) return selfPid;
+      const parsed = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : selfPid;
+    } catch {
+      return selfPid;
+    }
+  };
+
+  const isOwner = () => {
+    const holderPid = getOwnerPid();
+    if (holderPid === selfPid) return true;
+    if (isPidAliveImpl(holderPid)) return false;
+    try {
+      fs.writeFileSync(pidFile, String(selfPid), 'utf8');
+    } catch {}
+    return true;
+  };
+
+  return { pidFile, ownerPid: selfPid, isOwner, getOwnerPid, release: runShutdown };
 }
 
 export function trimLogFileIfOversized(filePath, maxBytes = 256 * 1024, keepBytes = 64 * 1024) {
@@ -208,7 +319,11 @@ export function createCdpManager({
   promptSuggester = null,
   hasSqlite,
   runOnce = false,
-  safeMode = false
+  safeMode = false,
+  pidLock = null,
+  getPidLock = null,
+  onSuperseded = null,
+  onFastWatch = null
 }) {
   const attachedTargets = new Map();
   const fallbackBackoffUntil = new Map();
@@ -218,9 +333,42 @@ export function createCdpManager({
   const cdpRelaunchCtrl = createCdpRelaunchController();
   const sshRemoteCtrl = createSshRemoteController();
   let isSyncing = false;
+  let superseded = false;
   let syncTickCount = 0;
   let lastTargetDiscoveryMs = 0;
+  let hadAttachedTarget = false;
+  let fastWatchUntilMs = 0;
   const TARGET_DISCOVERY_INTERVAL_MS = 12500;
+  const FAST_WATCH_INTERVAL_MS = 650;
+  const NORMAL_SYNC_INTERVAL_MS = 2500;
+
+  function triggerFastWatch(durationMs = 30000) {
+    fastWatchUntilMs = Math.max(fastWatchUntilMs, Date.now() + durationMs);
+    if (typeof onFastWatch === 'function') {
+      try {
+        onFastWatch(FAST_WATCH_INTERVAL_MS);
+      } catch {}
+    }
+  }
+
+  function checkLockOwnership() {
+    if (superseded) return false;
+    const activeLock = typeof getPidLock === 'function' ? getPidLock() : pidLock;
+    if (runOnce || !activeLock || typeof activeLock.isOwner !== 'function') return true;
+    if (activeLock.isOwner()) return true;
+    superseded = true;
+    const newerPid = typeof activeLock.getOwnerPid === 'function' ? activeLock.getOwnerPid() : null;
+    console.log(
+      `[Daemon] Superseded by newer daemon${newerPid ? ` (PID ${newerPid})` : ''}; shutting down cleanly.`
+    );
+    closeAll();
+    if (typeof onSuperseded === 'function') {
+      onSuperseded(newerPid);
+    } else {
+      process.exit(0);
+    }
+    return false;
+  }
 
   function resolveParentThemeMode(targetId, channel) {
     let curId = targetId;
@@ -374,7 +522,7 @@ export function createCdpManager({
         };
 
         const inject = async () => {
-          if (!hostConfirmed) return false;
+          if (!hostConfirmed || !checkLockOwnership()) return false;
           const { cachedPatchVersion } = bundleCtrl.getState();
           const res = await send('Runtime.evaluate', {
             expression: buildEffectiveScript(),
@@ -499,7 +647,7 @@ export function createCdpManager({
         };
 
         const checkAndInject = async () => {
-          if (!hostConfirmed) return;
+          if (!hostConfirmed || !checkLockOwnership()) return;
           try {
             const { activeConfig, cachedPatchVersion } = bundleCtrl.getState();
             const checkRes = await send('Runtime.evaluate', {
@@ -547,6 +695,11 @@ export function createCdpManager({
           hostConfirmed = true;
           const entryRef = attachedTargets.get(target.id);
           if (entryRef) entryRef.hostConfirmed = true;
+          hadAttachedTarget = true;
+          fastWatchUntilMs = 0;
+          if (!isSwarmIframe && typeof cdpRelaunchCtrl.markCdpAttached === 'function') {
+            cdpRelaunchCtrl.markCdpAttached(endpoint.channel);
+          }
 
           console.log(
             `[Daemon] Attached ${isSwarmIframe ? 'swarm iframe' : 'target'}: ${target.id} (${target.title || 'Untitled'}) [${endpoint.channel}]`
@@ -902,8 +1055,11 @@ export function createCdpManager({
           }
           for (const [, cb] of pendingCallbacks) cb(null);
           pendingCallbacks.clear();
-          attachedTargets.delete(target.id);
+          const wasAttached = attachedTargets.delete(target.id);
           targetThemeModes.delete(target.id);
+          if (wasAttached && hadAttachedTarget && attachedTargets.size === 0 && !runOnce && !superseded) {
+            triggerFastWatch(30000);
+          }
           finishAttach(false);
         };
         ws.addEventListener('close', closeHandler);
@@ -933,6 +1089,7 @@ export function createCdpManager({
 
   async function sync() {
     if (isSyncing) return;
+    if (!checkLockOwnership()) return;
     isSyncing = true;
     syncTickCount = (syncTickCount + 1) % 6000;
     try {
@@ -971,6 +1128,7 @@ export function createCdpManager({
       lastTargetDiscoveryMs = nowMs;
       const activeTargetIds = new Set();
       const seenRawTargetIds = new Set();
+      const reachableChannels = new Set();
       const pendingPages = [];
       const pendingIframes = [];
       const probedPorts = new Set();
@@ -998,6 +1156,7 @@ export function createCdpManager({
           }
         }
         if (targets.length === 0) continue;
+        reachableChannels.add(endpoint.channel);
 
         for (const t of targets) {
           if (!t?.id) continue;
@@ -1060,15 +1219,6 @@ export function createCdpManager({
       await syncTargetBatch(pendingPages);
       await syncTargetBatch(pendingIframes);
 
-      if (pendingPages.length === 0 && attachedTargets.size === 0) {
-        cdpRelaunchCtrl.maybeAutoRelaunchColdStartWithoutCdp({
-          activeConfig,
-          safeMode,
-          runOnce,
-          rootDir: ROOT_DIR
-        });
-      }
-
       for (const [id, entry] of attachedTargets.entries()) {
         if (!activeTargetIds.has(id)) {
           try {
@@ -1078,6 +1228,20 @@ export function createCdpManager({
           targetThemeModes.delete(id);
         }
       }
+
+      if (pendingPages.length === 0 && attachedTargets.size === 0) {
+        const relaunched = cdpRelaunchCtrl.maybeAutoRelaunchColdStartWithoutCdp({
+          activeConfig,
+          safeMode,
+          runOnce,
+          rootDir: ROOT_DIR,
+          reachableChannels
+        });
+        if (relaunched) {
+          triggerFastWatch(20000);
+        }
+      }
+
       if (seenRawTargetIds.size > 0) {
         for (const id of skippedNonHostTargets.keys()) {
           if (!seenRawTargetIds.has(id)) skippedNonHostTargets.delete(id);
@@ -1109,5 +1273,12 @@ export function createCdpManager({
     targetThemeModes.clear();
   }
 
-  return { sync, closeAll };
+  function getNextSyncDelayMs() {
+    if (!runOnce && attachedTargets.size === 0 && Date.now() < fastWatchUntilMs) {
+      return FAST_WATCH_INTERVAL_MS;
+    }
+    return NORMAL_SYNC_INTERVAL_MS;
+  }
+
+  return { sync, closeAll, getNextSyncDelayMs };
 }

@@ -3,12 +3,15 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   NON_HOST_CMD_RE,
   parsePosixEtimeSeconds,
   stripUtf8Bom
 } from '../core/shared.mjs';
-import { evaluateColdStartDecision } from '../core/daemon/cdp-relaunch.mjs';
+import { evaluateColdStartDecision, isActiveWalForProcess } from '../core/daemon/cdp-relaunch.mjs';
 import { resolveCdpStatus } from '../core/installer/env.mjs';
 
 test('parsePosixEtimeSeconds parses SS, MM:SS, HH:MM:SS, and D-HH:MM:SS accurately', () => {
@@ -114,7 +117,7 @@ test('evaluateColdStartDecision protects long-running sessions, active WAL write
     'active-wal-write'
   );
 
-  // Guard cooldown (< 60s) -> exempt
+  // Guard cooldown (< 60s when previous relaunch never attached CDP) -> exempt
   assert.equal(
     evaluateColdStartDecision({
       proc: { pid: 106, elapsedSec: 4, hasCdpFlag: false, hasUpdatedFlag: false },
@@ -123,6 +126,61 @@ test('evaluateColdStartDecision protects long-running sessions, active WAL write
     }).reason,
     'cooldown-active'
   );
+
+  // Consecutive user restart after previous relaunch succeeded (lastAttachedAtMs >= lastRelaunchAtMs) -> relaunch immediately after 3s debounce!
+  assert.deepEqual(
+    evaluateColdStartDecision({
+      proc: { pid: 107, elapsedSec: 2, hasCdpFlag: false, hasUpdatedFlag: false },
+      guard: { lastRelaunchAtMs: now - 15000, lastAttachedAtMs: now - 12000, handledPids: [106] },
+      nowMs: now
+    }),
+    { action: 'relaunch', reason: 'cold-start-unflagged' }
+  );
+
+  // Tiny 3s debounce still guards against duplicate trigger on the same launch
+  assert.equal(
+    evaluateColdStartDecision({
+      proc: { pid: 108, elapsedSec: 1, hasCdpFlag: false, hasUpdatedFlag: false },
+      guard: { lastRelaunchAtMs: now - 1500, lastAttachedAtMs: now - 500, handledPids: [] },
+      nowMs: now
+    }).reason,
+    'cooldown-active'
+  );
+});
+
+test('isActiveWalForProcess ignores stale WAL flushed by previous closed session while protecting active generation', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-wal-guard-'));
+  try {
+    const walFile = path.join(tmpDir, '58b8db37-d172-4d42-b1dd-19915dba962e.db-wal');
+    fs.writeFileSync(walFile, Buffer.alloc(8192, 1));
+    const nowMs = Date.now();
+
+    // Case 1: WAL was flushed 3s ago by previous Antigravity on Cmd+Q; new Antigravity started 2s ago -> NOT active!
+    const prevQuitTime = new Date(nowMs - 3000);
+    fs.utimesSync(walFile, prevQuitTime, prevQuitTime);
+    assert.equal(
+      isActiveWalForProcess(tmpDir, { windowSec: 15, procElapsedSec: 2, nowMs }),
+      false
+    );
+
+    // Case 2: New Antigravity started 6s ago; WAL was flushed 8s ago (before boot) -> NOT active!
+    const beforeBootTime = new Date(nowMs - 8000);
+    fs.utimesSync(walFile, beforeBootTime, beforeBootTime);
+    assert.equal(
+      isActiveWalForProcess(tmpDir, { windowSec: 15, procElapsedSec: 6, nowMs }),
+      false
+    );
+
+    // Case 3: Antigravity started 10s ago and WAL was actively written 1s ago (after boot + 2.5s) -> ACTIVE!
+    const activeGenTime = new Date(nowMs - 1000);
+    fs.utimesSync(walFile, activeGenTime, activeGenTime);
+    assert.equal(
+      isActiveWalForProcess(tmpDir, { windowSec: 15, procElapsedSec: 10, nowMs }),
+      true
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('resolveCdpStatus distinguishes ready, missing_opt_in_flag, stale_port_file, and app_not_running', () => {

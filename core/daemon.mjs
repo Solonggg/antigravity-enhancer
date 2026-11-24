@@ -74,13 +74,56 @@ const promptSuggester = promptSuggestMod
     })
   : null;
 
+let activePidLock = null;
+let syncTimer = null;
+let daemonStopping = false;
+
+function stopSyncLoop() {
+  daemonStopping = true;
+  if (syncTimer) {
+    clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+}
+
+function scheduleNextSync(overrideDelayMs = null) {
+  if (daemonStopping || cliOpts.runOnce) return;
+  if (syncTimer) {
+    clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+  const delay =
+    Number.isFinite(overrideDelayMs) && overrideDelayMs >= 100
+      ? overrideDelayMs
+      : typeof cdpManager.getNextSyncDelayMs === 'function'
+      ? cdpManager.getNextSyncDelayMs()
+      : 2500;
+  syncTimer = setTimeout(async () => {
+    syncTimer = null;
+    if (daemonStopping) return;
+    try {
+      await cdpManager.sync();
+    } finally {
+      scheduleNextSync();
+    }
+  }, delay);
+}
+
 const cdpManager = createCdpManager({
   bundleCtrl,
   metricsReader,
   promptSuggester,
   hasSqlite: () => Boolean(DatabaseSync && sqliteMetricsMod),
   runOnce: cliOpts.runOnce,
-  safeMode: cliOpts.safeMode
+  safeMode: cliOpts.safeMode,
+  getPidLock: () => activePidLock,
+  onSuperseded: () => {
+    stopSyncLoop();
+    process.exit(0);
+  },
+  onFastWatch: (delayMs) => {
+    if (syncTimer) scheduleNextSync(delayMs);
+  }
 });
 
 export {
@@ -103,7 +146,10 @@ export async function startDaemon() {
   if (globalThis.__ag_daemon_started) return;
   globalThis.__ag_daemon_started = true;
 
-  acquireDaemonPidLock(cliOpts.cliChannel, cliOpts.runOnce, () => cdpManager.closeAll());
+  activePidLock = acquireDaemonPidLock(cliOpts.cliChannel, cliOpts.runOnce, () => {
+    stopSyncLoop();
+    cdpManager.closeAll();
+  });
   if (cliOpts.runOnce && promptSuggester && typeof promptSuggester.stop === 'function') {
     process.on('exit', () => promptSuggester.stop({ terminateAll: true }));
   }
@@ -120,7 +166,7 @@ export async function startDaemon() {
     cdpManager.closeAll();
     process.exit(0);
   } else {
-    setInterval(() => cdpManager.sync(), 2500);
+    scheduleNextSync();
   }
 }
 

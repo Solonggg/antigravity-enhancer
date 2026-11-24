@@ -5,7 +5,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execSync, spawn, spawnSync } from 'node:child_process';
-import { isConfirmedDaemonPid, resolveStableNodeExecPath } from '../shared.mjs';
+import {
+  findRunningDaemonPids,
+  getDaemonPidCandidateDirs,
+  inspectDaemonPidStatus,
+  isPidAlive,
+  resolveStableNodeExecPath,
+  terminateDaemonPids
+} from '../shared.mjs';
 
 export const SERVICE_IDS = Object.freeze({
   installDirName: 'codex-theme',
@@ -37,27 +44,116 @@ function bootoutMacLabel(uid, label) {
   }
 }
 
-export function stopRunningDaemonProcesses() {
-  const tmpDir = os.tmpdir();
-  const stopped = [];
-  try {
-    for (const f of fs.readdirSync(tmpDir)) {
-      if (LEGACY_PID_PREFIXES.some((prefix) => f.startsWith(prefix)) && f.endsWith('.pid')) {
-        const pidPath = path.join(tmpDir, f);
-        const pid = parseInt(fs.readFileSync(pidPath, 'utf8').trim(), 10);
-        if (isConfirmedDaemonPid(pid, LEGACY_EXTRA_PATTERNS)) {
+export function stopActiveSystemService({ platform = process.platform } = {}) {
+  if (platform === 'darwin') {
+    const uid = process.getuid ? process.getuid() : 501;
+    bootoutMacLabel(uid, SERVICE_IDS.macLabel);
+  } else if (platform === 'linux') {
+    try {
+      execSync(`systemctl --user stop ${SERVICE_IDS.linuxUnit} 2>/dev/null || true`);
+    } catch {}
+  } else if (platform === 'win32') {
+    try {
+      spawnSync('schtasks', ['/End', '/TN', SERVICE_IDS.winTaskName], {
+        stdio: 'ignore',
+        windowsHide: true,
+        timeout: 4000
+      });
+    } catch {}
+  }
+}
+
+export function stopRunningDaemonProcesses({
+  platform = process.platform,
+  pidDirs = getDaemonPidCandidateDirs({ platform }),
+  excludePids = [process.pid],
+  findRunningDaemonPidsImpl = findRunningDaemonPids,
+  inspectDaemonPidStatusImpl = inspectDaemonPidStatus,
+  terminateDaemonPidsImpl = terminateDaemonPids,
+  isPidAliveImpl = isPidAlive
+} = {}) {
+  const excludeSet = new Set(
+    (Array.isArray(excludePids) ? excludePids : []).map((p) => Number(p)).filter((p) => Number.isInteger(p) && p > 0)
+  );
+  const pidEntries = [];
+  for (const dir of Array.isArray(pidDirs) ? pidDirs : []) {
+    try {
+      if (!dir || !fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (LEGACY_PID_PREFIXES.some((prefix) => f.startsWith(prefix)) && f.endsWith('.pid')) {
+          const pidPath = path.join(dir, f);
+          let pid = NaN;
           try {
-            process.kill(pid, 'SIGTERM');
-            stopped.push(pid);
+            pid = parseInt(fs.readFileSync(pidPath, 'utf8').trim(), 10);
           } catch {}
+          pidEntries.push({ pidPath, pid });
         }
-        try {
-          fs.unlinkSync(pidPath);
-        } catch {}
+      }
+    } catch {}
+  }
+
+  const targetPids = new Set();
+  try {
+    for (const pid of findRunningDaemonPidsImpl({
+      platform,
+      excludePids: [...excludeSet],
+      extraPatterns: LEGACY_EXTRA_PATTERNS
+    })) {
+      if (Number.isInteger(pid) && pid > 0 && !excludeSet.has(pid)) {
+        targetPids.add(pid);
       }
     }
   } catch {}
-  return stopped;
+
+  const pidStatusByPid = new Map();
+  for (const entry of pidEntries) {
+    const pid = entry.pid;
+    if (!Number.isInteger(pid) || pid <= 0 || excludeSet.has(pid)) continue;
+    if (targetPids.has(pid)) {
+      pidStatusByPid.set(pid, 'daemon');
+      continue;
+    }
+    if (pidStatusByPid.has(pid)) continue;
+    let status = 'unknown';
+    try {
+      status = inspectDaemonPidStatusImpl(pid, LEGACY_EXTRA_PATTERNS, {
+        platform,
+        excludePids: [...excludeSet],
+        isAliveImpl: isPidAliveImpl
+      });
+    } catch {
+      status = 'unknown';
+    }
+    pidStatusByPid.set(pid, status);
+    if (status === 'daemon') {
+      targetPids.add(pid);
+    }
+  }
+
+  const termRes = terminateDaemonPidsImpl([...targetPids], {
+    platform,
+    excludePids: [...excludeSet],
+    isAliveImpl: isPidAliveImpl
+  });
+  const stillAliveSet = new Set(termRes?.stillAlive || []);
+
+  for (const { pidPath, pid } of pidEntries) {
+    if (excludeSet.has(pid)) continue;
+    const isCorrupt = !Number.isInteger(pid) || pid <= 0;
+    const status = pidStatusByPid.get(pid);
+    const confirmedGoneOrNonDaemon =
+      isCorrupt ||
+      status === 'dead' ||
+      status === 'other' ||
+      (!stillAliveSet.has(pid) && !isPidAliveImpl(pid));
+    if (confirmedGoneOrNonDaemon) {
+      try {
+        fs.unlinkSync(pidPath);
+      } catch {}
+    }
+  }
+
+  return Array.isArray(termRes?.stopped) ? termRes.stopped : [];
 }
 
 /**
@@ -108,6 +204,7 @@ export function registerSystemService(targetDir, wrapperDaemon) {
   const home = os.homedir();
   const nodeExecPath = resolveStableNodeExecPath();
   cleanupLegacyServices();
+  stopActiveSystemService();
   stopRunningDaemonProcesses();
 
   if (process.platform === 'darwin') {
@@ -185,7 +282,9 @@ WantedBy=default.target
 `;
     fs.writeFileSync(serviceFile, unitContent, 'utf8');
     try {
-      execSync(`systemctl --user daemon-reload && systemctl --user enable --now ${SERVICE_IDS.linuxUnit} 2>/dev/null || true`);
+      execSync(
+        `systemctl --user daemon-reload && systemctl --user enable --now ${SERVICE_IDS.linuxUnit} && systemctl --user restart ${SERVICE_IDS.linuxUnit} 2>/dev/null || true`
+      );
     } catch {}
     return { platform: 'linux', serviceFile, nodeExecPath, runningNow: true };
   }
@@ -292,9 +391,24 @@ WantedBy=default.target
 }
 
 export function restartSystemService(targetDir, realDaemon, wrapperDaemon) {
+  stopActiveSystemService();
+  stopRunningDaemonProcesses();
   if (process.platform === 'darwin') {
     const uid = process.getuid ? process.getuid() : 501;
+    const activePlist = path.join(os.homedir(), 'Library', 'LaunchAgents', `${SERVICE_IDS.macLabel}.plist`);
     try {
+      if (fs.existsSync(activePlist)) {
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          try {
+            execSync(
+              `launchctl bootstrap gui/${uid} "${activePlist}" 2>/dev/null || launchctl load -w "${activePlist}" 2>/dev/null`
+            );
+            break;
+          } catch {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+          }
+        }
+      }
       execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_IDS.macLabel} 2>/dev/null || true`);
     } catch {}
   } else if (process.platform === 'linux') {
@@ -302,7 +416,6 @@ export function restartSystemService(targetDir, realDaemon, wrapperDaemon) {
       execSync(`systemctl --user restart ${SERVICE_IDS.linuxUnit} 2>/dev/null || true`);
     } catch {}
   } else if (process.platform === 'win32') {
-    stopRunningDaemonProcesses();
     let restartedViaTask = false;
     try {
       const r = spawnSync('schtasks', ['/Run', '/TN', SERVICE_IDS.winTaskName], {
@@ -327,7 +440,6 @@ export function restartSystemService(targetDir, realDaemon, wrapperDaemon) {
 export function uninstallSystemService(targetDir) {
   const home = os.homedir();
   cleanupLegacyServices();
-  stopRunningDaemonProcesses();
 
   if (process.platform === 'darwin') {
     const uid = process.getuid ? process.getuid() : 501;
@@ -348,6 +460,7 @@ export function uninstallSystemService(targetDir) {
     const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
     const vbsFile = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', SERVICE_IDS.winVbsName);
     const localVbs = path.join(targetDir, SERVICE_IDS.winVbsName);
+    stopActiveSystemService({ platform: 'win32' });
     try {
       spawnSync('schtasks', ['/Delete', '/TN', SERVICE_IDS.winTaskName, '/F'], {
         stdio: 'ignore',
@@ -366,4 +479,6 @@ export function uninstallSystemService(targetDir) {
       if (fs.existsSync(localVbs)) fs.unlinkSync(localVbs);
     } catch {}
   }
+
+  stopRunningDaemonProcesses();
 }

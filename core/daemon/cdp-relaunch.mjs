@@ -45,10 +45,36 @@ export function evaluateColdStartDecision({
   }
   const handledPids = Array.isArray(guard.handledPids) ? guard.handledPids.map((n) => Number(n)).filter(Boolean) : [];
   const lastAt = Number(guard.lastRelaunchAtMs) || 0;
-  if (handledPids.includes(proc.pid) || nowMs - lastAt < 60000) {
-    return { action: 'exempt', reason: 'cooldown-active', deltaMs: nowMs - lastAt };
+  const lastAttachedAt = Number(guard.lastAttachedAtMs) || 0;
+  const prevRelaunchSucceeded = lastAt > 0 && lastAttachedAt >= lastAt;
+  const cooldownMs = prevRelaunchSucceeded ? 3000 : 60000;
+  if (handledPids.includes(proc.pid) || (lastAt > 0 && nowMs - lastAt < cooldownMs)) {
+    return { action: 'exempt', reason: 'cooldown-active', deltaMs: nowMs - lastAt, cooldownMs };
   }
   return { action: 'relaunch', reason: proc.hasUpdatedFlag ? 'cold-start-post-update' : 'cold-start-unflagged' };
+}
+
+export function isActiveWalForProcess(
+  conversationsDir,
+  { windowSec = 15, procElapsedSec = Infinity, nowMs = Date.now() } = {}
+) {
+  if (!conversationsDir) return false;
+  // A brand-new cold-starting process (< 4s) cannot already be mid-LLM-generation;
+  // any recent .db-wal mtime comes from the previous Antigravity instance flushing on quit.
+  if (Number.isFinite(procElapsedSec) && procElapsedSec < 4) return false;
+  const windowMs = windowSec * 1000;
+  const procStartMs = Number.isFinite(procElapsedSec) ? nowMs - procElapsedSec * 1000 : 0;
+  try {
+    if (!fs.existsSync(conversationsDir)) return false;
+    for (const name of fs.readdirSync(conversationsDir)) {
+      if (!name.endsWith('.db-wal')) continue;
+      const st = fs.statSync(path.join(conversationsDir, name), { throwIfNoEntry: false });
+      if (!st || st.size <= 4096 || nowMs - st.mtimeMs >= windowMs) continue;
+      if (procStartMs > 0 && st.mtimeMs <= procStartMs + 2500) continue;
+      return true;
+    }
+  } catch {}
+  return false;
 }
 
 export function createCdpRelaunchController() {
@@ -69,9 +95,11 @@ export function createCdpRelaunchController() {
     }
   }
 
-  function probeRunningHostProcesses(channelMode = 'auto', endpoints = []) {
+  function probeRunningHostProcesses(channelMode = 'auto', endpoints = [], reachableChannels = null) {
     const allowStable = channelMode !== 'insiders';
     const allowInsiders = channelMode !== 'stable';
+    const isChannelReachable = (ch, ep) =>
+      reachableChannels instanceof Set ? reachableChannels.has(ch) : Boolean(ep && readPortFromFile(ep.portFile));
 
     if (process.platform === 'darwin') {
       const res = spawnSync('ps', ['-axo', 'pid=,etime=,command='], {
@@ -115,14 +143,14 @@ export function createCdpRelaunchController() {
       const insidersEp = endpoints.find((ep) => ep.channel === 'insiders');
       const stableExemptPid = exemptedHostPidByChannel.get('stable');
       const insidersExemptPid = exemptedHostPidByChannel.get('insiders');
-      if (allowStable && !(stableEp && readPortFromFile(stableEp.portFile)) && !(stableExemptPid && isPidAlive(stableExemptPid))) {
+      if (allowStable && !isChannelReachable('stable', stableEp) && !(stableExemptPid && isPidAlive(stableExemptPid))) {
         imageSpecs.push({ channel: 'stable', img: 'Antigravity.exe' });
       }
       if (
         allowInsiders &&
         insidersEp &&
         insidersEp.channelInstalled &&
-        !readPortFromFile(insidersEp.portFile) &&
+        !isChannelReachable('insiders', insidersEp) &&
         !(insidersExemptPid && isPidAlive(insidersExemptPid))
       ) {
         imageSpecs.push({ channel: 'insiders', img: 'Antigravity - Insiders.exe' });
@@ -252,24 +280,28 @@ export function createCdpRelaunchController() {
     return [];
   }
 
-  function hasActiveConversationWalWrite(endpoint, windowSec = 15) {
-    if (!endpoint || !endpoint.conversationsDir) return false;
-    const now = Date.now();
-    const windowMs = windowSec * 1000;
+  function markCdpAttached(channel = 'stable') {
     try {
-      if (!fs.existsSync(endpoint.conversationsDir)) return false;
-      for (const name of fs.readdirSync(endpoint.conversationsDir)) {
-        if (!name.endsWith('.db-wal')) continue;
-        const st = fs.statSync(path.join(endpoint.conversationsDir, name), { throwIfNoEntry: false });
-        if (st && st.size > 4096 && now - st.mtimeMs < windowMs) {
-          return true;
-        }
+      const guard = readJsonGuardSafe(CDP_RELAUNCH_GUARD_FILE);
+      const lastRelaunchAtMs = Number(guard.lastRelaunchAtMs) || 0;
+      const lastAttachedAtMs = Number(guard.lastAttachedAtMs) || 0;
+      if (lastRelaunchAtMs > 0 && lastAttachedAtMs < lastRelaunchAtMs) {
+        const nextGuard = Object.assign({}, guard, {
+          lastAttachedAtMs: Date.now(),
+          lastAttachedChannel: channel
+        });
+        fs.writeFileSync(CDP_RELAUNCH_GUARD_FILE, `${JSON.stringify(nextGuard, null, 2)}\n`, 'utf8');
       }
     } catch {}
-    return false;
   }
 
-  function maybeAutoRelaunchColdStartWithoutCdp({ activeConfig, safeMode = false, runOnce = false, rootDir = '' }) {
+  function maybeAutoRelaunchColdStartWithoutCdp({
+    activeConfig,
+    safeMode = false,
+    runOnce = false,
+    rootDir = '',
+    reachableChannels = null
+  }) {
     if (
       safeMode ||
       runOnce ||
@@ -281,13 +313,21 @@ export function createCdpRelaunchController() {
     }
 
     pruneStalePids();
-    const hostProcs = probeRunningHostProcesses(activeConfig.channel, activeConfig.endpoints || []);
+    const hostProcs = probeRunningHostProcesses(activeConfig.channel, activeConfig.endpoints || [], reachableChannels);
     if (hostProcs.length === 0) return false;
 
     for (const proc of hostProcs) {
       const ep = (activeConfig.endpoints || []).find((e) => e.channel === proc.channel) || activeConfig.endpoints?.[0];
-      const hasActivePort = Boolean(ep && readPortFromFile(ep.portFile));
-      const hasActiveWal = !hasActivePort && hasActiveConversationWalWrite(ep, 15);
+      const hasActivePort =
+        reachableChannels instanceof Set
+          ? reachableChannels.has(proc.channel)
+          : Boolean(ep && readPortFromFile(ep.portFile));
+      const hasActiveWal =
+        !hasActivePort &&
+        isActiveWalForProcess(ep?.conversationsDir, {
+          windowSec: 15,
+          procElapsedSec: proc.elapsedSec
+        });
       const guard = readJsonGuardSafe(CDP_RELAUNCH_GUARD_FILE);
       const decision = evaluateColdStartDecision({
         proc,
@@ -308,6 +348,10 @@ export function createCdpRelaunchController() {
           );
         } else if (decision.reason === 'active-wal-write') {
           console.log(`[Daemon] Skipped cold-start auto-relaunch for PID ${proc.pid}: active conversation WAL write within 15s.`);
+        } else if (decision.reason === 'cooldown-active') {
+          console.log(
+            `[Daemon] Skipped cold-start auto-relaunch for PID ${proc.pid}: relaunch cooldown active (${Math.max(0, Math.round(((decision.cooldownMs || 60000) - (decision.deltaMs || 0)) / 1000))}s remaining).`
+          );
         }
         continue;
       }
@@ -384,5 +428,5 @@ export function createCdpRelaunchController() {
     return false;
   }
 
-  return { maybeAutoRelaunchColdStartWithoutCdp };
+  return { maybeAutoRelaunchColdStartWithoutCdp, markCdpAttached };
 }
