@@ -74,13 +74,24 @@ const promptSuggester = promptSuggestMod
     })
   : null;
 
+let activePidLock = null;
+let syncTimer = null;
+
 const cdpManager = createCdpManager({
   bundleCtrl,
   metricsReader,
   promptSuggester,
   hasSqlite: () => Boolean(DatabaseSync && sqliteMetricsMod),
   runOnce: cliOpts.runOnce,
-  safeMode: cliOpts.safeMode
+  safeMode: cliOpts.safeMode,
+  getPidLock: () => activePidLock,
+  onSuperseded: () => {
+    if (syncTimer) {
+      clearInterval(syncTimer);
+      syncTimer = null;
+    }
+    process.exit(0);
+  }
 });
 
 export {
@@ -103,7 +114,13 @@ export async function startDaemon() {
   if (globalThis.__ag_daemon_started) return;
   globalThis.__ag_daemon_started = true;
 
-  acquireDaemonPidLock(cliOpts.cliChannel, cliOpts.runOnce, () => cdpManager.closeAll());
+  activePidLock = acquireDaemonPidLock(cliOpts.cliChannel, cliOpts.runOnce, () => {
+    if (syncTimer) {
+      clearInterval(syncTimer);
+      syncTimer = null;
+    }
+    cdpManager.closeAll();
+  });
   if (cliOpts.runOnce && promptSuggester && typeof promptSuggester.stop === 'function') {
     process.on('exit', () => promptSuggester.stop({ terminateAll: true }));
   }
@@ -120,7 +137,7 @@ export async function startDaemon() {
     cdpManager.closeAll();
     process.exit(0);
   } else {
-    setInterval(() => cdpManager.sync(), 2500);
+    syncTimer = setInterval(() => cdpManager.sync(), 2500);
   }
 }
 

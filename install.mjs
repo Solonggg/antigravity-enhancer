@@ -18,7 +18,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { stripUtf8Bom } from './core/shared.mjs';
+import { findRunningDaemonPids, stripUtf8Bom } from './core/shared.mjs';
 import { sha256File, buildManifest, verifyCoreIntegrity, buildDistZip } from './core/installer/manifest.mjs';
 import { detectEnvironment, ensureArgvRemoteDebugging, inspectLiveWindow } from './core/installer/env.mjs';
 import {
@@ -92,13 +92,24 @@ async function runDoctor() {
 
   const cdpMissingFlag = !live.reachable && env.cdpStatus === 'missing_opt_in_flag';
   const remediation = cdpMissingFlag ? `node ${JSON.stringify(path.join(targetDir, 'install.mjs'))} relaunch` : null;
+  const daemonPids = findRunningDaemonPids({
+    excludePids: [process.pid],
+    extraPatterns: ['theme-patch', 'antigravity-font-daemon.mjs', 'antigravity-codex-daemon.mjs']
+  });
+  const duplicateDaemons = daemonPids.length > 1;
 
   const report = {
-    ok: Boolean(env.nodeMinOk && integrity.ok && !cdpMissingFlag),
+    ok: Boolean(env.nodeMinOk && integrity.ok && !cdpMissingFlag && !duplicateDaemons),
     node: {
       version: env.nodeVer,
       execPath: process.execPath,
       tier: env.tier
+    },
+    daemon: {
+      runningCount: daemonPids.length,
+      pids: daemonPids,
+      duplicateDetected: duplicateDaemons,
+      remediation: duplicateDaemons ? `node ${JSON.stringify(path.join(targetDir, 'install.mjs'))} install` : null
     },
     antigravity: {
       channel: env.channel,

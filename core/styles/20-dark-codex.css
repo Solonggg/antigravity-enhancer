@@ -48,13 +48,13 @@ html[data-ag-preset] body[data-agy-theme].dark {
   --link: #60A5FA !important;
   --success: #34D399 !important;
 
-  --ag-composer-tray-bg: #282828;
-  --ag-composer-tray-border: rgba(255, 255, 255, 0.06);
+  --ag-composer-tray-bg: #262626;
+  --ag-composer-tray-border: transparent;
   --ag-composer-card-bg: #363636;
-  --ag-composer-card-border: rgba(255, 255, 255, 0.08);
-  --ag-composer-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.30), 0 1px 3px rgba(0, 0, 0, 0.22);
-  --ag-composer-card-focus-border: rgba(255, 255, 255, 0.16);
-  --ag-composer-card-focus-shadow: 0 6px 24px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.26);
+  --ag-composer-card-border: rgba(255, 255, 255, 0.07);
+  --ag-composer-card-shadow: 0 3px 12px rgba(0, 0, 0, 0.24), 0 1px 3px rgba(0, 0, 0, 0.18);
+  --ag-composer-card-focus-border: rgba(255, 255, 255, 0.12);
+  --ag-composer-card-focus-shadow: 0 5px 18px rgba(0, 0, 0, 0.34), 0 2px 5px rgba(0, 0, 0, 0.22);
   --ag-composer-top-fg: #D4D4D4;
   --ag-composer-top-hover-bg: rgba(255, 255, 255, 0.08);
   --ag-composer-top-hover-fg: #FFFFFF;
@@ -88,22 +88,26 @@ body[data-agy-theme][data-newux-theme="onyx"].dark .agy-sidebar-row[data-selecte
 }
 
 /* Composer dark mode outer tray & inner floating card overrides */
-:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#antigravity\.agentSidePanelInputBox, [id="antigravity.agentSidePanelInputBox"], .surface-composer.bg-card-border) {
-  background-color: #282828 !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  border-radius: 24px !important;
+:is(html[data-ag-theme-mode="dark"] body, body.dark) :is(#antigravity\.agentSidePanelInputBox, [id="antigravity.agentSidePanelInputBox"], .surface-composer, .surface-composer.bg-card-border) {
+  --nux-composer-frame-radius: 21px;
+  --nux-composer-radius: 20px;
+  padding: 1px !important;
+  background-color: #262626 !important;
+  border: 0 !important;
+  border-radius: 21px !important;
   box-shadow: none !important;
 }
 
 body[data-agy-theme].dark .surface-composer > .surface-composer-card,
 body[data-agy-theme][data-newux-theme="onyx"].dark .surface-composer > .surface-composer-card,
 :is(html[data-ag-theme-mode="dark"] body, body.dark) :is(
+  .surface-composer > .surface-composer-card,
   .surface-composer-card.bg-card,
   [id="antigravity.agentSidePanelInputBox"] .surface-composer-card,
   [id="antigravity.agentSidePanelInputBox"] > div.bg-card
 ) {
   background-color: #363636 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
   border-radius: 20px !important;
   box-shadow: var(--ag-composer-card-shadow) !important;
 }
@@ -113,7 +117,7 @@ body[data-agy-theme][data-newux-theme="onyx"].dark .surface-composer > .surface-
   .surface-composer-card:focus-within,
   [id="antigravity.agentSidePanelInputBox"]:focus-within .surface-composer-card
 ) {
-  border-color: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
   box-shadow: var(--ag-composer-card-focus-shadow) !important;
 }
 
