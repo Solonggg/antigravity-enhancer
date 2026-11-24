@@ -6,7 +6,9 @@
   function normalizeModelMatchKey(label) {
     return String(label || '')
       .toLowerCase()
-      .replace(/\(extra\)|\bextra\b/g, 'xhigh')
+      .replace(/\(\s*extra[\s_-]*high\s*\)|\bextra[\s_-]*high\b/g, 'extrahigh')
+      .replace(/\(\s*x[\s_-]*high\s*\)|\bx[\s_-]*high\b/g, 'extrahigh')
+      .replace(/\(\s*extra\s*\)|\bextra\b/g, 'extrahigh')
       .replace(/[^a-z0-9]+/g, '');
   }
 

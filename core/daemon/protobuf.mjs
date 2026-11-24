@@ -72,6 +72,14 @@ export function extractMaxStepIdx(raw) {
   return maxVal;
 }
 
+export function formatDisplayModelName(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  return s
+    .replace(/\(\s*(?:x[\s_-]*high|extra[\s_-]*high)\s*\)/gi, '(Extra High)')
+    .replace(/\bx[\s_-]*high\b/gi, 'Extra High');
+}
+
 export function parseGenMetadataRow(r) {
   const top = parseProto(r.data);
   const chat = top.has(1) ? parseProto(top.get(1)) : new Map();
@@ -92,10 +100,11 @@ export function parseGenMetadataRow(r) {
   const respTok = usage.get(10) || 0;
   const ttft = (ttftMap.get(1) || 0) + (ttftMap.get(2) || 0) / 1e9;
   const stream = (streamMap.get(1) || 0) + (streamMap.get(2) || 0) / 1e9;
-  const modelName =
+  const rawModelName =
     (chat.has(21) ? Buffer.from(chat.get(21)).toString('utf8').trim() : '') ||
     (chat.has(19) ? Buffer.from(chat.get(19)).toString('utf8').trim() : '') ||
     (planner.has(28) ? Buffer.from(planner.get(28)).toString('utf8').trim() : '');
+  const modelName = formatDisplayModelName(rawModelName);
   const meta17 = chat.has(17) ? parseProto(chat.get(17)) : null;
   const errCode = meta17 && meta17.has(5) ? meta17.get(5) : 0;
   const errMsg = meta17 && meta17.has(3) ? Buffer.from(meta17.get(3)).toString('utf8').trim() : '';

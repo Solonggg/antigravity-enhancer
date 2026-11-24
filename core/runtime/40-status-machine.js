@@ -46,8 +46,17 @@
   function _fallbackNormalizeModelKey(label) {
     return String(label || '')
       .toLowerCase()
-      .replace(/\(extra\)|\bextra\b/g, 'xhigh')
+      .replace(/\(\s*extra[\s_-]*high\s*\)|\bextra[\s_-]*high\b/g, 'extrahigh')
+      .replace(/\(\s*x[\s_-]*high\s*\)|\bx[\s_-]*high\b/g, 'extrahigh')
+      .replace(/\(\s*extra\s*\)|\bextra\b/g, 'extrahigh')
       .replace(/[^a-z0-9]+/g, '');
+  }
+
+  function _formatDisplayModelLabel(label) {
+    return String(label || '')
+      .trim()
+      .replace(/\(\s*(?:x[\s_-]*high|extra[\s_-]*high)\s*\)/gi, '(Extra High)')
+      .replace(/\bx[\s_-]*high\b/gi, 'Extra High');
   }
 
   function computeStatusSnapshot({
@@ -146,8 +155,10 @@
         ? '后台统计服务响应超时（超过 ' + fmtWaitDuration((now - hbMs) / 1000) + ' 未收到心跳）'
         : '';
 
-    const curNorm = normModelFn(curModel);
-    const lastNorm = st && st.lastModelLabel ? normModelFn(st.lastModelLabel) : '';
+    const curModelDisplay = _formatDisplayModelLabel(curModel);
+    const lastModelDisplay = _formatDisplayModelLabel(st && st.lastModelLabel ? st.lastModelLabel : '');
+    const curNorm = normModelFn(curModelDisplay);
+    const lastNorm = lastModelDisplay ? normModelFn(lastModelDisplay) : '';
     const modelSwitched = Boolean(curNorm && lastNorm && curNorm !== lastNorm);
 
     const isModelWaiting = Boolean(isExecuting && waitDurSec >= cfg.SLOW_WAIT_SEC);
@@ -223,9 +234,9 @@
             '）</strong>' +
             (modelSwitched
               ? '<br/>检测到模型已从 <code>' +
-                escapeStatusHtml(st.lastModelLabel) +
+                escapeStatusHtml(lastModelDisplay) +
                 '</code> 切换为 <code>' +
-                escapeStatusHtml(curModel) +
+                escapeStatusHtml(curModelDisplay) +
                 '</code>，无法复用原 KV 缓存，全量重算耗时较长属正常现象。建议下次保持原模型压缩后再切换模型。'
               : '<br/>系统正在汇总长对话历史，生成检查点后将自动恢复蓝色常亮。');
         } else if (effKind === 'tool') {
@@ -246,9 +257,9 @@
             '）</strong>' +
             (modelSwitched
               ? '<br/>模型已切换为 <code>' +
-                escapeStatusHtml(curModel) +
+                escapeStatusHtml(curModelDisplay) +
                 '</code>（原 <code>' +
-                escapeStatusHtml(st.lastModelLabel) +
+                escapeStatusHtml(lastModelDisplay) +
                 '</code>），当前正在冷启动预填充上下文，完成后即可恢复高速输出。'
               : '<br/>长上下文预填充或后端排队耗时较长，连接仍处于激活状态。');
         }

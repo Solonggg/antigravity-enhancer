@@ -197,7 +197,7 @@ export async function checkForUpdates({
         : UPDATE_REPO.branch;
   } else if (cmp < 0) {
     status = 'ahead';
-  } else if (diff.totalDiff > 0) {
+  } else if (compareSemver(remoteMainVersion, currentVersion) >= 0 && diff.totalDiff > 0) {
     status = 'main_diff';
     canSyncMain = true;
     targetRef = UPDATE_REPO.branch;

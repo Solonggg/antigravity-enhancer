@@ -39,6 +39,8 @@ const NOW = 1_700_000_000_000;
 
 test('Part 30 helpers normalize model labels, detect superseded step errors, and prioritize retry text', () => {
   assert.equal(normalizeModelMatchKey('Gemini 4 Hydrogen Extra'), normalizeModelMatchKey('Gemini 4 Hydrogen (XHigh)'));
+  assert.equal(normalizeModelMatchKey('Gemini 4 Neon Extra High'), normalizeModelMatchKey('Gemini 4 Neon (XHigh)'));
+  assert.equal(normalizeModelMatchKey('Gemini 4 Neon Extra High'), normalizeModelMatchKey('Gemini 4 Neon (Extra High)'));
   assert.equal(
     isSupersededStepError({
       lastStepType: 15,
@@ -124,7 +126,21 @@ test('Waiting >= 60s transitions to amber slow pulse and notes model switch cold
   assert.equal(snap.chipClass, 'is-slow');
   assert.equal(snap.chipText, '压缩中 · 1m15s');
   assert.ok(snap.noteHtml.includes('无法复用原 KV 缓存'));
+  assert.ok(snap.noteHtml.includes('Gemini 4 Hydrogen (Extra High)'));
   assert.ok(snap.noteHtml.includes('Gemini 4 Carbon (Medium)'));
+
+  // Same model with Extra High vs legacy (XHigh) label must NOT trigger false model-switch warning
+  const sameModelSnap = computeStatusSnapshot({
+    now: NOW,
+    st: { pendingKind: 'llm', lastModelLabel: 'Gemini 4 Neon (XHigh)' },
+    live: { matched: true, hasProvider: true, hasTrajectory: true, effRunStatus: 2 },
+    waitSec: 120,
+    lastHb: NOW - 1000,
+    curModel: 'Gemini 4 Neon Extra High'
+  });
+  assert.equal(sameModelSnap.visualState, 'slow');
+  assert.ok(!sameModelSnap.noteHtml.includes('模型已切换'), 'Extra High and (XHigh) must match as the same model');
+  assert.ok(sameModelSnap.noteHtml.includes('长上下文预填充或后端排队耗时较长'));
 });
 
 test('Model retry transitions to amber slow pulse with live countdown', () => {

@@ -80,7 +80,7 @@ test('parseGenMetadataRow decodes token usage, TTFT, streaming duration, model n
   assert.equal(parsed.ctx, 20550);
   assert.equal(parsed.maxCtx, 512000);
   assert.equal(parsed.maxStepIdx, 16);
-  assert.equal(parsed.modelName, 'Gemini 4 Hydrogen (XHigh)');
+  assert.equal(parsed.modelName, 'Gemini 4 Hydrogen (Extra High)');
   assert.equal(parsed.thinkTok, 250);
   assert.equal(parsed.respTok, 350);
   assert.equal(parsed.ttft, 1.25);

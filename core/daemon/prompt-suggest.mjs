@@ -297,20 +297,34 @@ export function resolveAgyCliBinary({ platform = process.platform, env = process
   return '';
 }
 
-export function createPromptSuggestionEngine({ getConfig, runOnce = false, resolveBin = resolveAgyCliBinary } = {}) {
+const STOP_KILL_TIMEOUT_MS = 4000;
+const RESTART_GRACE_MS = 150;
+
+export function createPromptSuggestionEngine({
+  getConfig,
+  runOnce = false,
+  resolveBin = resolveAgyCliBinary,
+  spawnImpl = spawn,
+  execFileImpl = execFileAsync,
+  stopKillTimeoutMs = STOP_KILL_TIMEOUT_MS,
+  restartGraceMs = RESTART_GRACE_MS,
+  maxTurnsPerWorker = MAX_TURNS_PER_WORKER
+} = {}) {
   let agyBinCache = undefined;
   let proc = null;
   let activeModel = '';
   let ready = false;
   let warmed = false;
   let turns = 0;
-  let buf = '';
   let pending = null;
   let starting = false;
+  let pendingStart = false;
   let restartTimer = null;
   let modelsCache = null;
   let modelsCacheAt = 0;
   let modelsInFlight = null;
+  const stoppingProcs = new Set();
+  const stoppingKillTimers = new Map();
   const queue = [];
   const cache = new Map();
 
@@ -332,11 +346,101 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
     return m && !m.startsWith('-') && /^[a-zA-Z0-9._:/-]+$/.test(m) ? m : 'gemini-3.8-flash-low';
   }
 
-  function stop() {
+  function destroyChildStreams(child) {
+    if (!child) return;
+    try { child.stdin?.destroy?.(); } catch {}
+    try { child.stdout?.destroy?.(); } catch {}
+    try { child.stderr?.destroy?.(); } catch {}
+  }
+
+  function clearStoppingChild(child) {
+    if (!child) return;
+    stoppingProcs.delete(child);
+    const kt = stoppingKillTimers.get(child);
+    if (kt) {
+      clearTimeout(kt);
+      stoppingKillTimers.delete(child);
+    }
+    destroyChildStreams(child);
+  }
+
+  function maybeScheduleAfterStopping() {
+    if (stoppingProcs.size > 0 || !pendingStart) return;
+    pendingStart = false;
+    if (isEnabled() && !proc) {
+      scheduleStart(restartGraceMs);
+    }
+  }
+
+  function retireChild(child, { wantRestart = false } = {}) {
+    if (!child) return;
+    if (wantRestart) pendingStart = true;
+
+    const alreadyExited =
+      (child.exitCode !== null && child.exitCode !== undefined) ||
+      (child.signalCode !== null && child.signalCode !== undefined);
+    if (alreadyExited) {
+      clearStoppingChild(child);
+      maybeScheduleAfterStopping();
+      return;
+    }
+
+    if (!stoppingProcs.has(child)) {
+      stoppingProcs.add(child);
+      const finalizeStopped = () => {
+        if (!stoppingProcs.has(child)) return;
+        clearStoppingChild(child);
+        maybeScheduleAfterStopping();
+      };
+      if (typeof child.once === 'function') {
+        child.once('exit', finalizeStopped);
+        child.once('close', finalizeStopped);
+      }
+      const killTimer = setTimeout(() => {
+        stoppingKillTimers.delete(child);
+        const stillAlive =
+          (child.exitCode === null || child.exitCode === undefined) &&
+          (child.signalCode === null || child.signalCode === undefined);
+        if (stillAlive) {
+          let killThrew = false;
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            killThrew = true;
+          }
+          if (killThrew) {
+            finalizeStopped();
+            return;
+          }
+        } else {
+          finalizeStopped();
+          return;
+        }
+        destroyChildStreams(child);
+      }, stopKillTimeoutMs);
+      if (typeof killTimer.unref === 'function') killTimer.unref();
+      stoppingKillTimers.set(child, killTimer);
+    }
+
+    try { child.stdin?.end?.(); } catch {}
+    let termThrew = false;
+    try {
+      child.kill('SIGTERM');
+    } catch {
+      termThrew = true;
+    }
+    if (termThrew) {
+      clearStoppingChild(child);
+      maybeScheduleAfterStopping();
+    }
+  }
+
+  function stop({ wantRestart = false, terminateAll = false } = {}) {
     if (restartTimer) {
       clearTimeout(restartTimer);
       restartTimer = null;
     }
+    pendingStart = Boolean(wantRestart);
     const old = proc;
     proc = null;
     ready = false;
@@ -356,10 +460,16 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
       dropped.resolve('');
     }
     if (old) {
-      try {
-        old.stdin.end();
-        old.kill('SIGTERM');
-      } catch {}
+      retireChild(old, { wantRestart });
+    } else if (wantRestart && stoppingProcs.size === 0 && isEnabled()) {
+      pendingStart = false;
+      scheduleStart(restartGraceMs);
+    }
+    if (terminateAll) {
+      for (const lingering of [...stoppingProcs]) {
+        try { lingering.stdin?.end?.(); } catch {}
+        try { lingering.kill('SIGTERM'); } catch {}
+      }
     }
   }
 
@@ -369,26 +479,27 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
       restartTimer = null;
       if (isEnabled()) ensureStarted();
     }, delayMs);
+    if (typeof restartTimer.unref === 'function') restartTimer.unref();
   }
 
   function restart() {
-    stop();
-    if (isEnabled()) {
-      scheduleStart(300);
-    }
+    stop({ wantRestart: isEnabled() });
   }
 
   function sendWarmup() {
     if (pending || warmed || !proc) return;
+    const owner = proc;
     const warmupPrompt = `${PROMPT_SUGGEST_SYSTEM_INSTRUCTION}\n\n收到以上规则请只回复：OK`;
     const timer = setTimeout(() => {
-      if (pending && pending.isWarmup) {
+      if (proc !== owner) return;
+      if (pending && pending.isWarmup && pending.owner === owner) {
         pending = null;
         restart();
       }
     }, WARMUP_TIMEOUT_MS);
 
     pending = {
+      owner,
       isWarmup: true,
       settled: true,
       chunks: [],
@@ -397,11 +508,11 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
     };
 
     try {
-      proc.stdin.write(JSON.stringify({ event: 'user', message: { content: warmupPrompt } }) + '\n');
+      owner.stdin.write(JSON.stringify({ event: 'user', message: { content: warmupPrompt } }) + '\n');
     } catch {
       clearTimeout(timer);
-      pending = null;
-      restart();
+      if (pending && pending.owner === owner) pending = null;
+      if (proc === owner) restart();
     }
   }
 
@@ -411,9 +522,11 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
       ensureStarted();
       return;
     }
+    const owner = proc;
     const item = queue.shift();
     const timer = setTimeout(() => {
-      if (pending && pending.resolve === item.resolve) {
+      if (proc !== owner) return;
+      if (pending && pending.owner === owner && pending.resolve === item.resolve) {
         const cur = pending;
         pending = null;
         if (!cur.settled) {
@@ -425,6 +538,7 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
     }, TURN_TIMEOUT_MS);
 
     pending = {
+      owner,
       isWarmup: false,
       settled: false,
       chunks: [],
@@ -433,12 +547,12 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
     };
 
     try {
-      proc.stdin.write(JSON.stringify({ event: 'user', message: { content: item.promptText } }) + '\n');
+      owner.stdin.write(JSON.stringify({ event: 'user', message: { content: item.promptText } }) + '\n');
     } catch {
       clearTimeout(timer);
-      pending = null;
+      if (pending && pending.owner === owner) pending = null;
       item.resolve('');
-      restart();
+      if (proc === owner) restart();
     }
   }
 
@@ -447,18 +561,24 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
     const model = getTargetModel();
     if (proc && !proc.killed && proc.exitCode === null) {
       if (activeModel === model) return true;
-      stop();
+      // Model changed: retire old worker and wait for exit before spawning the replacement
+      stop({ wantRestart: true });
+      return true;
+    }
+    if (stoppingProcs.size > 0) {
+      pendingStart = true;
+      return true;
     }
     if (starting) return true;
     const bin = getAgyBin();
     if (!bin) return false;
 
     starting = true;
+    pendingStart = false;
     activeModel = model;
     ready = false;
     warmed = false;
     turns = 0;
-    buf = '';
 
     let child;
     try {
@@ -468,7 +588,7 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
         : `${path.join(os.homedir(), '.local', 'bin')}:/opt/homebrew/bin:/usr/local/bin:`;
       const useShell = isWin && /\.(cmd|bat)$/i.test(bin);
       const effortFlag = deriveEffortFromModelId(model);
-      child = spawn(
+      child = spawnImpl(
         bin,
         [
           '--model',
@@ -494,20 +614,27 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
       );
     } catch {
       starting = false;
+      while (queue.length > 0) {
+        const dropped = queue.shift();
+        dropped.resolve('');
+      }
       return false;
     }
 
     proc = child;
     starting = false;
+    let childBuf = '';
     if (child.stderr && typeof child.stderr.resume === 'function') {
       child.stderr.resume();
     }
 
     child.stdout.on('data', (chunk) => {
-      buf += chunk.toString('utf8');
-      const lines = buf.split('\n');
-      buf = lines.pop() || '';
+      if (proc !== child) return;
+      childBuf += chunk.toString('utf8');
+      const lines = childBuf.split('\n');
+      childBuf = lines.pop() || '';
       for (const line of lines) {
+        if (proc !== child) return;
         if (!line.trim()) continue;
         let evt;
         try {
@@ -520,7 +647,7 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
           sendWarmup();
         } else if (evt.event === 'step_update') {
           const su = evt.step_update;
-          if (su && su.step_type === 'agent_response' && pending) {
+          if (su && su.step_type === 'agent_response' && pending && pending.owner === child) {
             if (su.text_delta) pending.chunks.push(String(su.text_delta));
             if (su.state === 'DONE' && !pending.settled && pending.chunks.length > 0) {
               pending.settled = true;
@@ -528,9 +655,9 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
             }
           }
         } else if (evt.event === 'result') {
-          const cur = pending;
-          pending = null;
+          const cur = pending && pending.owner === child ? pending : null;
           if (cur) {
+            pending = null;
             clearTimeout(cur.timer);
             if (!cur.settled) {
               cur.settled = true;
@@ -543,21 +670,26 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
           } else {
             turns += 1;
           }
-          if (turns >= MAX_TURNS_PER_WORKER) {
+          if (turns >= maxTurnsPerWorker) {
             restart();
-          } else {
-            drain();
+            return;
           }
+          drain();
         }
       }
     });
 
-    child.on('error', () => stop());
+    child.on('error', () => {
+      if (proc !== child) return;
+      stop();
+    });
     child.on('exit', () => {
+      destroyChildStreams(child);
+      if (proc !== child) return;
       ready = false;
       warmed = false;
       proc = null;
-      if (pending) {
+      if (pending && pending.owner === child) {
         const cur = pending;
         pending = null;
         clearTimeout(cur.timer);
@@ -646,7 +778,7 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
           ? ''
           : `${path.join(os.homedir(), '.local', 'bin')}:/opt/homebrew/bin:/usr/local/bin:`;
         const useShell = isWin && /\.(cmd|bat)$/i.test(bin);
-        const { stdout } = await execFileAsync(bin, ['models'], {
+        const { stdout } = await execFileImpl(bin, ['models'], {
           cwd: os.tmpdir(),
           timeout: MODELS_FETCH_TIMEOUT_MS,
           maxBuffer: 512 * 1024,
@@ -691,7 +823,8 @@ export function createPromptSuggestionEngine({ getConfig, runOnce = false, resol
     getStatus: () => ({
       available: Boolean(getAgyBin()),
       running: Boolean(proc && !proc.killed && proc.exitCode === null),
-      starting,
+      starting: Boolean(starting || (stoppingProcs.size > 0 && pendingStart) || restartTimer),
+      stoppingCount: stoppingProcs.size,
       ready,
       warmed,
       turns,

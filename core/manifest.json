@@ -1,16 +1,16 @@
 {
   "name": "antigravity-codex-theme",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "minNodeVersion": "22.13.0",
   "fullMetricsNodeVersion": "22.13.0",
   "files": {
     "daemon.mjs": {
-      "sha256": "0f0213664f5ae9908e20422d08292787fab1d4cc16be11a6c718fa609b3679d3",
-      "bytes": 4308
+      "sha256": "b818fa758c83344c65ab6ca4e95ce54502e59b06ac106b0d451c7582a59e4c17",
+      "bytes": 4265
     },
     "daemon/cdp-bridge.mjs": {
-      "sha256": "2990c6d260afacb77fc7e2b1b66e0b229519bd34a1f0fdb23e0b425e917c6d11",
-      "bytes": 44423
+      "sha256": "4fb57388d908d1eb79aa556cd2e6380e083d57bf97e834e6dd2917a1eeeb69d8",
+      "bytes": 45865
     },
     "daemon/cdp-relaunch.mjs": {
       "sha256": "51e9a4212942252547594c3294a6cccba426d081b5934a69fab3068aa21370c1",
@@ -21,39 +21,39 @@
       "bytes": 2123
     },
     "daemon/paths.mjs": {
-      "sha256": "e770da02479c9d9a2de3cfb76673d8c9fc38bacbbf42dfd8940bc9fd7490683d",
+      "sha256": "3078fc9a653146f7e558034b045592f3e32b7e5a9ea449e9e6d3383206eb0a7e",
       "bytes": 17375
     },
     "daemon/prompt-suggest.mjs": {
-      "sha256": "4393186a7ff90794b7a5ff2f773536785058ee93c8fc447c9eee040ef8048931",
-      "bytes": 19607
+      "sha256": "fe346ce102abb5d9a1ac76d68e8e7e054380ab2f042c7b3c2255a2c05be52407",
+      "bytes": 23971
     },
     "daemon/protobuf.mjs": {
-      "sha256": "9e1cff0e22d8361fc80a9b7d4076a0071b64bbab036386d644713e2d82cf3367",
-      "bytes": 7375
+      "sha256": "b8424744ae867c6265c649d731572e9334e8d053840f0c99a94167a29019baa1",
+      "bytes": 7683
     },
     "daemon/sqlite-metrics.mjs": {
       "sha256": "b15ba8b56e50d56a58cdf4fab367ab8019991052b42dd9d73ddafcadc81284d7",
       "bytes": 21971
     },
     "daemon/ssh-remote.mjs": {
-      "sha256": "4915c2323ec6ade10eaa66c56afbc830ef7ed243df467b1457e013a40ccc4145",
-      "bytes": 18428
+      "sha256": "6be0da34d9b0a78449ed34bceba5b11c087d884d9c6fa1519b1502052b49ab1a",
+      "bytes": 33526
     },
     "daemon/telemetry-renderer.mjs": {
       "sha256": "186e438512a681e2eccbbdbc15f771ce30f7602af6a27f5d56ee6dda1d636ef7",
       "bytes": 19694
     },
     "daemon/updater.mjs": {
-      "sha256": "fad4936acd20f324a9f47648d6f2f9d03f0567fc89c47e25be1127f82c1c5e8b",
-      "bytes": 14622
+      "sha256": "a2f1d2b52d52f7aa5905d07791842552e40ac02035bfc6527f0f25b957d30e1a",
+      "bytes": 14679
     },
     "i18n.json": {
       "sha256": "4e5e9f2f2404d441b980c4025ba5b481b4b4dc46cd786e35113ae3b4c17a3091",
       "bytes": 117394
     },
     "installer/cdp-launch.mjs": {
-      "sha256": "40f301d7f6d63ccbb6b169ada5aec39e500520da5ce63ce8e1e7f105063a5134",
+      "sha256": "0011b3215fb5aba302c40d49a22a047bdc112cc5fb89eb42d1eef38db228d8fa",
       "bytes": 28826
     },
     "installer/env.mjs": {
@@ -73,7 +73,7 @@
       "bytes": 13336
     },
     "runtime/00-head.js": {
-      "sha256": "dcea4f2a181631476b569bad0cba70da4f090951e30d4ce96b3a7786c5fe023d",
+      "sha256": "f73d8c28f9d0e3d8623782d0b39e0d8ef0f49a73f25591a0f0e751960529e0a9",
       "bytes": 13063
     },
     "runtime/10-guards.js": {
@@ -85,12 +85,12 @@
       "bytes": 6481
     },
     "runtime/30-antigravity-probe.js": {
-      "sha256": "df553bf2ee72675ca24e9f94ff1a0cd797571e728032c32d2ea1994302545514",
-      "bytes": 7875
+      "sha256": "9847c4ec37e79ba5fd81c19f4ad680ef5db8f674014afd22f1523a260a199149",
+      "bytes": 8037
     },
     "runtime/40-status-machine.js": {
-      "sha256": "a51d9c7db5b64e488af435adb4469d88ebf38ad52eb423180842939490b62efb",
-      "bytes": 11902
+      "sha256": "1692f0b2a222f624f4bf0811f58ef63a3647343f40bb29ffd902adc431dcf1b5",
+      "bytes": 12471
     },
     "runtime/50-telemetry-ui.js": {
       "sha256": "72bad06cc53c5eed6268e77c092e2dcc8cc6daecc6f415209121f235304b0749",
@@ -137,8 +137,8 @@
       "bytes": 2817
     },
     "styles/45-settings-ui.css": {
-      "sha256": "6890ea0957446f28361a4d99531e1f770f6d7d4968a188bff94cfd3b03ae7e43",
-      "bytes": 23359
+      "sha256": "4ce253e7937b9461e8bbbc88e278bb29d377001bafe61550f07123cbad82442a",
+      "bytes": 25573
     }
   }
 }

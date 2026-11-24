@@ -103,11 +103,9 @@ export async function startDaemon() {
   if (globalThis.__ag_daemon_started) return;
   globalThis.__ag_daemon_started = true;
 
-  acquireDaemonPidLock(cliOpts.cliChannel, cliOpts.runOnce);
-  if (promptSuggester && typeof promptSuggester.stop === 'function') {
-    process.on('exit', () => promptSuggester.stop());
-    process.on('SIGINT', () => promptSuggester.stop());
-    process.on('SIGTERM', () => promptSuggester.stop());
+  acquireDaemonPidLock(cliOpts.cliChannel, cliOpts.runOnce, () => cdpManager.closeAll());
+  if (cliOpts.runOnce && promptSuggester && typeof promptSuggester.stop === 'function') {
+    process.on('exit', () => promptSuggester.stop({ terminateAll: true }));
   }
   trimDaemonLogsIfNeeded(cliOpts.runOnce);
   bundleCtrl.rebuildBundleIfNeeded();

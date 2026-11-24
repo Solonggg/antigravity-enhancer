@@ -356,6 +356,24 @@ test('updater validates semver/paths, verifies SHA-256, backs up core/, and pres
     assert.equal(fs.readFileSync(path.join(coreDir, 'daemon.mjs'), 'utf8'), '// new daemon v1.2.2\n');
     assert.equal(fs.readFileSync(path.join(tmpDir, 'core.prev', 'daemon.mjs'), 'utf8'), '// old daemon v1.2.1\n');
     assert.equal(JSON.parse(fs.readFileSync(path.join(userDir, 'config.json'), 'utf8')).customFlag, 42);
+
+    // Stale raw.githubusercontent.com CDN cache serving an older manifest version must not offer main_diff downgrade
+    const staleCdnChk = await checkForUpdates({
+      targetDir: tmpDir,
+      fetchJson: async (url) => {
+        if (url.includes('manifest.json')) {
+          return {
+            name: 'antigravity-codex-theme',
+            version: '1.2.1',
+            files: { 'daemon.mjs': { sha256: oldHash, bytes: oldContent.length } }
+          };
+        }
+        return { tag_name: 'v1.2.2', html_url: 'https://github.com/nkjDSLcvanv/antigravity-codex-theme/releases/tag/v1.2.2' };
+      }
+    });
+    assert.equal(staleCdnChk.ok, true);
+    assert.equal(staleCdnChk.status, 'up_to_date');
+    assert.equal(staleCdnChk.canSyncMain, false);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
