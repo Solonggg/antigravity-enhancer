@@ -23,12 +23,12 @@
   <img src="https://img.shields.io/static/v1?label=Antigravity&message=2.30.x%20~%202.34.0%2B&color=2B7FFF&labelColor=363636" alt="Antigravity 2.30.x ~ 2.34.0+">
   <img src="https://img.shields.io/static/v1?label=Node.js&message=%3E%3D%2022.13.0&color=339933&labelColor=363636&logo=nodedotjs&logoColor=white" alt="Node.js >= 22.13.0">
   <img src="https://img.shields.io/static/v1?label=platform&message=macOS%20%C2%B7%20Windows%20%C2%B7%20Linux&color=4B5563&labelColor=363636" alt="macOS · Windows · Linux">
-  <img src="https://img.shields.io/static/v1?label=version&message=v1.3.3&color=2B7FFF&labelColor=363636" alt="version v1.3.3">
+  <img src="https://img.shields.io/static/v1?label=version&message=v1.3.2&color=2B7FFF&labelColor=363636" alt="version v1.3.2">
   <a href="LICENSE"><img src="https://img.shields.io/static/v1?label=license&message=MIT&color=10B981&labelColor=363636" alt="MIT License"></a>
 </p>
 
 <p>
-  <a href="#命令行安装"><img src="https://img.shields.io/static/v1?label=CLI%20INSTALL&message=v1.3.3&color=2B7FFF&style=for-the-badge&labelColor=181818&logo=gnubash&logoColor=white" alt="CLI Install"></a>
+  <a href="#命令行安装"><img src="https://img.shields.io/static/v1?label=CLI%20INSTALL&message=v1.3.2&color=2B7FFF&style=for-the-badge&labelColor=181818&logo=gnubash&logoColor=white" alt="CLI Install"></a>
   <a href="#ai-一键安装"><img src="https://img.shields.io/static/v1?label=AI%20ONE-CLICK&message=SKILL.md&color=0D9488&style=for-the-badge&labelColor=181818&logo=googlegemini&logoColor=white" alt="AI One-Click Install"></a>
   <a href="#按需安装"><img src="https://img.shields.io/static/v1?label=SELECTIVE%20INSTALL&message=--only&color=6366F1&style=for-the-badge&labelColor=181818&logo=codesandbox&logoColor=white" alt="Selective Install"></a>
 </p>
@@ -136,7 +136,7 @@ node install.mjs install --only i18n --minimal
 | `node install.mjs sparse-paths --only <features>` | 输出指定模块组合的文件路径清单 |
 | `node install.mjs rollback` | 回滚至上一份备份的 `core/` 版本 |
 | `node install.mjs uninstall` | 停止服务、清理自启项与启动参数，恢复英文界面与原生样式 |
-| `npm run check` / `npm test` | 校验全部 `.mjs` 与拼接后的前端脚本语法，运行 59 项 `node:test` 单元测试 |
+| `npm run check` / `npm test` | 校验全部 `.mjs` 与拼接后的前端脚本语法，运行 50 项 `node:test` 单元测试 |
 
 </details>
 
@@ -240,7 +240,7 @@ node install.mjs install --only i18n --minimal
 
 ### 源码定制（`core/`）
 
-核心代码拆分为 34 个独立模块，配套 59 项 `node:test` 单元测试：
+核心代码拆分为 34 个独立模块，配套 50 项 `node:test` 单元测试：
 
 | 定制方向 | 对应文件 |
 | :--- | :--- |
@@ -271,7 +271,7 @@ antigravity-codex-theme/
 │   ├── shared.mjs              # 公共工具函数
 │   ├── i18n.json               # 1,900+ 界面词典
 │   └── manifest.json           # core/ 文件完整性哈希清单
-├── tests/                      # 59 项 node:test 单元测试
+├── tests/                      # 50 项 node:test 单元测试
 ├── user/                       # 个人配置与热重载目录
 ├── install.mjs                 # 安装、更新、重启与运维 CLI
 ├── SKILL.md                    # AI Agent 操作指南
@@ -297,7 +297,7 @@ antigravity-codex-theme/
 
 早期调研 Antigravity 的 CDP 运行时注入、`WeakMap` 原地文本替换、SQLite 增量读取及 `2.33.0` `--remote-debugging-port=0` 启动接力方案时，参考了 [Anarcadia/chuanban-antigravity-theme-patch](https://github.com/Anarcadia/chuanban-antigravity-theme-patch)（MIT），在此一并致谢。
 
-本项目在此基础上重写了整体架构并扩展了以下能力：34 个独立模块与 59 项单元测试及 CI、无外部字体依赖的 Codex 昼夜主题、嵌入式 **Codex 主题** 设置面板与面板内检查更新、四态会话状态机与一/二级用量面板及每轮悬浮详情卡、可选 SSH Remote 只读统计与输入预测，以及 `--only` 按需安装与 `user/` 热重载分层。
+本项目在此基础上重写了整体架构并扩展了以下能力：34 个独立模块与 50 项单元测试及 CI、无外部字体依赖的 Codex 昼夜主题、嵌入式 **Codex 主题** 设置面板与面板内检查更新、四态会话状态机与一/二级用量面板及每轮悬浮详情卡、可选 SSH Remote 只读统计与输入预测，以及 `--only` 按需安装与 `user/` 热重载分层。
 
 基于 [MIT License](LICENSE) 开源，欢迎 Fork 与定制。
 

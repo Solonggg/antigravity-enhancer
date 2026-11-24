@@ -33,13 +33,13 @@ html:not([data-ag-theme-mode="dark"]) body:not(.dark) {
   --glass-highlight: transparent !important;
   --home-glow: transparent !important;
 
-  --ag-composer-tray-bg: #F7F7F8;
-  --ag-composer-tray-border: transparent;
+  --ag-composer-tray-bg: #F3F4F6;
+  --ag-composer-tray-border: rgba(0, 0, 0, 0.04);
   --ag-composer-card-bg: #FFFFFF;
-  --ag-composer-card-border: rgba(0, 0, 0, 0.07);
-  --ag-composer-card-shadow: 0 2px 10px rgba(0, 0, 0, 0.035), 0 1px 2px rgba(0, 0, 0, 0.02);
-  --ag-composer-card-focus-border: rgba(0, 0, 0, 0.10);
-  --ag-composer-card-focus-shadow: 0 4px 16px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03);
+  --ag-composer-card-border: rgba(0, 0, 0, 0.08);
+  --ag-composer-card-shadow: 0 4px 16px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03);
+  --ag-composer-card-focus-border: rgba(0, 0, 0, 0.14);
+  --ag-composer-card-focus-shadow: 0 6px 24px rgba(0, 0, 0, 0.07), 0 2px 6px rgba(0, 0, 0, 0.04);
   --ag-composer-top-fg: #171717;
   --ag-composer-top-hover-bg: rgba(0, 0, 0, 0.06);
   --ag-composer-top-hover-fg: #0D0D0D;

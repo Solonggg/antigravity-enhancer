@@ -10,11 +10,7 @@ import {
   isAllowedOrigin as sharedIsAllowedOrigin,
   readPortFromFile,
   fetchTargetsFromPort,
-  isConfirmedDaemonPid,
-  isPidAlive,
-  findRunningDaemonPids,
-  getDaemonPidCandidateDirs,
-  terminateDaemonPids
+  isConfirmedDaemonPid
 } from '../shared.mjs';
 import { ROOT_DIR } from './paths.mjs';
 import { createCdpRelaunchController } from './cdp-relaunch.mjs';
@@ -135,121 +131,36 @@ export function isSkippedTargetCoolingDown(entry, currentOrigin, nowMs = Date.no
   return nowMs < Number(entry.nextRetryAtMs || 0);
 }
 
-const DAEMON_EXTRA_PATTERNS = ['theme-patch', 'antigravity-font-daemon.mjs', 'antigravity-codex-daemon.mjs'];
-const DAEMON_PID_PREFIXES = ['ag-theme-daemon-', 'ag-codex-daemon-'];
-
-export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutdown = null, options = {}) {
-  const {
-    platform = process.platform,
-    pidDir = os.tmpdir(),
-    pidDirs = null,
-    selfPid = process.pid,
-    registerSignals = true,
-    findRunningDaemonPidsImpl = findRunningDaemonPids,
-    isConfirmedDaemonPidImpl = isConfirmedDaemonPid,
-    terminateDaemonPidsImpl = terminateDaemonPids,
-    isPidAliveImpl = isPidAlive
-  } = options || {};
-
-  if (runOnce) {
-    return {
-      pidFile: null,
-      ownerPid: selfPid,
-      isOwner: () => true,
-      getOwnerPid: () => selfPid,
-      release: () => {}
-    };
-  }
-
+export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutdown = null) {
+  if (runOnce) return;
   const pidKey = cliChannel || 'default';
-  const pidFile = path.join(pidDir, `ag-codex-daemon-${pidKey}.pid`);
-  const scanDirs = Array.isArray(pidDirs)
-    ? pidDirs
-    : getDaemonPidCandidateDirs({ platform, tmpDir: pidDir });
-
+  const pidFile = path.join(os.tmpdir(), `ag-codex-daemon-${pidKey}.pid`);
   try {
-    const oldPids = new Set();
-
-    // 1. Collect confirmed daemon PIDs from existing .pid files across candidate temp dirs
-    for (const dir of scanDirs) {
-      try {
-        if (!dir || !fs.existsSync(dir)) continue;
-        for (const f of fs.readdirSync(dir)) {
-          if (!f.endsWith('.pid')) continue;
-          const matchesTargetFile = cliChannel
-            ? f === `ag-codex-daemon-${pidKey}.pid` || f.startsWith('ag-theme-daemon-')
-            : DAEMON_PID_PREFIXES.some((prefix) => f.startsWith(prefix));
-          if (!matchesTargetFile) continue;
-          const candidatePath = path.join(dir, f);
-          const oldPid = parseInt(fs.readFileSync(candidatePath, 'utf8').trim(), 10);
-          if (
-            Number.isInteger(oldPid) &&
-            oldPid > 0 &&
-            oldPid !== selfPid &&
-            isConfirmedDaemonPidImpl(oldPid, DAEMON_EXTRA_PATTERNS, {
-              platform,
-              excludePids: [selfPid],
-              isAliveImpl: isPidAliveImpl
-            })
-          ) {
-            oldPids.add(oldPid);
-          }
-        }
-      } catch {}
-    }
-
-    // 2. In default singleton mode, also sweep the real OS process table to catch orphaned daemons
-    //    whose .pid files were missing, overwritten, or written to a different TEMP directory.
-    if (!cliChannel) {
-      try {
-        for (const pid of findRunningDaemonPidsImpl({
-          platform,
-          excludePids: [selfPid],
-          extraPatterns: DAEMON_EXTRA_PATTERNS
-        })) {
-          if (Number.isInteger(pid) && pid > 0 && pid !== selfPid) {
-            oldPids.add(pid);
-          }
-        }
-      } catch {}
-    }
-
-    if (oldPids.size > 0) {
-      const termRes = terminateDaemonPidsImpl([...oldPids], {
-        platform,
-        excludePids: [selfPid],
-        isAliveImpl: isPidAliveImpl
-      });
-      if (termRes?.stopped?.length > 0) {
-        console.log(`[Daemon] Stopped previous daemon instance(s): ${termRes.stopped.join(', ')}`);
-      }
-      if (termRes?.stillAlive?.length > 0) {
-        console.warn(`[Daemon] Previous daemon PID(s) still alive after termination: ${termRes.stillAlive.join(', ')}`);
-      }
-    }
-
-    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
-    fs.writeFileSync(pidFile, String(selfPid), 'utf8');
-  } catch {}
-
-  let shutdownRan = false;
-  const runShutdown = () => {
-    if (!shutdownRan) {
-      shutdownRan = true;
-      if (typeof onShutdown === 'function') {
+    if (fs.existsSync(pidFile)) {
+      const oldPid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+      if (isConfirmedDaemonPid(oldPid, ['antigravity-codex-daemon.mjs', 'codex-theme'])) {
         try {
-          onShutdown();
+          process.kill(oldPid, 'SIGTERM');
         } catch {}
       }
     }
-    try {
-      if (fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8').trim() === String(selfPid)) {
-        fs.unlinkSync(pidFile);
+    fs.writeFileSync(pidFile, String(process.pid), 'utf8');
+    let shutdownRan = false;
+    const runShutdown = () => {
+      if (!shutdownRan) {
+        shutdownRan = true;
+        if (typeof onShutdown === 'function') {
+          try {
+            onShutdown();
+          } catch {}
+        }
       }
-    } catch {}
-  };
-
-  if (registerSignals) {
+      try {
+        if (fs.existsSync(pidFile) && fs.readFileSync(pidFile, 'utf8').trim() === String(process.pid)) {
+          fs.unlinkSync(pidFile);
+        }
+      } catch {}
+    };
     process.on('exit', runShutdown);
     process.on('SIGINT', () => {
       runShutdown();
@@ -259,29 +170,7 @@ export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutd
       runShutdown();
       process.exit(0);
     });
-  }
-
-  const getOwnerPid = () => {
-    try {
-      if (!fs.existsSync(pidFile)) return selfPid;
-      const parsed = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
-      return Number.isInteger(parsed) && parsed > 0 ? parsed : selfPid;
-    } catch {
-      return selfPid;
-    }
-  };
-
-  const isOwner = () => {
-    const holderPid = getOwnerPid();
-    if (holderPid === selfPid) return true;
-    if (isPidAliveImpl(holderPid)) return false;
-    try {
-      fs.writeFileSync(pidFile, String(selfPid), 'utf8');
-    } catch {}
-    return true;
-  };
-
-  return { pidFile, ownerPid: selfPid, isOwner, getOwnerPid, release: runShutdown };
+  } catch {}
 }
 
 export function trimLogFileIfOversized(filePath, maxBytes = 256 * 1024, keepBytes = 64 * 1024) {
@@ -319,10 +208,7 @@ export function createCdpManager({
   promptSuggester = null,
   hasSqlite,
   runOnce = false,
-  safeMode = false,
-  pidLock = null,
-  getPidLock = null,
-  onSuperseded = null
+  safeMode = false
 }) {
   const attachedTargets = new Map();
   const fallbackBackoffUntil = new Map();
@@ -332,29 +218,9 @@ export function createCdpManager({
   const cdpRelaunchCtrl = createCdpRelaunchController();
   const sshRemoteCtrl = createSshRemoteController();
   let isSyncing = false;
-  let superseded = false;
   let syncTickCount = 0;
   let lastTargetDiscoveryMs = 0;
   const TARGET_DISCOVERY_INTERVAL_MS = 12500;
-
-  function checkLockOwnership() {
-    if (superseded) return false;
-    const activeLock = typeof getPidLock === 'function' ? getPidLock() : pidLock;
-    if (runOnce || !activeLock || typeof activeLock.isOwner !== 'function') return true;
-    if (activeLock.isOwner()) return true;
-    superseded = true;
-    const newerPid = typeof activeLock.getOwnerPid === 'function' ? activeLock.getOwnerPid() : null;
-    console.log(
-      `[Daemon] Superseded by newer daemon${newerPid ? ` (PID ${newerPid})` : ''}; shutting down cleanly.`
-    );
-    closeAll();
-    if (typeof onSuperseded === 'function') {
-      onSuperseded(newerPid);
-    } else {
-      process.exit(0);
-    }
-    return false;
-  }
 
   function resolveParentThemeMode(targetId, channel) {
     let curId = targetId;
@@ -508,7 +374,7 @@ export function createCdpManager({
         };
 
         const inject = async () => {
-          if (!hostConfirmed || !checkLockOwnership()) return false;
+          if (!hostConfirmed) return false;
           const { cachedPatchVersion } = bundleCtrl.getState();
           const res = await send('Runtime.evaluate', {
             expression: buildEffectiveScript(),
@@ -633,7 +499,7 @@ export function createCdpManager({
         };
 
         const checkAndInject = async () => {
-          if (!hostConfirmed || !checkLockOwnership()) return;
+          if (!hostConfirmed) return;
           try {
             const { activeConfig, cachedPatchVersion } = bundleCtrl.getState();
             const checkRes = await send('Runtime.evaluate', {
@@ -1067,7 +933,6 @@ export function createCdpManager({
 
   async function sync() {
     if (isSyncing) return;
-    if (!checkLockOwnership()) return;
     isSyncing = true;
     syncTickCount = (syncTickCount + 1) % 6000;
     try {
