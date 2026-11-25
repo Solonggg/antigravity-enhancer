@@ -10,6 +10,7 @@
     }
     document.querySelectorAll('.ag-live-metrics-pill').forEach((el) => el.remove());
     document.querySelectorAll('[data-ag-row-mode]').forEach((el) => el.removeAttribute('data-ag-row-mode'));
+    document.querySelectorAll('[data-ag-turn-row]').forEach((el) => el.removeAttribute('data-ag-turn-row'));
     if (window.__ag_pane_states && typeof window.__ag_pane_states === 'object') {
       for (const k of Object.keys(window.__ag_pane_states)) {
         const ps = window.__ag_pane_states[k];
@@ -1083,12 +1084,17 @@
       for (let i = 0; i < toolbars.length; i++) {
         const tb = toolbars[i];
         tb.querySelectorAll(':scope > button > .ag-turn-metrics').forEach((el) => el.remove());
-        const row = tb.querySelector(':scope > div') || tb.lastElementChild;
+        const directDivs = tb.querySelectorAll(':scope > div');
+        const row = (directDivs.length > 0 ? directDivs[directDivs.length - 1] : null) || tb.lastElementChild;
         if (!row) continue;
         let badge = row.querySelector(':scope > .ag-turn-metrics');
         if (!MODULES.metrics) {
           if (badge) badge.remove();
+          if (row.hasAttribute('data-ag-turn-row')) row.removeAttribute('data-ag-turn-row');
           continue;
+        }
+        if (row.getAttribute('data-ag-turn-row') !== '1') {
+          row.setAttribute('data-ag-turn-row', '1');
         }
         const meta = extractToolbarStepMeta(tb);
         if (!meta) {

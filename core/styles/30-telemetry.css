@@ -716,12 +716,21 @@
   background-color: rgba(255, 255, 255, 0.08);
 }
 
+[data-testid="cascade-system-message-toolbar"] > div:last-child,
+[data-testid="cascade-system-message-toolbar"] > div[data-ag-turn-row="1"] {
+  justify-content: flex-end !important;
+}
+
 .ag-turn-metrics {
   display: inline-flex;
   align-items: center;
+  flex: 0 1 auto;
   gap: 0;
   min-width: 0;
   max-width: 100%;
+  margin-right: auto !important;
+  padding-left: 4px;
+  padding-right: 12px;
   font-family: var(--font-mono, "SF Mono", Menlo, Monaco, ui-monospace, SFMono-Regular, "PingFang SC", Consolas, monospace) !important;
   font-variant-numeric: tabular-nums;
   font-size: 11px !important;

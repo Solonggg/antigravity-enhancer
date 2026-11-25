@@ -64,6 +64,14 @@ test('Assembled runtime JS and CSS parts pass syntax validation and define Codex
   assert.ok(css.includes('#181818'));
   assert.ok(css.includes('#363636'));
   assert.ok(css.includes('.ag-dot-slow'));
+  assert.ok(
+    /\[data-testid="cascade-system-message-toolbar"\]\s*>\s*div:last-child[\s\S]*?justify-content:\s*flex-end/i.test(css),
+    'Turn toolbar action buttons must stay right-aligned'
+  );
+  assert.ok(
+    /\.ag-turn-metrics\s*\{[^}]*margin-right:\s*auto/i.test(css),
+    'Per-turn metrics badge must push native copy/thumbs/time controls to the right edge'
+  );
 
   // Enforce concentric composer tray & inner card corner geometry (outerRadius = innerRadius + outerPadding + outerBorder)
   for (const styleFile of ['00-base.css', '20-dark-codex.css']) {
