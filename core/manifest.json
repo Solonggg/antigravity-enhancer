@@ -49,8 +49,8 @@
       "bytes": 14679
     },
     "i18n.json": {
-      "sha256": "4e5e9f2f2404d441b980c4025ba5b481b4b4dc46cd786e35113ae3b4c17a3091",
-      "bytes": 117394
+      "sha256": "3c2d54346fd25245622a2fc58e22ec4760612c727a7b5ecf374d50adab6c886d",
+      "bytes": 119181
     },
     "installer/cdp-launch.mjs": {
       "sha256": "8b557d91428d8c4527b03c48b21f81183a8042af71f357f16d8eb11be990f3b9",
@@ -97,8 +97,8 @@
       "bytes": 57905
     },
     "runtime/60-i18n-engine.js": {
-      "sha256": "d1cc733a7ea3756b3984e7cac495122eb9280af45b048f1fe9bbf5e830d09013",
-      "bytes": 41463
+      "sha256": "ae9dd2375129426ea209a8d05e3d5facb66eed11f5760171651b00db8aafdbe0",
+      "bytes": 42796
     },
     "runtime/70-prompt-suggestions.js": {
       "sha256": "ec3967100ca7f28c1e59073e8294f80bc432dc45414469946197a6a3e344e545",

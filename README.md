@@ -20,7 +20,7 @@
 
 <p>
   <a href="https://github.com/nkjDSLcvanv/antigravity-codex-theme/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/nkjDSLcvanv/antigravity-codex-theme/ci.yml?branch=main&label=CI&labelColor=363636&logo=githubactions&logoColor=white" alt="CI"></a>
-  <img src="https://img.shields.io/static/v1?label=Antigravity&message=2.30.x%20~%202.34.0%2B&color=2B7FFF&labelColor=363636" alt="Antigravity 2.30.x ~ 2.34.0+">
+  <img src="https://img.shields.io/static/v1?label=Antigravity&message=2.30.x%20~%202.35.1%2B&color=2B7FFF&labelColor=363636" alt="Antigravity 2.30.x ~ 2.35.1+">
   <img src="https://img.shields.io/static/v1?label=Node.js&message=%3E%3D%2022.13.0&color=339933&labelColor=363636&logo=nodedotjs&logoColor=white" alt="Node.js >= 22.13.0">
   <img src="https://img.shields.io/static/v1?label=platform&message=macOS%20%C2%B7%20Windows%20%C2%B7%20Linux&color=4B5563&labelColor=363636" alt="macOS · Windows · Linux">
   <img src="https://img.shields.io/static/v1?label=version&message=v1.3.3&color=2B7FFF&labelColor=363636" alt="version v1.3.3">
@@ -49,12 +49,12 @@ https://github.com/user-attachments/assets/749990f3-f2ce-48e7-8f66-3d7c88a7d49d
 
 ## 快速安装
 
-> **前置要求**：**Node.js >= 22.13.0**（见 [package.json](package.json)）与 Google Antigravity（`2.30.x` ~ `2.34.0+`），已完成 **macOS / Windows / Linux** 桌面端实机安装与卸载验证。插件仅部署至 `~/.gemini/antigravity/codex-theme`，**不修改应用安装包**；若安装前应用已在无调试端口状态下运行，重启一次或在外部终端运行 `node install.mjs relaunch` 即可生效。
+> **前置要求**：**Node.js >= 22.13.0**（见 [package.json](package.json)）与 Google Antigravity（`2.30.x` ~ `2.35.1+`），已完成 **macOS / Windows / Linux** 桌面端实机安装与卸载验证。插件仅部署至 `~/.gemini/antigravity/codex-theme`，**不修改应用安装包**；若安装前应用已在无调试端口状态下运行，重启一次或在外部终端运行 `node install.mjs relaunch` 即可生效。
 
 <details>
 <summary>查看各平台实测细节与 Antigravity 2.33.0+ 调试端口说明</summary>
 
-- **实机验证范围**：覆盖 Antigravity `2.31.0` / `2.32.1` / `2.33.0` / `2.34.0`，包括 macOS `LaunchAgent`、Windows `schtasks` / VBS / 注册表与 `.lnk` 参数配置、Linux `systemd --user` 与 `.desktop` 启动项；GitHub Actions CI 在 `ubuntu-latest` 上持续执行 `npm run check` 与 `npm test`。
+- **实机验证范围**：覆盖 Antigravity `2.31.0` / `2.32.1` / `2.33.0` / `2.34.0` / `2.35.1`，包括 macOS `LaunchAgent`、Windows `schtasks` / VBS / 注册表与 `.lnk` 参数配置、Linux `systemd --user` 与 `.desktop` 启动项；GitHub Actions CI 在 `ubuntu-latest` 上持续执行 `npm run check` 与 `npm test`。
 - **Antigravity `2.33.0+` 适配**：新版本默认关闭本地 `DevToolsActivePort`，需携带 `--remote-debugging-port=0` 启动。macOS 默认采用单图标模式，后台服务仅在冷启动前 `12s`（自动更新重启时 `25s`）内补参接力重启，不中断运行中的会话；Windows 与 Linux 自动为快捷方式或 `.desktop` 追加参数，并兼容写入 `~/.antigravity/argv.json`。
 
 </details>
@@ -136,7 +136,7 @@ node install.mjs install --only i18n --minimal
 | `node install.mjs sparse-paths --only <features>` | 输出指定模块组合的文件路径清单 |
 | `node install.mjs rollback` | 回滚至上一份备份的 `core/` 版本 |
 | `node install.mjs uninstall` | 停止服务、清理自启项与启动参数，恢复英文界面与原生样式 |
-| `npm run check` / `npm test` | 校验全部 `.mjs` 与拼接后的前端脚本语法，运行 60 项 `node:test` 单元测试 |
+| `npm run check` / `npm test` | 校验全部 `.mjs` 与拼接后的前端脚本语法，运行 61 项 `node:test` 单元测试 |
 
 </details>
 
@@ -208,12 +208,12 @@ node install.mjs install --only i18n --minimal
 
 ### 中文界面汉化
 
-内置 `1,900+` 条词条，覆盖 Antigravity `2.30.x` ~ `2.34.0+` 的设置面板（含 Orchestrator 设置与沙箱权限）、菜单、权限选项、侧边栏、旁路提问、插件管理、工具审批状态，以及**模型额度耗尽与 AI 点数不足的动态时间/点数拼接提示**（自动保留英文模型名与思考档位）。采用 `WeakMap` 原地更新文本节点，不破坏 React 绑定；可通过 [user/i18n.override.json](user/i18n.override.json) 覆盖词条，或在设置面板一键关闭恢复英文。
+内置 `1,900+` 条词条，覆盖 Antigravity `2.30.x` ~ `2.35.1+` 的设置面板（含 Orchestrator 设置、输入框发送快捷键与沙箱权限）、菜单、权限选项、侧边栏、旁路提问、插件管理、工具审批状态，以及**模型额度耗尽与 AI 点数不足的动态时间/点数拼接提示**（自动保留英文模型名与思考档位）。采用 `WeakMap` 原地更新文本节点，不破坏 React 绑定；可通过 [user/i18n.override.json](user/i18n.override.json) 覆盖词条，或在设置面板一键关闭恢复英文。
 
 ### Codex 昼夜主题与实用修复
 
-- **浅色 (`codex-pure-white`)**：`#FFFFFF` 主画布、`#F9F9F9` 侧边栏、`#EFEFEF` 选中项、`#2B7FFF` 主按钮，搭配 `#F3F4F6` 外托盘与 `#FFFFFF` 内卡片的双层圆角输入框。
-- **深色 (`codex-dark`)**：中性炭灰深色方案，包含 `#181818` 主画布、`#232323` 侧边栏、`#353535` 选中项、`#282828` 外托盘、`#363636` 输入卡片与 `#2C67C5` 主按钮。
+- **浅色 (`codex-pure-white`)**：`#FFFFFF` 主画布、`#F9F9F9` 侧边栏、`#EFEFEF` 选中项、`#2B7FFF` 主按钮，搭配 `#F7F7F8` 外托盘与 `#FFFFFF` 内卡片的同心圆角输入框。
+- **深色 (`codex-dark`)**：中性炭灰深色方案，包含 `#181818` 主画布、`#232323` 侧边栏、`#353535` 选中项、`#262626` 外托盘、`#363636` 输入卡片与 `#2C67C5` 主按钮。
 - **实用修复**：修复设置弹窗路由死锁，补充 macOS (`Cmd + -/=/0`) 与 Windows/Linux (`Ctrl + -/=/0`) 缩放快捷键，并支持 Antigravity `2.33.0+` 单图标冷启动自动接力。
 
 ## 自定义与卸载
@@ -240,7 +240,7 @@ node install.mjs install --only i18n --minimal
 
 ### 源码定制（`core/`）
 
-核心代码拆分为 34 个独立模块，配套 60 项 `node:test` 单元测试：
+核心代码拆分为 34 个独立模块，配套 61 项 `node:test` 单元测试：
 
 | 定制方向 | 对应文件 |
 | :--- | :--- |
@@ -271,7 +271,7 @@ antigravity-codex-theme/
 │   ├── shared.mjs              # 公共工具函数
 │   ├── i18n.json               # 1,900+ 界面词典
 │   └── manifest.json           # core/ 文件完整性哈希清单
-├── tests/                      # 60 项 node:test 单元测试
+├── tests/                      # 61 项 node:test 单元测试
 ├── user/                       # 个人配置与热重载目录
 ├── install.mjs                 # 安装、更新、重启与运维 CLI
 ├── SKILL.md                    # AI Agent 操作指南
@@ -297,13 +297,13 @@ antigravity-codex-theme/
 
 早期调研 Antigravity 的 CDP 运行时注入、`WeakMap` 原地文本替换、SQLite 增量读取及 `2.33.0` `--remote-debugging-port=0` 启动接力方案时，参考了 [Anarcadia/chuanban-antigravity-theme-patch](https://github.com/Anarcadia/chuanban-antigravity-theme-patch)（MIT），在此一并致谢。
 
-本项目在此基础上重写了整体架构并扩展了以下能力：34 个独立模块与 60 项单元测试及 CI、无外部字体依赖的 Codex 昼夜主题、嵌入式 **Codex 主题** 设置面板与面板内检查更新、四态会话状态机与一/二级用量面板及每轮悬浮详情卡、可选 SSH Remote 只读统计与输入预测，以及 `--only` 按需安装与 `user/` 热重载分层。
+本项目在此基础上重写了整体架构并扩展了以下能力：34 个独立模块与 61 项单元测试及 CI、无外部字体依赖的 Codex 昼夜主题、嵌入式 **Codex 主题** 设置面板与面板内检查更新、四态会话状态机与一/二级用量面板及每轮悬浮详情卡、可选 SSH Remote 只读统计与输入预测，以及 `--only` 按需安装与 `user/` 热重载分层。
 
 基于 [MIT License](LICENSE) 开源，欢迎 Fork 与定制。
 
 ## English Overview
 
-`antigravity-codex-theme` brings Codex light and dark themes, Chinese UI localization, an embedded native Settings panel, and live session telemetry to Google Antigravity (`2.30.x` – `2.34.0+`) without modifying the application bundle. Built as 34 independent modules under `core/` with 60 `node:test` unit tests (requires Node.js `>= 22.13.0`, verified on macOS, Windows, and Linux desktops).
+`antigravity-codex-theme` brings Codex light and dark themes, Chinese UI localization, an embedded native Settings panel, and live session telemetry to Google Antigravity (`2.30.x` – `2.35.1+`) without modifying the application bundle. Built as 34 independent modules under `core/` with 61 `node:test` unit tests (requires Node.js `>= 22.13.0`, verified on macOS, Windows, and Linux desktops).
 
 - **Codex Light & Dark Themes**: Pure white (`codex-pure-white`) and charcoal dark (`codex-dark`) palettes with zero external font dependencies and automatic light/dark switching.
 - **Embedded Settings Panel & Self-Updater**: Mounts directly under **Settings → Codex Theme** to toggle modules, select prompt-suggestion models & thinking effort tiers via a 2-level `agy models` cascading menu, edit `sshHosts`, trigger manual hot-reloads, and check/apply in-panel updates (`node install.mjs update`) with integrity verification and automatic `core.prev/` rollback backups while preserving `user/`.

@@ -282,6 +282,166 @@ test('60-i18n-engine translates dynamic quota-exhausted banners while preserving
   assert.equal(textNodes[5].nodeValue, '查看套餐');
 });
 
+test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking for Ns, Your plan, and running-state aria labels', () => {
+  const i18nDict = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'core', 'i18n.json'), 'utf8'));
+  const code = ['00-head.js', '60-i18n-engine.js', '90-tail.js']
+    .map((f) => fs.readFileSync(path.join(ROOT_DIR, 'core', 'runtime', f), 'utf8'))
+    .join('\n');
+
+  const mkEl = (attrs = {}) => {
+    const map = new Map(Object.entries(attrs));
+    return {
+      nodeType: 1,
+      tagName: 'BUTTON',
+      closest: () => null,
+      matches: () => false,
+      getAttribute: (k) => (map.has(k) ? map.get(k) : null),
+      setAttribute: (k, v) => map.set(k, String(v)),
+      removeAttribute: (k) => map.delete(k),
+      hasAttribute: (k) => map.has(k),
+      querySelectorAll: () => []
+    };
+  };
+
+  const textNodes = [
+    'Prevent sleep',
+    'Keep in menu bar',
+    'Enable notifications for agent',
+    'Enable AI credit overages',
+    'Open links in',
+    'Delete all Remote Agents data',
+    'This computer',
+    'Thinking for 3s',
+    'Your plan: Google AI Ultra',
+    'Input Box',
+    'Choose which key sends a message in the chat composer.',
+    'Quote',
+    'Low',
+    'Extra High'
+  ].map((s) => ({
+    nodeType: 3,
+    nodeValue: s,
+    parentElement: mkEl()
+  }));
+
+  const attrEls = [
+    mkEl({ 'aria-label': 'Model, current: Gemini 4 Neon Extra High, Model cannot be changed while the agent is running' }),
+    mkEl({ 'aria-label': 'Permission mode: Turbo (Permissions cannot be changed while the agent is running)' }),
+    mkEl({ placeholder: 'Search shortcuts...' }),
+    mkEl({ 'aria-label': 'Where the agent runs, current: This computer' })
+  ];
+  const allWalkNodes = [...attrEls, ...textNodes];
+
+  let walkIdx = -1;
+  const headChildren = [];
+  const headEl = { appendChild(el) { el.parentNode = headEl; headChildren.push(el); } };
+  const fakeDoc = {
+    head: headEl,
+    body: {
+      nodeType: 1,
+      tagName: 'BODY',
+      classList: { contains: () => false },
+      style: { removeProperty() {} },
+      closest: () => null,
+      matches: () => false,
+      hasAttribute: () => false,
+      getAttribute: () => null,
+      querySelectorAll: () => []
+    },
+    hidden: false,
+    documentElement: { style: { removeProperty() {} }, setAttribute() {}, getAttribute: () => null, removeAttribute() {} },
+    getElementById: (id) => headChildren.find((e) => e.id === id) || null,
+    createElement: (tag) => ({
+      tagName: tag.toUpperCase(),
+      id: '',
+      textContent: '',
+      style: {},
+      setAttribute() {},
+      removeAttribute() {},
+      remove() {}
+    }),
+    getElementsByTagName: (t) => (t === 'head' ? [headEl] : []),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    createTreeWalker: (_root, _what, filter) => ({
+      currentNode: null,
+      nextNode() {
+        while (walkIdx + 1 < allWalkNodes.length) {
+          walkIdx += 1;
+          const n = allWalkNodes[walkIdx];
+          const verdict = filter && filter.acceptNode ? filter.acceptNode(n) : 1;
+          if (verdict === 1) {
+            this.currentNode = n;
+            return true;
+          }
+        }
+        return false;
+      }
+    }),
+    addEventListener() {},
+    removeEventListener() {}
+  };
+
+  const sandbox = {
+    location: { pathname: '/', href: 'http://127.0.0.1/', search: '' },
+    navigator: { platform: 'MacIntel', onLine: true },
+    history: { pushState() {}, replaceState() {} },
+    addEventListener() {},
+    removeEventListener() {},
+    setInterval: () => 1,
+    clearInterval() {},
+    setTimeout: () => 1,
+    clearTimeout() {},
+    requestAnimationFrame: () => 1,
+    document: fakeDoc,
+    NodeFilter: { SHOW_ELEMENT: 1, SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3 },
+    MutationObserver: class { observe() {} disconnect() {} },
+    __AG_BOOT_PAYLOAD__: {
+      version: '1.3.3-test',
+      platform: 'darwin',
+      enabled: true,
+      cssText: '',
+      customCss: '',
+      themeVars: {},
+      i18nDict,
+      modules: { theme: false, i18n: true, metrics: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false },
+      selectors: {},
+      userConfig: { modules: { i18n: true } },
+      customJs: ''
+    }
+  };
+  sandbox.window = sandbox;
+  sandbox.top = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(`const __AG_BOOT_PAYLOAD__ = globalThis.__AG_BOOT_PAYLOAD__;\n${code}`, sandbox);
+
+  assert.equal(textNodes[0].nodeValue, '防止电脑休眠');
+  assert.equal(textNodes[1].nodeValue, '保持在系统菜单栏');
+  assert.equal(textNodes[2].nodeValue, '启用智能体系统通知');
+  assert.equal(textNodes[3].nodeValue, '启用 AI 点数超额抵扣');
+  assert.equal(textNodes[4].nodeValue, '默认打开链接方式');
+  assert.equal(textNodes[5].nodeValue, '删除所有远程智能体数据');
+  assert.equal(textNodes[6].nodeValue, '本机');
+  assert.equal(textNodes[7].nodeValue, '正在思考 3s');
+  assert.equal(textNodes[8].nodeValue, '当前套餐：Google AI Ultra');
+  assert.equal(textNodes[9].nodeValue, '输入框');
+  assert.equal(textNodes[10].nodeValue, '选择在聊天输入框中发送消息的快捷键。');
+  assert.equal(textNodes[11].nodeValue, '引用');
+  assert.equal(textNodes[12].nodeValue, 'Low');
+  assert.equal(textNodes[13].nodeValue, 'Extra High');
+
+  assert.equal(
+    attrEls[0].getAttribute('aria-label'),
+    '模型，当前：Gemini 4 Neon Extra High（智能体运行期间无法切换模型）'
+  );
+  assert.equal(
+    attrEls[1].getAttribute('aria-label'),
+    '权限模式：全自动放行 (Turbo)（智能体运行期间无法更改权限）'
+  );
+  assert.equal(attrEls[2].getAttribute('placeholder'), '搜索快捷键...');
+  assert.equal(attrEls[3].getAttribute('aria-label'), '智能体运行位置，当前：本机');
+});
+
 test('updater validates semver/paths, verifies SHA-256, backs up core/, and preserves user/', async () => {
   assert.equal(compareSemver('1.2.2', '1.2.1'), 1);
   assert.equal(compareSemver('v1.2.1', '1.2.1'), 0);

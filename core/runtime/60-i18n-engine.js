@@ -12,6 +12,16 @@
   }
 
   const DICT = Object.assign(Object.create(null), boot.i18nDict || {});
+  const LOWER_DICT = Object.create(null);
+  for (const k in DICT) {
+    const v = DICT[k];
+    if (typeof v !== 'string' || !v || v === k) continue;
+    if (!/\s/.test(k)) continue;
+    const low = k.toLowerCase();
+    if (LOWER_DICT[low] === undefined) {
+      LOWER_DICT[low] = v;
+    }
+  }
   window.__ag_i18n_dict = DICT;
 
   let scanBodyFn = null;
@@ -154,6 +164,7 @@
     const RE_WORKED_FOR_UPDATES = /^Worked for\s+([<0-9smhd\s]+?)\s*·\s*(\d+)\s+updates?$/i;
     const RE_WORKED_FOR = /^Worked for\s+([<0-9smhd]+(?:\s+\d+[smhd])*)$/i;
     const RE_THOUGHT_FOR = /^Thought for\s+([<0-9smhd]+(?:\s+\d+[smhd])*)$/i;
+    const RE_THINKING_FOR = /^Thinking for\s+([<0-9smhd]+(?:\s+\d+[smhd])*)$/i;
     const RE_RUNNING_FOR = /^Running\s+for\s+([<0-9smhd]+(?:\s+\d+[smhd])*)$/i;
     const RE_EPHEMERAL_SUMMARY =
       /^(Explored(?:\s+(?:\d+\s+)?(?:files?|artifacts?)(?:\s+and\s+(?:\d+\s+)?(?:files?|artifacts?))?)?|Ran\s+(?:\d+\s+)?commands?|Edited(?:\s+(?:\d+\s+)?(?:files?|artifacts?)(?:\s+and\s+(?:\d+\s+)?(?:files?|artifacts?))?)?)(?:,\s*(explored(?:\s+(?:\d+\s+)?(?:files?|artifacts?)(?:\s+and\s+(?:\d+\s+)?(?:files?|artifacts?))?)?|ran\s+(?:\d+\s+)?commands?|edited(?:\s+(?:\d+\s+)?(?:files?|artifacts?)(?:\s+and\s+(?:\d+\s+)?(?:files?|artifacts?))?)?))*$/i;
@@ -282,7 +293,7 @@
 
       rest = rest.trim();
       if (rest) {
-        const exactRest = DICT[rest] || (rest.endsWith('.') ? DICT[rest.slice(0, -1)] : undefined);
+        const exactRest = lookupRawDict(rest) ?? (rest.endsWith('.') ? lookupRawDict(rest.slice(0, -1)) : undefined);
         if (typeof exactRest === 'string') {
           parts.push(exactRest.endsWith('。') ? exactRest : exactRest + '。');
         } else {
@@ -308,7 +319,7 @@
     const RE_ARIA_PERM_FIXED = /^(?:Permission mode|Agent permissions preset):\s*([^,(]+?)(?:\s*(?:,\s*(.+?)|\(([^)]+)\)))?$/i;
     const RE_ARIA_TURN = /^(?:Conversation turn\s+(\d+)\s+by\s+(User|Agent|Assistant)|Turn\s+(\d+)\s+of\s+(\d+))$/i;
     const RE_ARIA_LOAD_OLDER = /^(?:Load\s+(\d+)\s+older\s+turns?.*|Load older messages,\s*showing\s+(\d+)\s+of\s+(\d+))$/i;
-    const RE_YOUR_PLAN = /^Your Plan:\s*([^\r\n]{1,80})$/;
+    const RE_YOUR_PLAN = /^Your Plan:\s*([^\r\n]{1,80})$/i;
     const RE_AVAILABLE_AI_CREDITS = /^Available AI Credits:\s*([^\r\n]{1,40})$/i;
     const RE_EXITED_CODE_ONLY = /^Exited with code\s+(-?\d+)(\.)?$/i;
     const RE_SUMMARY_EXITED_CODE = /^([^\r\n]{1,220}?)\s*·\s*Exited with code\s+(-?\d+)$/;
@@ -434,15 +445,25 @@
       return baseVal;
     }
 
+    function lookupRawDict(trimmed) {
+      if (Object.prototype.hasOwnProperty.call(DICT, trimmed)) {
+        return DICT[trimmed];
+      }
+      if (trimmed.indexOf(' ') !== -1) {
+        return LOWER_DICT[trimmed.toLowerCase()];
+      }
+      return undefined;
+    }
+
     function computeTextTranslation(raw, contextEl) {
       if (!raw) return null;
       const trimmed = raw.trim();
       if (!trimmed) return null;
 
-      // 1. 无原型静态词典 O(1) 精确匹配 + 上下文消歧（附句尾句号自动回退；函数式 replace 防止 $&/$1 二次展开）
-      let replacement = resolveContextualDictTranslation(trimmed, contextEl, DICT[trimmed]);
+      // 1. 无原型静态词典 O(1) 精确匹配（多词附 Sentence/Title Case 大小写回退）+ 上下文消歧（附句尾句号自动回退；函数式 replace 防止 $&/$1 二次展开）
+      let replacement = resolveContextualDictTranslation(trimmed, contextEl, lookupRawDict(trimmed));
       if (typeof replacement !== 'string' && trimmed.endsWith('.')) {
-        const withoutDot = DICT[trimmed.slice(0, -1)];
+        const withoutDot = lookupRawDict(trimmed.slice(0, -1));
         if (typeof withoutDot === 'string') {
           replacement = withoutDot.endsWith('。') ? withoutDot : withoutDot + '。';
         }
@@ -521,6 +542,7 @@
         }
       } else if (firstUpper === 'T') {
         if (RE_THOUGHT_FOR.test(trimmed)) return raw.replace(RE_THOUGHT_FOR, '已思考 $1');
+        if (RE_THINKING_FOR.test(trimmed)) return raw.replace(RE_THINKING_FOR, '正在思考 $1');
         if (RE_DELETE_RECORDINGS_CONFIRM.test(trimmed)) {
           return raw.replace(
             RE_DELETE_RECORDINGS_CONFIRM,
@@ -713,16 +735,27 @@
     }
 
     function resolveAttrTranslation(atrim, el) {
-      if (typeof DICT[atrim] === 'string') return resolveContextualDictTranslation(atrim, el, DICT[atrim]);
+      const directHit = lookupRawDict(atrim);
+      if (typeof directHit === 'string') return resolveContextualDictTranslation(atrim, el, directHit);
       const mModel = atrim.match(RE_ARIA_MODEL);
       if (mModel) {
-        const mName = mModel[1].trim();
-        if (mName === 'Select model') return '模型，当前：选择模型';
-        return '模型，当前：' + mName;
+        let mName = mModel[1].trim();
+        let noteZh = '';
+        const commaIdx = mName.indexOf(', ');
+        if (commaIdx > 0) {
+          const maybeNote = mName.slice(commaIdx + 2).trim();
+          const noteHit = lookupRawDict(maybeNote);
+          if (typeof noteHit === 'string' && noteHit) {
+            mName = mName.slice(0, commaIdx).trim();
+            noteZh = '（' + noteHit + '）';
+          }
+        }
+        if (mName === 'Select model') return '模型，当前：选择模型' + noteZh;
+        return '模型，当前：' + mName + noteZh;
       }
       const lookupPerm = (s) => {
         if (s && s.toLowerCase() === 'default') return '敏感确认 (Default)';
-        return DICT[s] || DICT[s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()] || s;
+        return lookupRawDict(s) || DICT[s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()] || s;
       };
       const mPermSel = atrim.match(RE_ARIA_PERM_SEL);
       if (mPermSel) {
@@ -739,7 +772,7 @@
         const mappedNote =
           rawNote.toLowerCase() === 'cannot be changed mid-conversation'
             ? '会话中途无法更改'
-            : DICT[rawNote] || computeTextTranslation(rawNote, el) || rawNote;
+            : lookupRawDict(rawNote) || computeTextTranslation(rawNote, el) || rawNote;
         return '权限模式：' + lookupPerm(pMode) + '（' + mappedNote + '）';
       }
       const mTurn = atrim.match(RE_ARIA_TURN);
@@ -771,7 +804,7 @@
       if (mLoc) {
         const locName = mLoc[1].trim();
         const mappedLoc =
-          locName === 'This Computer' ? '本机' : locName === 'Remote' ? '远程' : DICT[locName] || locName;
+          locName.toLowerCase() === 'this computer' ? '本机' : locName.toLowerCase() === 'remote' ? '远程' : lookupRawDict(locName) || locName;
         return '智能体运行位置，当前：' + mappedLoc;
       }
       const mVer = atrim.match(RE_ARIA_VERSION);
