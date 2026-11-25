@@ -388,7 +388,7 @@ test('acquireDaemonPidLock sweeps orphan daemons on startup and fences supersede
         },
         getState: () => ({
           activeConfig: { enabled: true, modules: {}, endpoints: [], allowedOrigins: [] },
-          cachedPatchVersion: '1.3.3-test',
+          cachedPatchVersion: '1.3.4-test',
           cachedInjectScript: ''
         })
       },
