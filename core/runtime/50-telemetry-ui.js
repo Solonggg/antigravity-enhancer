@@ -204,32 +204,6 @@
     );
   }
 
-  function openOfficialUsageSettings() {
-    _closeMetricsTooltip();
-    try {
-      const existingNav = document.querySelector('[data-testid="settings-nav-item-Models"]');
-      if (existingNav) {
-        existingNav.click();
-        return;
-      }
-      const settingsBtn = document.querySelector('[data-testid="settings-button"]');
-      if (settingsBtn) {
-        settingsBtn.click();
-        let tries = 0;
-        const pickModelsTab = () => {
-          const nav = document.querySelector('[data-testid="settings-nav-item-Models"]');
-          if (nav) {
-            nav.click();
-            return;
-          }
-          tries += 1;
-          if (tries < 18) setTimeout(pickModelsTab, 50);
-        };
-        setTimeout(pickModelsTab, 60);
-      }
-    } catch (e) {}
-  }
-
   function renderQuotaRingSvg(pct, level) {
     const r = 12;
     const c = 2 * Math.PI * r;
@@ -257,7 +231,6 @@
   function renderOfficialQuotaSectionHtml(state, isZh) {
     const title = isZh ? '模型配额' : 'Model Quota';
     const refreshLbl = isZh ? '刷新配额' : 'Refresh quota';
-    const openSettingsLbl = isZh ? '设置 ↗' : 'Settings ↗';
     const loading = Boolean(state && state.loading);
     const groups = state && Array.isArray(state.groups) ? state.groups : [];
     const credits =
@@ -343,9 +316,6 @@
       escapeStatusHtml(refreshLbl) +
       '">' +
       '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.67M13.5 2.5v2.8h-2.8"/></svg>' +
-      '</button>' +
-      '<button type="button" class="ag-tt-quota-btn ag-tt-quota-open-settings">' +
-      escapeStatusHtml(openSettingsLbl) +
       '</button>' +
       '</span>' +
       '</div>' +
@@ -522,29 +492,7 @@
           e.preventDefault();
           e.stopPropagation();
           syncOfficialQuotaIntoTooltip(tt, { forceRefresh: true });
-          return;
         }
-        const openSettingsBtn = e.target && e.target.closest ? e.target.closest('.ag-tt-quota-open-settings') : null;
-        if (openSettingsBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          openOfficialUsageSettings();
-          return;
-        }
-        const btn = e.target && e.target.closest ? e.target.closest('.ag-tt-btn-toggle') : null;
-        if (!btn) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const collapsed = tt.getAttribute('data-collapsed') === '1';
-        if (collapsed) {
-          tt.removeAttribute('data-collapsed');
-        } else {
-          tt.setAttribute('data-collapsed', '1');
-        }
-        const ownerKey = window.__ag_tt_owner_pane || 'main';
-        const ownerPane = getPaneByKey(ownerKey);
-        const pill = document.getElementById(ownerKey === 'side' ? 'ag-side-metrics-pill' : 'ag-live-metrics-pill');
-        if (pill) positionMetricsTooltip(pill, tt, ownerPane ? ownerPane.inputBox : null);
       });
     }
     return tt;

@@ -145,8 +145,6 @@
       let hoverSwitchTimer = null;
       let pendingPaneRender = false;
       let hoveredFamilyKey = '';
-      let editingIdeaPath = false;
-      let invalidIdeaPath = false;
       let refreshingModels = false;
       let refreshingAll = false;
       let activeDlg = null;
@@ -155,6 +153,7 @@
 
       const bootUserCfg = boot.userConfig && typeof boot.userConfig === 'object' ? boot.userConfig : {};
       const bootOpenIn = bootUserCfg.openIn && typeof bootUserCfg.openIn === 'object' ? bootUserCfg.openIn : {};
+      const bootDetectors = boot.openInDetectors && typeof boot.openInDetectors === 'object' ? boot.openInDetectors : {};
       const uiState = {
         config: {
           telemetryLayout: bootUserCfg.telemetryLayout || boot.telemetryLayout || 'compact',
@@ -163,12 +162,13 @@
           modules: Object.assign({}, MODULES, bootUserCfg.modules || {}),
           openIn: {
             targets: Array.isArray(bootOpenIn.targets) ? bootOpenIn.targets.slice() : ['idea', 'finder'],
-            ideaPath: typeof bootOpenIn.ideaPath === 'string' ? bootOpenIn.ideaPath : '',
             copyPath: bootOpenIn.copyPath !== false,
             customTargetsCount: Number(bootOpenIn.customTargetsCount || 0)
           }
         },
-        openInDetectors: (window.__ag_settings_openin_detectors && Object.assign({}, window.__ag_settings_openin_detectors)) || {},
+        openInDetectors:
+          (window.__ag_settings_openin_detectors && Object.assign({}, window.__ag_settings_openin_detectors)) ||
+          Object.assign({}, bootDetectors),
         agyStatus: (window.__ag_settings_agy_cache && Object.assign({}, window.__ag_settings_agy_cache)) || {
           available: true,
           running: false,
@@ -201,62 +201,49 @@
       }
 
       function getStrings() {
-        const dictCnt = getDictCountLabel();
         if (isZhUi()) {
           return {
             navTitle: 'Antigravity增强',
             pageTitle: 'Antigravity增强',
-            manualRefreshLabel: '手动重载配置与界面',
+            manualRefreshLabel: '刷新配置与界面',
             savedBadge: '已同步',
             refreshedBadge: '已刷新',
-            subtitlePrefix: '纯本地运行、零外联：管理中文界面、状态栏、右键菜单与下一步预测，修改实时同步至 ',
-            subtitleSuffix: '。',
+            subtitle: '纯本地运行，修改即时生效。',
             modI18n: '中文界面汉化',
-            modI18nDesc: '内置 ' + dictCnt + ' 界面词条与 Shadow DOM 穿透，原地更新不影响交互，关闭即恢复英文',
+            modI18nDesc: '将界面切换为中文，关闭即恢复英文',
             secStatusBar: '状态栏',
             modSessionStatus: '实时会话状态',
-            modSessionStatusDesc: '仅读本地运行状态与日志，在底部状态栏显示四态指示灯（就绪 / 执行中 / 等待重试 / 异常）与异常详情',
+            modSessionStatusDesc: '在底部显示当前运行状态（就绪 / 执行中 / 重试 / 异常）',
             modUsageStats: '用量统计',
-            modUsageStatsDesc: '仅读本地会话 SQLite，默认展开完整统计明细并复用官方模型配额视图，同时展示每轮回复尾部统计',
+            modUsageStatsDesc: '显示速率、上下文、模型配额及每轮回复统计',
             layoutLbl: '底部状态栏密度',
-            layoutDesc: '紧凑模式居中嵌在工具栏内；详细模式展开为底部居中独立行，补充 TTFT 与本步输出',
+            layoutDesc: '紧凑模式嵌在工具栏内；详细模式独立一行展示更多指标',
             layoutCompact: '紧凑',
             layoutDetailed: '详细',
             cacheLbl: '缓存命中率口径',
-            cacheDesc: '选择状态栏展示整个会话的累计命中率，或最近单步命中率',
+            cacheDesc: '按整个会话累计或最近单步显示命中率',
             cacheSession: '会话累计',
             cacheStep: '单步',
             secContextMenu: '右键菜单',
             modOpenIn: '右键打开文件引用',
-            modOpenInDesc: '在回复中的文件路径上右键，直接用外部编辑器或 Finder 打开并跳转行号，不影响左键',
+            modOpenInDesc: '右键回复中的文件路径，直接用本机编辑器或 Finder 打开',
             openInTargetsLbl: '右键菜单目标',
-            ideaPathAutoPrefix: 'IDEA 启动器：',
-            ideaPathCustomPrefix: 'IDEA 自定义路径：',
-            ideaPathMissing: '未自动检测到 IDEA，请配置路径或在 JetBrains Toolbox 开启 Shell Scripts',
-            ideaPathCustomBtn: '自定义路径',
-            ideaPathHideBtn: '收起',
-            ideaPathPlaceholder: '/Applications/IntelliJ IDEA.app 或 idea CLI 路径',
-            ideaPathSave: '保存',
-            ideaPathReset: '自动检测',
-            openInCustomNote: (n) => '另有 ' + n + ' 个自定义命令目标（来自 user/config.json，仅配置文件可编辑）',
+            openInCustomNote: (n) => '另有 ' + n + ' 个自定义目标（来自配置文件）',
             secNextPrompt: '下一步预测',
-            secNextPromptHint: '默认关闭，按需开启',
             modSuggest: '输入框下一句预测',
-            modSuggestDescPre: '回复结束后预测下一句指令，按 ',
+            modSuggestDescPre: '回复结束后预测下一句输入，按 ',
             modSuggestDescMid: ' 或 ',
-            modSuggestDescPost: ' 补全（开启后后台常驻 ',
-            modSuggestDescEnd: ' 进程）',
+            modSuggestDescPost: ' 采纳',
             agyIdle: '未启动',
             agyWarming: '预热中…',
             agyReady: 'agy 就绪',
             agyMissing: '未检测到 agy',
             agyAuthRequired: 'agy 未登录',
-            agyAuthHint: '请先在终端执行 agy 完成登录，然后点击顶部刷新按钮即可生效',
+            agyAuthHint: '请先在终端运行 agy 完成登录，再点击顶部刷新按钮',
             agyError: 'agy 启动异常',
             suggestModelLbl: '预测模型',
-            suggestModelDescPre: '由 ',
-            suggestModelDescPost: ' 自动按模型与档位分组，推荐 Gemini 3.8 Flash Low',
-            refreshModelsTitle: '重新拉取 agy models',
+            suggestModelDesc: '推荐 Gemini 3.8 Flash Low',
+            refreshModelsTitle: '刷新模型列表',
             menuModelsHdr: '模型',
             recommendedBadge: '推荐'
           };
@@ -264,57 +251,45 @@
         return {
           navTitle: 'Antigravity Enhancer',
           pageTitle: 'Antigravity Enhancer',
-          manualRefreshLabel: 'Reload config & runtime',
+          manualRefreshLabel: 'Reload config & UI',
           savedBadge: 'Synced',
           refreshedBadge: 'Refreshed',
-          subtitlePrefix: '100% local, zero outbound requests. Manage localization, status bar, context menu, and next-prompt suggestions; changes sync to ',
-          subtitleSuffix: '.',
+          subtitle: 'Runs locally; changes apply immediately.',
           modI18n: 'Chinese UI Localization',
-          modI18nDesc: dictCnt + ' built-in entries with Shadow DOM support applied in place; disable to restore English',
+          modI18nDesc: 'Translate the interface to Chinese; turn off to restore English',
           secStatusBar: 'Status Bar',
           modSessionStatus: 'Live Session Status',
-          modSessionStatusDesc: 'Reads local runtime state & logs to show the 4-state bottom indicator (ready / running / retrying / error)',
+          modSessionStatusDesc: 'Show live status in the bottom bar (ready / running / retrying / error)',
           modUsageStats: 'Usage Stats',
-          modUsageStatsDesc: 'Reads local SQLite to show speed/context/cache metrics, default-expanded breakdown with official model quota, and per-turn footers',
+          modUsageStatsDesc: 'Show speed, context, model quota, and per-turn stats',
           layoutLbl: 'Status Bar Density',
-          layoutDesc: 'Compact sits centered inline; Detailed expands to a centered bottom row with TTFT and step output',
+          layoutDesc: 'Compact fits inline; Detailed uses a dedicated row with more metrics',
           layoutCompact: 'Compact',
           layoutDetailed: 'Detailed',
           cacheLbl: 'Cache Hit Rate Scope',
-          cacheDesc: 'Display cumulative session cache hit rate or last-step hit rate',
+          cacheDesc: 'Display cumulative session or last-step hit rate',
           cacheSession: 'Session',
           cacheStep: 'Step',
           secContextMenu: 'Context Menu',
           modOpenIn: 'Right-Click Open In',
-          modOpenInDesc: 'Right-click file links/paths in replies to open in IDEA, Finder, or editors with line jumping; left-click untouched',
+          modOpenInDesc: 'Right-click file paths in replies to open in local editors or Finder',
           openInTargetsLbl: 'Context Menu Targets',
-          ideaPathAutoPrefix: 'IDEA launcher: ',
-          ideaPathCustomPrefix: 'Custom IDEA path: ',
-          ideaPathMissing: 'IDEA not auto-detected; set custom path or enable JetBrains Toolbox Shell Scripts',
-          ideaPathCustomBtn: 'Custom path',
-          ideaPathHideBtn: 'Hide',
-          ideaPathPlaceholder: '/Applications/IntelliJ IDEA.app or idea CLI path',
-          ideaPathSave: 'Save',
-          ideaPathReset: 'Auto',
-          openInCustomNote: (n) => '+' + n + ' custom command target(s) loaded from user/config.json (config-file only)',
+          openInCustomNote: (n) => '+' + n + ' custom target(s) from config file',
           secNextPrompt: 'Next Prompt',
-          secNextPromptHint: 'Off by default, opt-in',
           modSuggest: 'Prompt Suggestions',
-          modSuggestDescPre: 'Predicts the next prompt after each turn; press ',
+          modSuggestDescPre: 'Predict the next prompt after replies; press ',
           modSuggestDescMid: ' or ',
-          modSuggestDescPost: ' to accept (runs a background ',
-          modSuggestDescEnd: ' worker when enabled)',
+          modSuggestDescPost: ' to accept',
           agyIdle: 'Stopped',
           agyWarming: 'Warming up…',
           agyReady: 'agy Ready',
           agyMissing: 'agy not found',
           agyAuthRequired: 'Sign in to agy',
-          agyAuthHint: 'Run agy in your terminal to sign in, then click the reload button above',
+          agyAuthHint: 'Run agy in your terminal to sign in, then click reload above',
           agyError: 'agy error',
           suggestModelLbl: 'Suggestion Model',
-          suggestModelDescPre: 'Grouped automatically from ',
-          suggestModelDescPost: '; Gemini 3.8 Flash Low recommended',
-          refreshModelsTitle: 'Refresh agy models',
+          suggestModelDesc: 'Gemini 3.8 Flash Low recommended',
+          refreshModelsTitle: 'Refresh models',
           menuModelsHdr: 'Models',
           recommendedBadge: 'Rec'
         };
@@ -1025,74 +1000,28 @@
       function renderOpenInSubrow(s, openInCfg) {
         const enabledSet = new Set(Array.isArray(openInCfg.targets) ? openInCfg.targets : []);
         const detectors = uiState.openInDetectors || {};
-        const chipsHtml = AG_OPEN_IN_TARGET_META.map((item) => {
-          const on = enabledSet.has(item.id);
-          const det = detectors[item.id];
-          const ok = item.id === 'finder' ? true : Boolean(det && det.available);
-          const titleAttr = det && det.path ? ' title="' + escHtml(det.path) + '"' : '';
-          return (
-            '<button type="button" class="ag-s-target-chip" data-openin-target="' +
-            escHtml(item.id) +
-            '" aria-pressed="' +
-            (on ? 'true' : 'false') +
-            '"' +
-            titleAttr +
-            '>' +
-            '<span class="ag-s-target-dot" data-ok="' +
-            (ok ? '1' : '0') +
-            '"></span>' +
-            '<span>' +
-            escHtml(item.name) +
-            '</span>' +
-            '</button>'
-          );
-        }).join('');
-
-        let ideaHtml = '';
-        if (enabledSet.has('idea')) {
-          const ideaDet = detectors.idea || null;
-          const customPath = String(openInCfg.ideaPath || '').trim();
-          const detectedPath = ideaDet && ideaDet.path ? String(ideaDet.path) : '';
-          const missing = Boolean(ideaDet && !ideaDet.available && !customPath);
-          const statusText = customPath
-            ? s.ideaPathCustomPrefix + customPath
-            : detectedPath
-            ? s.ideaPathAutoPrefix + detectedPath
-            : s.ideaPathMissing;
-
-          ideaHtml =
-            '<div class="ag-s-idea-bar">' +
-            '<span class="ag-s-idea-status ag-s-mono" data-missing="' +
-            (missing ? '1' : '0') +
-            '" title="' +
-            escHtml(statusText) +
-            '">' +
-            escHtml(statusText) +
-            '</span>' +
-            '<button type="button" id="ag-s-toggle-idea-path" class="ag-s-link-btn">' +
-            escHtml(editingIdeaPath ? s.ideaPathHideBtn : s.ideaPathCustomBtn) +
-            '</button>' +
-            '</div>' +
-            (editingIdeaPath
-              ? '<div class="ag-s-idea-form">' +
-                '<input type="text" id="ag-s-idea-input" class="ag-s-idea-input" value="' +
-                escHtml(customPath) +
-                '" placeholder="' +
-                escHtml(s.ideaPathPlaceholder) +
-                '" data-invalid="' +
-                (invalidIdeaPath ? '1' : '0') +
-                '" autocomplete="off" spellcheck="false" />' +
-                '<button type="button" id="ag-s-idea-save" class="ag-s-btn-primary">' +
-                escHtml(s.ideaPathSave) +
-                '</button>' +
-                (customPath
-                  ? '<button type="button" id="ag-s-idea-reset" class="ag-s-btn-secondary">' +
-                    escHtml(s.ideaPathReset) +
-                    '</button>'
-                  : '') +
-                '</div>'
-              : '');
-        }
+        const hasDetectors = Object.keys(detectors).length > 0;
+        const visibleTargets = AG_OPEN_IN_TARGET_META.filter((item) => {
+          if (item.id === 'finder') return true;
+          if (!hasDetectors) return enabledSet.has(item.id);
+          return Boolean(detectors[item.id] && detectors[item.id].available);
+        });
+        const chipsHtml = visibleTargets
+          .map((item) => {
+            const on = enabledSet.has(item.id);
+            return (
+              '<button type="button" class="ag-s-target-chip" data-openin-target="' +
+              escHtml(item.id) +
+              '" aria-pressed="' +
+              (on ? 'true' : 'false') +
+              '">' +
+              '<span>' +
+              escHtml(item.name) +
+              '</span>' +
+              '</button>'
+            );
+          })
+          .join('');
 
         const customNoteHtml =
           openInCfg.customTargetsCount > 0
@@ -1108,7 +1037,6 @@
           chipsHtml +
           '</div>' +
           '</div>' +
-          ideaHtml +
           customNoteHtml
         );
       }
@@ -1169,9 +1097,7 @@
           '</div>' +
           '</div>' +
           '<p class="ag-s-subtitle">' +
-          escHtml(s.subtitlePrefix) +
-          '<span class="ag-s-mono">user/config.json</span>' +
-          escHtml(s.subtitleSuffix) +
+          escHtml(s.subtitle) +
           '</p>' +
           '</div>' +
           '<div class="ag-s-sections">' +
@@ -1301,9 +1227,6 @@
           '<span class="ag-s-section-title">' +
           escHtml(s.secNextPrompt) +
           '</span>' +
-          '<span class="ag-s-section-hint">' +
-          escHtml(s.secNextPromptHint) +
-          '</span>' +
           '</div>' +
           '<div class="ag-s-card">' +
           '<div class="ag-s-row">' +
@@ -1328,8 +1251,6 @@
           escHtml(s.modSuggestDescMid) +
           '<span class="ag-s-mono">→</span>' +
           escHtml(s.modSuggestDescPost) +
-          '<span class="ag-s-mono">agy</span>' +
-          escHtml(s.modSuggestDescEnd) +
           '</div>' +
           '<div id="ag-s-worker-hint" class="ag-s-worker-hint" data-tone="' +
           escHtml(workerView.hintTone || 'warn') +
@@ -1353,9 +1274,7 @@
           escHtml(s.suggestModelLbl) +
           '</div>' +
           '<div class="ag-s-sub-desc">' +
-          escHtml(s.suggestModelDescPre) +
-          '<span class="ag-s-mono">agy models</span>' +
-          escHtml(s.suggestModelDescPost) +
+          escHtml(s.suggestModelDesc) +
           '</div>' +
           '</div>' +
           '<div class="ag-s-picker-controls">' +
@@ -1384,24 +1303,6 @@
 
         if (prevScroll > 0) pane.scrollTop = prevScroll;
 
-        if (editingIdeaPath) {
-          const inp = document.getElementById('ag-s-idea-input');
-          if (inp) {
-            inp.addEventListener('keydown', (ev) => {
-              if (ev.key === 'Enter') {
-                ev.preventDefault();
-                submitIdeaPath(inp.value);
-              } else if (ev.key === 'Escape') {
-                ev.preventDefault();
-                ev.stopPropagation();
-                editingIdeaPath = false;
-                invalidIdeaPath = false;
-                renderPane();
-              }
-            });
-          }
-        }
-
         if (savedActive) {
           if (saveBadgeTimer) clearTimeout(saveBadgeTimer);
           const remain = Math.max(100, window.__ag_settings_saved_until - Date.now());
@@ -1414,22 +1315,6 @@
         if (isPopoverOpen(document.getElementById('ag-settings-model-menu'))) {
           renderModelMenuItems();
         }
-      }
-
-      function submitIdeaPath(rawVal) {
-        const val = String(rawVal || '').trim();
-        if (val && (!val.startsWith('/') || val.startsWith('//') || /[\0\r\n]/.test(val))) {
-          invalidIdeaPath = true;
-          const inp = document.getElementById('ag-s-idea-input');
-          if (inp) {
-            inp.setAttribute('data-invalid', '1');
-            inp.focus();
-          }
-          return;
-        }
-        invalidIdeaPath = false;
-        editingIdeaPath = false;
-        commitPatch({ openIn: { ideaPath: val } });
       }
 
       function setEnhancerTabOpen(open) {
@@ -1493,28 +1378,6 @@
               cur.sort((a, b) => order.indexOf(a) - order.indexOf(b));
             }
             commitPatch({ openIn: { targets: cur } });
-            return;
-          }
-
-          if (ev.target && ev.target.closest && ev.target.closest('#ag-s-toggle-idea-path')) {
-            editingIdeaPath = !editingIdeaPath;
-            invalidIdeaPath = false;
-            renderPane();
-            if (editingIdeaPath) {
-              const inp = document.getElementById('ag-s-idea-input');
-              if (inp) inp.focus();
-            }
-            return;
-          }
-
-          if (ev.target && ev.target.closest && ev.target.closest('#ag-s-idea-save')) {
-            const inp = document.getElementById('ag-s-idea-input');
-            submitIdeaPath(inp ? inp.value : '');
-            return;
-          }
-
-          if (ev.target && ev.target.closest && ev.target.closest('#ag-s-idea-reset')) {
-            submitIdeaPath('');
             return;
           }
 

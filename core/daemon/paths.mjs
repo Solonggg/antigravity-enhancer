@@ -30,7 +30,8 @@ let openInHelpers = {
     ideaPath: typeof cur?.ideaPath === 'string' ? cur.ideaPath.trim() : '',
     copyPath: cur?.copyPath !== false
   }),
-  getOpenInMenuDescriptors: () => ({ copyPath: true, debug: false, targets: [] })
+  getOpenInMenuDescriptors: () => ({ copyPath: true, debug: false, targets: [] }),
+  detectOpenInTargets: () => ({})
 };
 if (fs.existsSync(path.join(__dirname, 'open-in.mjs'))) {
   try {
@@ -38,7 +39,8 @@ if (fs.existsSync(path.join(__dirname, 'open-in.mjs'))) {
     openInHelpers = {
       normalizeOpenInConfig: mod.normalizeOpenInConfig,
       sanitizeOpenInPatch: mod.sanitizeOpenInPatch,
-      getOpenInMenuDescriptors: mod.getOpenInMenuDescriptors
+      getOpenInMenuDescriptors: mod.getOpenInMenuDescriptors,
+      detectOpenInTargets: mod.detectOpenInTargets
     };
   } catch {}
 }
@@ -359,7 +361,16 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     }
 
     const openIn = openInHelpers.normalizeOpenInConfig(safeMode ? null : userCfg.openIn);
-    const openInDescriptors = openInHelpers.getOpenInMenuDescriptors(openIn, { platform: process.platform });
+    const openInDetectors = openInHelpers.detectOpenInTargets(openIn, { platform: process.platform });
+    const rawOpenInDescriptors = openInHelpers.getOpenInMenuDescriptors(openIn, { platform: process.platform });
+    const openInDescriptors = {
+      ...rawOpenInDescriptors,
+      targets: (rawOpenInDescriptors.targets || []).filter((t) => {
+        if (t.type === 'command' || t.id === 'finder') return true;
+        const det = openInDetectors && openInDetectors[t.id];
+        return det ? Boolean(det.available) : true;
+      })
+    };
     const endpoints = resolveActiveChannelEndpoints(channel, userCfg, cliOpts);
 
     const normalizedSelectors = Object.assign({}, userCfg.selectors || {});
@@ -456,6 +467,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       i18nDict: mergedDict,
       modules,
       openIn: openInDescriptors,
+      openInDetectors,
       selectors: activeConfig.selectors,
       userConfig: {
         enabled,

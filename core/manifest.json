@@ -25,8 +25,8 @@
       "bytes": 25282
     },
     "daemon/paths.mjs": {
-      "sha256": "773fb7cc48db92ca96d521a993bedfab7add977b7d97d352e923152af9e937ba",
-      "bytes": 19588
+      "sha256": "07734e703fe4332470ba3ad300202488f2fb7c115d1639c5e3a0b85904f5e63b",
+      "bytes": 20133
     },
     "daemon/prompt-suggest.mjs": {
       "sha256": "aaeea5f25e599256f6f16fe1b83a17dbcb689ddf240714997921c8a3e2394fd5",
@@ -85,8 +85,8 @@
       "bytes": 13135
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "d0e42180ddc3b674c74e02c0d9753f627d44259f9c4ffc0029065e9c83b80c28",
-      "bytes": 72292
+      "sha256": "97d476012693dc9a35e20e97198820c9bf6210d5bd5a3bd38d3454d19b0b3b54",
+      "bytes": 70287
     },
     "runtime/60-i18n-engine.js": {
       "sha256": "8cbce4516cf6bcad7946120db4d0b500697078c1b51c1032a12f35d0ad093d44",
@@ -101,8 +101,8 @@
       "bytes": 13183
     },
     "runtime/75-settings-ui.js": {
-      "sha256": "9e03bd4ea5cdcabb17ec2a89a4356b4b2c15a1839b9fed2b7b872f18a461062a",
-      "bytes": 73963
+      "sha256": "387b0fabc02cb187597cadf0d280a7ff0f8f976d078c9e6499409c93003f74d5",
+      "bytes": 67386
     },
     "runtime/90-tail.js": {
       "sha256": "c825f807429146d9cc7cbb5033135d9f4cb0208b69a4a3e290b2ba2f23f122e8",
@@ -125,8 +125,8 @@
       "bytes": 2214
     },
     "styles/45-settings-ui.css": {
-      "sha256": "e5f262d02e8610c66c04770bdc8a5cc539935ec670f6a8799328888315d1f954",
-      "bytes": 24118
+      "sha256": "cfc19e2de83b55a27ebfdfefd52ad76adcf11f6969c202fbd16b0fde19c142a8",
+      "bytes": 22227
     }
   }
 }

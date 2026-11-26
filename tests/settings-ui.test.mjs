@@ -501,4 +501,12 @@ test('75-settings-ui uses manual popovers inside settings dialog, updates worker
   assert.ok(src.includes('data-bind-mod="sessionStatus"'), 'must expose independent sessionStatus toggle');
   assert.ok(src.includes('data-bind-mod="usageStats"'), 'must expose independent usageStats toggle');
   assert.ok(src.includes("'v0.1.1'"), 'version fallback must start at v0.1.1');
+
+  // Removed IDEA launcher bar & custom path UI; undetected editors filtered out; quota popover has no settings jump
+  assert.ok(!src.includes('ag-s-idea-bar'), 'IDEA launcher path bar must be removed from settings UI');
+  assert.ok(!src.includes('ag-s-idea-input'), 'IDEA custom path input must be removed from settings UI');
+  assert.ok(src.includes('Boolean(detectors[item.id] && detectors[item.id].available)'), 'must hide undetected editors');
+  const telemetryUiSrc = fs.readFileSync(path.join(ROOT_DIR, 'core', 'runtime', '50-telemetry-ui.js'), 'utf8');
+  assert.ok(!telemetryUiSrc.includes('ag-tt-quota-open-settings'), 'quota popover must not have settings jump button');
+  assert.ok(!telemetryUiSrc.includes('openOfficialUsageSettings'), 'quota popover must not jump to settings');
 });
