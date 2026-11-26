@@ -12,7 +12,7 @@
   if (window.top !== window && !IS_SWARM_PLUGIN_FRAME) return;
   if (!boot || typeof boot !== 'object') return;
 
-  const PATCH_VERSION = boot.version || '1.0.0';
+  const PATCH_VERSION = boot.version || '0.1.1';
   const ENABLED = boot.enabled !== false;
   const CSS_TEXT = boot.cssText || '';
   const CUSTOM_CSS_TEXT = boot.customCss || '';
@@ -30,6 +30,13 @@
     },
     boot.modules || {}
   );
+  if (typeof MODULES.sessionStatus !== 'boolean') {
+    MODULES.sessionStatus = MODULES.metrics !== false;
+  }
+  if (typeof MODULES.usageStats !== 'boolean') {
+    MODULES.usageStats = MODULES.metrics !== false;
+  }
+  MODULES.metrics = Boolean(MODULES.sessionStatus || MODULES.usageStats);
 
   const DEFAULT_EXCLUDE_I18N =
     'code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable="true"], [data-markdown-root], [data-testid="user-message-content"], .agy-user-bubble, .monaco-editor, .monaco-diff-editor, .xterm, [class*="onyx-key"], .prose, .markdown, [class*="chat-message"], [class*="group/file-title"], [data-testid="conversation-row-sidebar"] a[href^="/c/"], [data-testid="conversation-row-sidebar"] span.truncate, [data-testid="conversation-row-history"] a[href^="/c/"], [data-testid="conversation-row-history"] span.truncate, [data-testid="conversation-navigator-turn"], #ag-live-metrics-pill, .ag-live-metrics-pill, #ag-live-metrics-tooltip, #ag-turn-metrics-tooltip, .ag-turn-metrics, .ag-prompt-ghost-overlay, .ag-prompt-ghost-text, .ag-prompt-ghost-kbd, #ag-open-in-menu, #ag-settings-nav-wrap, #ag-settings-pane, #ag-settings-model-menu, #ag-settings-effort-menu';

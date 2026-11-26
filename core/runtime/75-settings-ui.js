@@ -1,6 +1,6 @@
 /**
  * Part 75: Embedded Native Enhancer Settings Panel (inside Antigravity Settings Modal)
- * Mounts a native-style "Enhancer 增强" tab into [data-testid="settings-sidebar"],
+ * Mounts a native-style "Antigravity增强" tab into [data-testid="settings-sidebar"],
  * persists changes to user/config.json via local CDP bindings with ~200ms hot-reload,
  * provides simplified Open-In target toggles, and includes a 2-level popover model picker
  * populated from local `agy models`. Zero outbound network calls or external links.
@@ -185,7 +185,7 @@
 
       function getShortVersionTag() {
         const m = String(PATCH_VERSION || '').match(/^(\d+\.\d+(?:\.\d+)?)/);
-        return m ? 'v' + m[1] : 'v1.0.0';
+        return m ? 'v' + m[1] : 'v0.1.1';
       }
 
       function getDictCountLabel() {
@@ -204,18 +204,29 @@
         const dictCnt = getDictCountLabel();
         if (isZhUi()) {
           return {
-            navTitle: 'Enhancer 增强',
-            pageTitle: 'Enhancer 增强',
+            navTitle: 'Antigravity增强',
+            pageTitle: 'Antigravity增强',
             manualRefreshLabel: '手动重载配置与界面',
             savedBadge: '已同步',
             refreshedBadge: '已刷新',
-            subtitlePrefix: '纯本地运行、零外联：管理中文界面、会话状态统计、右键打开与可选增强，修改实时同步至 ',
+            subtitlePrefix: '纯本地运行、零外联：管理中文界面、状态栏、右键菜单与下一步预测，修改实时同步至 ',
             subtitleSuffix: '。',
-            secCore: '核心模块',
             modI18n: '中文界面汉化',
             modI18nDesc: '内置 ' + dictCnt + ' 界面词条与 Shadow DOM 穿透，原地更新不影响交互，关闭即恢复英文',
-            modMetrics: '实时会话状态与用量统计',
-            modMetricsDesc: '仅读本地会话 SQLite 与日志：底部四态指示、一/二级明细面板与每轮尾部统计',
+            secStatusBar: '状态栏',
+            modSessionStatus: '实时会话状态',
+            modSessionStatusDesc: '仅读本地运行状态与日志，在底部状态栏显示四态指示灯（就绪 / 执行中 / 等待重试 / 异常）与异常详情',
+            modUsageStats: '用量统计',
+            modUsageStatsDesc: '仅读本地会话 SQLite，默认展开完整统计明细并复用官方模型配额视图，同时展示每轮回复尾部统计',
+            layoutLbl: '底部状态栏密度',
+            layoutDesc: '紧凑模式居中嵌在工具栏内；详细模式展开为底部居中独立行，补充 TTFT 与本步输出',
+            layoutCompact: '紧凑',
+            layoutDetailed: '详细',
+            cacheLbl: '缓存命中率口径',
+            cacheDesc: '选择状态栏展示整个会话的累计命中率，或最近单步命中率',
+            cacheSession: '会话累计',
+            cacheStep: '单步',
+            secContextMenu: '右键菜单',
             modOpenIn: '右键打开文件引用',
             modOpenInDesc: '在回复中的文件路径上右键，直接用外部编辑器或 Finder 打开并跳转行号，不影响左键',
             openInTargetsLbl: '右键菜单目标',
@@ -228,8 +239,8 @@
             ideaPathSave: '保存',
             ideaPathReset: '自动检测',
             openInCustomNote: (n) => '另有 ' + n + ' 个自定义命令目标（来自 user/config.json，仅配置文件可编辑）',
-            secOptional: '可选增强',
-            secOptionalHint: '默认关闭，按需开启',
+            secNextPrompt: '下一步预测',
+            secNextPromptHint: '默认关闭，按需开启',
             modSuggest: '输入框下一句预测',
             modSuggestDescPre: '回复结束后预测下一句指令，按 ',
             modSuggestDescMid: ' 或 ',
@@ -247,31 +258,33 @@
             suggestModelDescPost: ' 自动按模型与档位分组，推荐 Gemini 3.8 Flash Low',
             refreshModelsTitle: '重新拉取 agy models',
             menuModelsHdr: '模型',
-            recommendedBadge: '推荐',
-            secTelemetry: '状态栏偏好',
-            layoutLbl: '底部状态栏密度',
-            layoutDesc: '紧凑模式居中嵌在工具栏内；详细模式展开为底部居中独立行，补充 TTFT 与本步输出',
-            layoutCompact: '紧凑',
-            layoutDetailed: '详细',
-            cacheLbl: '缓存命中率口径',
-            cacheDesc: '选择状态栏展示整个会话的累计命中率，或最近单步命中率',
-            cacheSession: '会话累计',
-            cacheStep: '单步'
+            recommendedBadge: '推荐'
           };
         }
         return {
-          navTitle: 'Enhancer',
-          pageTitle: 'Enhancer',
+          navTitle: 'Antigravity Enhancer',
+          pageTitle: 'Antigravity Enhancer',
           manualRefreshLabel: 'Reload config & runtime',
           savedBadge: 'Synced',
           refreshedBadge: 'Refreshed',
-          subtitlePrefix: '100% local, zero outbound requests. Manage localization, local status stats, right-click Open In, and opt-in tools; changes sync to ',
+          subtitlePrefix: '100% local, zero outbound requests. Manage localization, status bar, context menu, and next-prompt suggestions; changes sync to ',
           subtitleSuffix: '.',
-          secCore: 'Core Modules',
           modI18n: 'Chinese UI Localization',
           modI18nDesc: dictCnt + ' built-in entries with Shadow DOM support applied in place; disable to restore English',
-          modMetrics: 'Local Session Status & Usage Stats',
-          modMetricsDesc: 'Reads local SQLite & logs only: bottom 4-state indicator, L1/L2 panels, and per-turn footer stats',
+          secStatusBar: 'Status Bar',
+          modSessionStatus: 'Live Session Status',
+          modSessionStatusDesc: 'Reads local runtime state & logs to show the 4-state bottom indicator (ready / running / retrying / error)',
+          modUsageStats: 'Usage Stats',
+          modUsageStatsDesc: 'Reads local SQLite to show speed/context/cache metrics, default-expanded breakdown with official model quota, and per-turn footers',
+          layoutLbl: 'Status Bar Density',
+          layoutDesc: 'Compact sits centered inline; Detailed expands to a centered bottom row with TTFT and step output',
+          layoutCompact: 'Compact',
+          layoutDetailed: 'Detailed',
+          cacheLbl: 'Cache Hit Rate Scope',
+          cacheDesc: 'Display cumulative session cache hit rate or last-step hit rate',
+          cacheSession: 'Session',
+          cacheStep: 'Step',
+          secContextMenu: 'Context Menu',
           modOpenIn: 'Right-Click Open In',
           modOpenInDesc: 'Right-click file links/paths in replies to open in IDEA, Finder, or editors with line jumping; left-click untouched',
           openInTargetsLbl: 'Context Menu Targets',
@@ -284,8 +297,8 @@
           ideaPathSave: 'Save',
           ideaPathReset: 'Auto',
           openInCustomNote: (n) => '+' + n + ' custom command target(s) loaded from user/config.json (config-file only)',
-          secOptional: 'Optional Enhancements',
-          secOptionalHint: 'Off by default, opt-in',
+          secNextPrompt: 'Next Prompt',
+          secNextPromptHint: 'Off by default, opt-in',
           modSuggest: 'Prompt Suggestions',
           modSuggestDescPre: 'Predicts the next prompt after each turn; press ',
           modSuggestDescMid: ' or ',
@@ -303,16 +316,7 @@
           suggestModelDescPost: '; Gemini 3.8 Flash Low recommended',
           refreshModelsTitle: 'Refresh agy models',
           menuModelsHdr: 'Models',
-          recommendedBadge: 'Rec',
-          secTelemetry: 'Status Bar Preferences',
-          layoutLbl: 'Status Bar Density',
-          layoutDesc: 'Compact sits centered inline; Detailed expands to a centered bottom row with TTFT and step output',
-          layoutCompact: 'Compact',
-          layoutDetailed: 'Detailed',
-          cacheLbl: 'Cache Hit Rate Scope',
-          cacheDesc: 'Display cumulative session cache hit rate or last-step hit rate',
-          cacheSession: 'Session',
-          cacheStep: 'Step'
+          recommendedBadge: 'Rec'
         };
       }
 
@@ -510,6 +514,11 @@
       async function commitPatch(patch) {
         if (patch.modules) {
           Object.assign(uiState.config.modules, patch.modules);
+          if (typeof patch.modules.sessionStatus === 'boolean' || typeof patch.modules.usageStats === 'boolean') {
+            uiState.config.modules.metrics = Boolean(
+              uiState.config.modules.sessionStatus !== false || uiState.config.modules.usageStats !== false
+            );
+          }
           if (patch.modules.promptSuggestions === false) {
             uiState.agyStatus = Object.assign({}, uiState.agyStatus, {
               running: false,
@@ -1119,6 +1128,10 @@
 
         const cfg = uiState.config;
         const mods = cfg.modules || {};
+        const legacyMetricsOn = mods.metrics !== false;
+        const sessionStatusOn = typeof mods.sessionStatus === 'boolean' ? mods.sessionStatus : legacyMetricsOn;
+        const usageStatsOn = typeof mods.usageStats === 'boolean' ? mods.usageStats : legacyMetricsOn;
+        const anyStatusBarOn = Boolean(sessionStatusOn || usageStatsOn);
         const openInOn = mods.openIn !== false;
         const psOn = Boolean(mods.promptSuggestions);
         const selInfo = findSelectedModelInfo(cfg.promptSuggestionModel);
@@ -1162,11 +1175,7 @@
           '</p>' +
           '</div>' +
           '<div class="ag-s-sections">' +
-          // Group 1: Core Modules
-          '<div>' +
-          '<div class="ag-s-section-head"><span class="ag-s-section-title">' +
-          escHtml(s.secCore) +
-          '</span></div>' +
+          // Standalone Row: Chinese UI Localization
           '<div class="ag-s-card">' +
           '<div class="ag-s-row"><div class="ag-s-row-main">' +
           '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-i18n">' +
@@ -1180,18 +1189,91 @@
           (mods.i18n !== false ? 'checked' : '') +
           ' />' +
           '</div></div>' +
+          '</div>' +
+          // Section 1: Status Bar (Live Session Status + Usage Stats + Density + Cache Scope)
+          '<div>' +
+          '<div class="ag-s-section-head"><span class="ag-s-section-title">' +
+          escHtml(s.secStatusBar) +
+          '</span></div>' +
+          '<div class="ag-s-card">' +
           '<div class="ag-s-row"><div class="ag-s-row-main">' +
-          '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-metrics">' +
-          escHtml(s.modMetrics) +
+          '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-session-status">' +
+          escHtml(s.modSessionStatus) +
           '</label><div class="ag-s-row-desc">' +
-          escHtml(s.modMetricsDesc) +
+          escHtml(s.modSessionStatusDesc) +
           '</div></div>' +
-          '<input id="ag-s-sw-metrics" type="checkbox" switch role="switch" class="ag-s-switch" data-bind-mod="metrics" aria-label="' +
-          escHtml(s.modMetrics) +
+          '<input id="ag-s-sw-session-status" type="checkbox" switch role="switch" class="ag-s-switch" data-bind-mod="sessionStatus" aria-label="' +
+          escHtml(s.modSessionStatus) +
           '" ' +
-          (mods.metrics !== false ? 'checked' : '') +
+          (sessionStatusOn ? 'checked' : '') +
           ' />' +
           '</div></div>' +
+          '<div class="ag-s-row"><div class="ag-s-row-main">' +
+          '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-usage-stats">' +
+          escHtml(s.modUsageStats) +
+          '</label><div class="ag-s-row-desc">' +
+          escHtml(s.modUsageStatsDesc) +
+          '</div></div>' +
+          '<input id="ag-s-sw-usage-stats" type="checkbox" switch role="switch" class="ag-s-switch" data-bind-mod="usageStats" aria-label="' +
+          escHtml(s.modUsageStats) +
+          '" ' +
+          (usageStatsOn ? 'checked' : '') +
+          ' />' +
+          '</div></div>' +
+          '<div class="ag-s-row"' +
+          (anyStatusBarOn ? '' : ' hidden') +
+          '><div class="ag-s-row-main">' +
+          '<div class="ag-s-row-info"><div class="ag-s-row-label">' +
+          escHtml(s.layoutLbl) +
+          '</div><div class="ag-s-row-desc">' +
+          escHtml(s.layoutDesc) +
+          '</div></div>' +
+          '<div class="ag-s-seg" role="group" aria-label="' +
+          escHtml(s.layoutLbl) +
+          '">' +
+          '<button type="button" class="ag-s-seg-btn" data-seg="telemetryLayout" data-val="compact" aria-pressed="' +
+          (cfg.telemetryLayout !== 'detailed' ? 'true' : 'false') +
+          '">' +
+          escHtml(s.layoutCompact) +
+          '</button>' +
+          '<button type="button" class="ag-s-seg-btn" data-seg="telemetryLayout" data-val="detailed" aria-pressed="' +
+          (cfg.telemetryLayout === 'detailed' ? 'true' : 'false') +
+          '">' +
+          escHtml(s.layoutDetailed) +
+          '</button>' +
+          '</div>' +
+          '</div></div>' +
+          '<div class="ag-s-row"' +
+          (usageStatsOn ? '' : ' hidden') +
+          '><div class="ag-s-row-main">' +
+          '<div class="ag-s-row-info"><div class="ag-s-row-label">' +
+          escHtml(s.cacheLbl) +
+          '</div><div class="ag-s-row-desc">' +
+          escHtml(s.cacheDesc) +
+          '</div></div>' +
+          '<div class="ag-s-seg" role="group" aria-label="' +
+          escHtml(s.cacheLbl) +
+          '">' +
+          '<button type="button" class="ag-s-seg-btn" data-seg="telemetryCacheMode" data-val="session" aria-pressed="' +
+          (cfg.telemetryCacheMode !== 'step' ? 'true' : 'false') +
+          '">' +
+          escHtml(s.cacheSession) +
+          '</button>' +
+          '<button type="button" class="ag-s-seg-btn" data-seg="telemetryCacheMode" data-val="step" aria-pressed="' +
+          (cfg.telemetryCacheMode === 'step' ? 'true' : 'false') +
+          '">' +
+          escHtml(s.cacheStep) +
+          '</button>' +
+          '</div>' +
+          '</div></div>' +
+          '</div>' +
+          '</div>' +
+          // Section 2: Context Menu (Open In + Targets)
+          '<div>' +
+          '<div class="ag-s-section-head"><span class="ag-s-section-title">' +
+          escHtml(s.secContextMenu) +
+          '</span></div>' +
+          '<div class="ag-s-card">' +
           '<div class="ag-s-row">' +
           '<div class="ag-s-row-main">' +
           '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-openin">' +
@@ -1213,14 +1295,14 @@
           '</div>' +
           '</div>' +
           '</div>' +
-          // Group 2: Optional Enhancements
+          // Section 3: Next Prompt (Prompt Suggestions + Model Picker)
           '<div>' +
           '<div class="ag-s-section-head">' +
           '<span class="ag-s-section-title">' +
-          escHtml(s.secOptional) +
+          escHtml(s.secNextPrompt) +
           '</span>' +
           '<span class="ag-s-section-hint">' +
-          escHtml(s.secOptionalHint) +
+          escHtml(s.secNextPromptHint) +
           '</span>' +
           '</div>' +
           '<div class="ag-s-card">' +
@@ -1296,56 +1378,6 @@
           '</div>' +
           '</div>' +
           '</div>' +
-          '</div>' +
-          '</div>' +
-          // Group 3: Telemetry Preferences
-          '<div>' +
-          '<div class="ag-s-section-head"><span class="ag-s-section-title">' +
-          escHtml(s.secTelemetry) +
-          '</span></div>' +
-          '<div class="ag-s-card">' +
-          '<div class="ag-s-row"><div class="ag-s-row-main">' +
-          '<div class="ag-s-row-info"><div class="ag-s-row-label">' +
-          escHtml(s.layoutLbl) +
-          '</div><div class="ag-s-row-desc">' +
-          escHtml(s.layoutDesc) +
-          '</div></div>' +
-          '<div class="ag-s-seg" role="group" aria-label="' +
-          escHtml(s.layoutLbl) +
-          '">' +
-          '<button type="button" class="ag-s-seg-btn" data-seg="telemetryLayout" data-val="compact" aria-pressed="' +
-          (cfg.telemetryLayout !== 'detailed' ? 'true' : 'false') +
-          '">' +
-          escHtml(s.layoutCompact) +
-          '</button>' +
-          '<button type="button" class="ag-s-seg-btn" data-seg="telemetryLayout" data-val="detailed" aria-pressed="' +
-          (cfg.telemetryLayout === 'detailed' ? 'true' : 'false') +
-          '">' +
-          escHtml(s.layoutDetailed) +
-          '</button>' +
-          '</div>' +
-          '</div></div>' +
-          '<div class="ag-s-row"><div class="ag-s-row-main">' +
-          '<div class="ag-s-row-info"><div class="ag-s-row-label">' +
-          escHtml(s.cacheLbl) +
-          '</div><div class="ag-s-row-desc">' +
-          escHtml(s.cacheDesc) +
-          '</div></div>' +
-          '<div class="ag-s-seg" role="group" aria-label="' +
-          escHtml(s.cacheLbl) +
-          '">' +
-          '<button type="button" class="ag-s-seg-btn" data-seg="telemetryCacheMode" data-val="session" aria-pressed="' +
-          (cfg.telemetryCacheMode !== 'step' ? 'true' : 'false') +
-          '">' +
-          escHtml(s.cacheSession) +
-          '</button>' +
-          '<button type="button" class="ag-s-seg-btn" data-seg="telemetryCacheMode" data-val="step" aria-pressed="' +
-          (cfg.telemetryCacheMode === 'step' ? 'true' : 'false') +
-          '">' +
-          escHtml(s.cacheStep) +
-          '</button>' +
-          '</div>' +
-          '</div></div>' +
           '</div>' +
           '</div>' +
           '</div>';

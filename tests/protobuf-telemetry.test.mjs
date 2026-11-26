@@ -23,6 +23,7 @@ const {
   fmtTok,
   computeSegPcts,
   buildInlineTelemetryHtml,
+  buildMetricsTooltipHtml,
   buildTurnSummaries
 } = await import('../core/daemon/telemetry-renderer.mjs');
 
@@ -220,4 +221,83 @@ test('computeSegPcts & buildTurnSummaries compute balanced bar percentages and t
   assert.equal(turns[0].cacheRate, '90.0%');
   assert.equal(fmtTok(1500), '1.5k');
   assert.equal(fmtTok(1500000), '1.50M');
+});
+
+test('telemetry renderer splits sessionStatus and usageStats independently and embeds official quota slot', () => {
+  const dot = '<span class="ag-ctx-pending-dot ag-dot-idle"></span>';
+  const baseInline = {
+    telemetryLayout: 'compact',
+    telemetryCacheMode: 'session',
+    statusDotHtml: dot,
+    displayTps: 180,
+    ttft: 1.1,
+    lastCtx: 50000,
+    limitKStr: '256k',
+    ctxClass: 'ag-ctx-ok',
+    ctxPct: 20,
+    compactedPending: false,
+    outTok: 900,
+    lastCacheRate: '80.0',
+    sessionCacheRate: '85.0'
+  };
+
+  const statusOnlyInline = buildInlineTelemetryHtml({ ...baseInline, showSessionStatus: true, showUsageStats: false });
+  assert.equal(statusOnlyInline, dot);
+  assert.ok(!statusOnlyInline.includes('tok/s'));
+
+  const usageOnlyInline = buildInlineTelemetryHtml({ ...baseInline, showSessionStatus: false, showUsageStats: true });
+  assert.ok(!usageOnlyInline.includes('ag-ctx-pending-dot'), 'usage-only pill must omit status dot');
+  assert.ok(usageOnlyInline.includes('180 tok/s'));
+  assert.ok(usageOnlyInline.includes('Cache 85.0%'));
+
+  const baseTooltip = {
+    genIdx: 3,
+    streamTps: 180,
+    e2eTps: 120,
+    streamTpsValid: true,
+    last: { ctx: 50000, inTok: 10000, cacheWrite: 0, cacheRead: 40000, outTok: 900, thinkTok: 300, respTok: 600, ttft: 1.1, stream: 5.0, totDur: 6.1 },
+    lastCacheRate: '80.0',
+    ctxPct: 20,
+    contextLimitTokens: 256000,
+    limitKStr: '256k',
+    remainCtx: 206000,
+    compactedPending: false,
+    compactSummaryKb: 0,
+    compactingNow: false,
+    generatingPending: false,
+    pendingRetrying: false,
+    lastErrorMsg: '',
+    turnSteps: 1,
+    turnOut: 900,
+    turnThink: 300,
+    turnResp: 600,
+    turnDur: 6.1,
+    userStepsCount: 2,
+    validCount: 3,
+    totalIn: 20000,
+    totalCacheWrite: 0,
+    totalCache: 110000,
+    totalPrompt: 130000,
+    sessionCacheRate: '84.6',
+    totalOut: 2400,
+    totalThink: 800,
+    totalResp: 1600
+  };
+
+  const statusOnlyTt = buildMetricsTooltipHtml({ ...baseTooltip, showSessionStatus: true, showUsageStats: false });
+  assert.ok(statusOnlyTt.includes('实时会话状态'));
+  assert.ok(!statusOnlyTt.includes('ag-tt-bento'));
+  assert.ok(!statusOnlyTt.includes('data-ag-quota-slot'));
+
+  const usageOnlyTt = buildMetricsTooltipHtml({ ...baseTooltip, showSessionStatus: false, showUsageStats: true });
+  assert.ok(usageOnlyTt.includes('ag-tt-bento'));
+  assert.ok(usageOnlyTt.includes('data-ag-quota-slot="1"'));
+  assert.ok(usageOnlyTt.includes('收起明细'));
+  assert.ok(!usageOnlyTt.includes('ag-tt-live-chip'));
+  assert.ok(!usageOnlyTt.includes('ag-tt-wait-note'));
+
+  const bothTt = buildMetricsTooltipHtml({ ...baseTooltip, showSessionStatus: true, showUsageStats: true });
+  assert.ok(bothTt.includes('ag-tt-live-chip'));
+  assert.ok(bothTt.includes('ag-tt-wait-note'));
+  assert.ok(bothTt.includes('data-ag-quota-slot="1"'));
 });

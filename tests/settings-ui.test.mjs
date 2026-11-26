@@ -132,6 +132,27 @@ test('sanitizeConfigPatch validates whitelisted fields, sanitizes openIn, and bl
   });
   assert.equal(rejected.promptSuggestionModel, 'gemini-4-neon-xhigh');
   assert.equal(rejected.openIn.ideaPath, '/Applications/IntelliJ IDEA.app');
+
+  // Split sessionStatus & usageStats toggles keep umbrella metrics flag in sync
+  const onlyStatus = sanitizeConfigPatch(next, { modules: { sessionStatus: true, usageStats: false } });
+  assert.equal(onlyStatus.modules.sessionStatus, true);
+  assert.equal(onlyStatus.modules.usageStats, false);
+  assert.equal(onlyStatus.modules.metrics, true);
+
+  const bothOff = sanitizeConfigPatch(onlyStatus, { modules: { sessionStatus: false } });
+  assert.equal(bothOff.modules.sessionStatus, false);
+  assert.equal(bothOff.modules.usageStats, false);
+  assert.equal(bothOff.modules.metrics, false);
+
+  const onlyUsage = sanitizeConfigPatch(bothOff, { modules: { usageStats: true } });
+  assert.equal(onlyUsage.modules.sessionStatus, false);
+  assert.equal(onlyUsage.modules.usageStats, true);
+  assert.equal(onlyUsage.modules.metrics, true);
+
+  const legacyOff = sanitizeConfigPatch(onlyUsage, { modules: { metrics: false } });
+  assert.equal(legacyOff.modules.sessionStatus, false);
+  assert.equal(legacyOff.modules.usageStats, false);
+  assert.equal(legacyOff.modules.metrics, false);
 });
 
 test('60-i18n-engine translates dynamic quota-exhausted banners while preserving model names', () => {
@@ -218,7 +239,7 @@ test('60-i18n-engine translates dynamic quota-exhausted banners while preserving
     NodeFilter: { SHOW_ELEMENT: 1, SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3 },
     MutationObserver: class { observe() {} disconnect() {} },
     __AG_BOOT_PAYLOAD__: {
-      version: '1.0.0-test',
+      version: '0.1.1-test',
       platform: 'darwin',
       enabled: true,
       cssText: '',
@@ -393,7 +414,7 @@ test('60-i18n-engine handles Antigravity 2.35.1 labels, newly added rules, short
     NodeFilter: { SHOW_ELEMENT: 1, SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3 },
     MutationObserver: class { observe() {} disconnect() {} },
     __AG_BOOT_PAYLOAD__: {
-      version: '1.0.0-test',
+      version: '0.1.1-test',
       platform: 'darwin',
       enabled: true,
       cssText: '',
@@ -470,4 +491,14 @@ test('75-settings-ui uses manual popovers inside settings dialog, updates worker
   assert.ok(src.includes('pendingPaneRender = true'), 'must defer renderPane while model menu is open');
   assert.ok(src.includes('uiState.agyStatus.authRequired'), 'must surface agy authRequired status in UI');
   assert.ok(src.includes('agy 未登录'), 'must include Chinese auth-required badge label');
+
+  // Reorganized menu structure & branding
+  assert.ok(src.includes("navTitle: 'Antigravity增强'"), 'nav title must be Antigravity增强');
+  assert.ok(src.includes("pageTitle: 'Antigravity增强'"), 'page title must be Antigravity增强');
+  assert.ok(src.includes("secStatusBar: '状态栏'"), 'status bar section must be titled 状态栏');
+  assert.ok(src.includes("secContextMenu: '右键菜单'"), 'open-in section must be titled 右键菜单');
+  assert.ok(src.includes("secNextPrompt: '下一步预测'"), 'suggestions section must be titled 下一步预测');
+  assert.ok(src.includes('data-bind-mod="sessionStatus"'), 'must expose independent sessionStatus toggle');
+  assert.ok(src.includes('data-bind-mod="usageStats"'), 'must expose independent usageStats toggle');
+  assert.ok(src.includes("'v0.1.1'"), 'version fallback must start at v0.1.1');
 });

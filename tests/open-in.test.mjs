@@ -289,7 +289,7 @@ test('65-open-in.js runtime extracts file targets from attributes, React props, 
     removeEventListener() {},
     document: fakeDoc,
     __AG_BOOT_PAYLOAD__: {
-      version: '1.0.0-test',
+      version: '0.1.1-test',
       platform: 'darwin',
       enabled: true,
       cssText: '',

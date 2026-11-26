@@ -228,3 +228,272 @@
       return 0;
     }
   }
+
+  function formatQuotaWindowLabel(bucket, isZh = true) {
+    const rawWin = String((bucket && bucket.window) || '').trim().toLowerCase();
+    if (rawWin === 'daily') return isZh ? '每日限额' : 'Daily limit';
+    if (rawWin === 'weekly') return isZh ? '每周限额' : 'Weekly limit';
+    if (/^\d+[smhd]$/.test(rawWin)) {
+      if (!isZh) return rawWin + ' limit';
+      const num = rawWin.slice(0, -1);
+      const unit = rawWin.slice(-1);
+      const unitZh = unit === 'h' ? '小时' : unit === 'd' ? '天' : unit === 'm' ? '分钟' : '秒';
+      return num + ' ' + unitZh + '限额';
+    }
+    return String((bucket && bucket.displayName) || '').trim();
+  }
+
+  function resolveQuotaResetTimeMs(bucket) {
+    if (!bucket || typeof bucket !== 'object') return 0;
+    if (typeof bucket.resetTimeMs === 'number' && Number.isFinite(bucket.resetTimeMs) && bucket.resetTimeMs > 0) {
+      return bucket.resetTimeMs;
+    }
+    const rt = bucket.resetTime;
+    if (!rt) return 0;
+    if (typeof rt === 'number' && Number.isFinite(rt)) {
+      return rt > 1e11 ? rt : rt * 1000;
+    }
+    if (rt instanceof Date) {
+      const t = rt.getTime();
+      return Number.isFinite(t) ? t : 0;
+    }
+    if (typeof rt === 'string') {
+      const parsed = Date.parse(rt);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (typeof rt === 'object' && typeof rt.seconds !== 'undefined') {
+      const ms = Number(rt.seconds) * 1000 + Math.round(Number(rt.nanos || 0) / 1e6);
+      return Number.isFinite(ms) ? ms : 0;
+    }
+    return 0;
+  }
+
+  function formatQuotaResetCountdown(resetTimeMs, nowMs = Date.now(), isZh = true) {
+    if (!resetTimeMs || !Number.isFinite(resetTimeMs)) return '';
+    const diffMs = resetTimeMs - nowMs;
+    if (diffMs <= 0) return isZh ? '<1 分钟后重置' : 'Resets in <1m';
+    const totalMins = Math.floor(diffMs / 60000);
+    const days = Math.floor(totalMins / 1440);
+    const hours = Math.floor((totalMins % 1440) / 60);
+    const mins = totalMins % 60;
+    if (isZh) {
+      if (days > 0) return hours > 0 ? days + ' 天 ' + hours + ' 小时后重置' : days + ' 天后重置';
+      if (hours > 0) return mins > 0 ? hours + ' 小时 ' + mins + ' 分钟后重置' : hours + ' 小时后重置';
+      if (mins > 0) return mins + ' 分钟后重置';
+      return '<1 分钟后重置';
+    }
+    if (days > 0) return 'Resets in ' + (hours > 0 ? days + 'd ' + hours + 'h' : days + 'd');
+    if (hours > 0) return 'Resets in ' + (mins > 0 ? hours + 'h ' + mins + 'm' : hours + 'h');
+    if (mins > 0) return 'Resets in ' + mins + 'm';
+    return 'Resets in <1m';
+  }
+
+  function normalizeOfficialQuotaGroups(rawGroups, { nowMs = Date.now(), isZh = true } = {}) {
+    if (!Array.isArray(rawGroups)) return [];
+    const groups = [];
+    for (let i = 0; i < rawGroups.length; i++) {
+      const g = rawGroups[i];
+      if (!g || !Array.isArray(g.buckets) || g.buckets.length === 0) continue;
+      const gName = String(g.displayName || '').trim();
+      const buckets = [];
+      for (let j = 0; j < g.buckets.length; j++) {
+        const b = g.buckets[j];
+        if (!b || typeof b !== 'object') continue;
+        let fraction = undefined;
+        if (b.remaining && b.remaining.case === 'remainingFraction' && typeof b.remaining.value === 'number') {
+          fraction = b.remaining.value;
+        } else if (typeof b.remainingFraction === 'number') {
+          fraction = b.remainingFraction;
+        }
+        const hasFraction = typeof fraction === 'number' && Number.isFinite(fraction);
+        const clamped = hasFraction ? Math.max(0, Math.min(1, fraction)) : undefined;
+        const remainingPct = hasFraction ? Math.round(clamped * 100) : null;
+        const level = !hasFraction ? 'unknown' : clamped < 0.1 ? 'crit' : clamped < 0.25 ? 'warn' : 'ok';
+        const resetMs = resolveQuotaResetTimeMs(b);
+        const resetText = resetMs ? formatQuotaResetCountdown(resetMs, nowMs, isZh) : '';
+        const winLabel = formatQuotaWindowLabel(b, isZh);
+        const desc = String(b.description || '').trim();
+        buckets.push({
+          bucketId: String(b.bucketId || j),
+          displayName: String(b.displayName || '').trim(),
+          windowLabel: winLabel,
+          remainingFraction: clamped,
+          remainingPct,
+          level,
+          resetText: resetText || desc,
+          disabled: Boolean(b.disabled)
+        });
+      }
+      if (buckets.length > 0) {
+        groups.push({
+          displayName: gName,
+          description: String(g.description || '').trim(),
+          buckets
+        });
+      }
+    }
+    return groups;
+  }
+
+  function findAntigravityServices(scopeEl) {
+    if (typeof document === 'undefined') return { cloudCodeService: null, store: null };
+    try {
+      const roots = [];
+      if (scopeEl) roots.push(scopeEl);
+      const box = document.getElementById(SELECTORS.inputBoxId);
+      if (box && !roots.includes(box)) roots.push(box);
+      const modelBtn = document.querySelector('[data-testid="model-selector-trigger"]');
+      if (modelBtn && !roots.includes(modelBtn)) roots.push(modelBtn);
+      const appRoot = document.getElementById('root') || document.body;
+      if (appRoot && appRoot.firstElementChild && !roots.includes(appRoot.firstElementChild)) {
+        roots.push(appRoot.firstElementChild);
+      }
+
+      let cloudCodeService = null;
+      let store = null;
+      for (let r = 0; r < roots.length && (!cloudCodeService || !store); r++) {
+        const el = roots[r];
+        if (!el) continue;
+        const fk = Object.keys(el).find(
+          (k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
+        );
+        let cur = fk ? el[fk] : null;
+        for (let i = 0; i < 80 && cur && (!cloudCodeService || !store); i++, cur = cur.return) {
+          const val = cur.memoizedProps && cur.memoizedProps.value;
+          if (!val || typeof val !== 'object') continue;
+          if (
+            !cloudCodeService &&
+            val.core &&
+            val.core.cloudCodeService &&
+            typeof val.core.cloudCodeService.retrieveUserQuotaSummary === 'function'
+          ) {
+            cloudCodeService = val.core.cloudCodeService;
+          }
+          if (!store && val.store && typeof val.store.getState === 'function') {
+            store = val.store;
+          }
+        }
+      }
+      return { cloudCodeService, store };
+    } catch {
+      return { cloudCodeService: null, store: null };
+    }
+  }
+
+  function readCachedOfficialQuotaFromStore(store) {
+    if (!store || typeof store.getState !== 'function') return null;
+    try {
+      const state = store.getState();
+      if (!state || typeof state !== 'object') return null;
+      let rawGroups = null;
+      let description = '';
+      const queries = state.modelQuotaApi && state.modelQuotaApi.queries;
+      if (queries && typeof queries === 'object') {
+        const vals = Object.values(queries);
+        for (let i = vals.length - 1; i >= 0; i--) {
+          const q = vals[i];
+          if (q && q.data && Array.isArray(q.data.groups)) {
+            rawGroups = q.data.groups;
+            description = String(q.data.description || '');
+            break;
+          }
+        }
+      }
+      const creditsState = state.credits && typeof state.credits === 'object' ? state.credits : null;
+      const availableCredits =
+        creditsState && typeof creditsState.availableCredits === 'number' ? creditsState.availableCredits : null;
+      const useAICredits = Boolean(creditsState && creditsState.useAICredits);
+      const planName = String(
+        (state.userStatus && state.userStatus.userTier && state.userStatus.userTier.description) || ''
+      ).trim();
+      return { rawGroups, description, availableCredits, useAICredits, planName };
+    } catch {
+      return null;
+    }
+  }
+
+  function loadOfficialQuotaSummary({ forceRefresh = false, scopeEl = null, isZh = true } = {}) {
+    if (typeof window === 'undefined') {
+      return Promise.resolve({ ok: false, unavailable: true, groups: [] });
+    }
+    const now = Date.now();
+    const { cloudCodeService, store } = findAntigravityServices(scopeEl);
+    const storeSnap = readCachedOfficialQuotaFromStore(store);
+
+    const cache = window.__ag_official_quota_cache;
+    if (!forceRefresh && cache && now - cache.fetchedAt < 30000 && Array.isArray(cache.rawGroups)) {
+      return Promise.resolve({
+        ok: true,
+        cached: true,
+        fetchedAt: cache.fetchedAt,
+        groups: normalizeOfficialQuotaGroups(cache.rawGroups, { nowMs: now, isZh }),
+        availableCredits: storeSnap ? storeSnap.availableCredits : cache.availableCredits,
+        useAICredits: storeSnap ? storeSnap.useAICredits : cache.useAICredits,
+        planName: (storeSnap && storeSnap.planName) || cache.planName || ''
+      });
+    }
+
+    if (!cloudCodeService) {
+      if (storeSnap && Array.isArray(storeSnap.rawGroups)) {
+        return Promise.resolve({
+          ok: true,
+          cached: true,
+          fetchedAt: now,
+          groups: normalizeOfficialQuotaGroups(storeSnap.rawGroups, { nowMs: now, isZh }),
+          availableCredits: storeSnap.availableCredits,
+          useAICredits: storeSnap.useAICredits,
+          planName: storeSnap.planName || ''
+        });
+      }
+      return Promise.resolve({ ok: false, unavailable: true, groups: [] });
+    }
+
+    if (window.__ag_official_quota_inflight && (!forceRefresh || window.__ag_official_quota_inflight_force)) {
+      return window.__ag_official_quota_inflight.then((res) =>
+        Object.assign({}, res, {
+          groups: normalizeOfficialQuotaGroups(res.rawGroups || [], { nowMs: Date.now(), isZh })
+        })
+      );
+    }
+
+    window.__ag_official_quota_inflight_force = Boolean(forceRefresh);
+    const req = Promise.resolve()
+      .then(() => cloudCodeService.retrieveUserQuotaSummary(Boolean(forceRefresh)))
+      .then((res) => {
+        const rawGroups = (res && res.response && Array.isArray(res.response.groups) && res.response.groups) ||
+          (res && Array.isArray(res.groups) && res.groups) || [];
+        const fetchedAt = Date.now();
+        const latestStore = readCachedOfficialQuotaFromStore(store) || storeSnap;
+        const entry = {
+          ok: true,
+          cached: false,
+          fetchedAt,
+          rawGroups,
+          availableCredits: latestStore ? latestStore.availableCredits : null,
+          useAICredits: Boolean(latestStore && latestStore.useAICredits),
+          planName: (latestStore && latestStore.planName) || ''
+        };
+        window.__ag_official_quota_cache = entry;
+        return Object.assign({}, entry, {
+          groups: normalizeOfficialQuotaGroups(rawGroups, { nowMs: fetchedAt, isZh })
+        });
+      })
+      .catch(() => {
+        const prev = window.__ag_official_quota_cache;
+        if (prev && Array.isArray(prev.rawGroups)) {
+          return Object.assign({}, prev, {
+            groups: normalizeOfficialQuotaGroups(prev.rawGroups, { nowMs: Date.now(), isZh })
+          });
+        }
+        return { ok: false, unavailable: false, groups: [], rawGroups: [] };
+      })
+      .finally(() => {
+        if (window.__ag_official_quota_inflight === req) {
+          window.__ag_official_quota_inflight = null;
+          window.__ag_official_quota_inflight_force = false;
+        }
+      });
+
+    window.__ag_official_quota_inflight = req;
+    return req;
+  }

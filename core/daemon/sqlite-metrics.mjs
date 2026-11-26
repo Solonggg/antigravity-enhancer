@@ -78,9 +78,15 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
     const fallbackLim = cfg.fallbackContextLimit || 256000;
     const telemetryLayout = cfg.telemetryLayout === 'detailed' ? 'detailed' : 'compact';
     const telemetryCacheMode = cfg.telemetryCacheMode === 'step' ? 'step' : 'session';
+    const rawMods = cfg.modules || {};
+    const legacyMetrics = rawMods.metrics !== false;
+    const showSessionStatus =
+      typeof rawMods.sessionStatus === 'boolean' ? rawMods.sessionStatus : legacyMetrics;
+    const showUsageStats =
+      typeof rawMods.usageStats === 'boolean' ? rawMods.usageStats : legacyMetrics;
     const lsLogFile = extraOpts && typeof extraOpts.lsLogFile === 'string' ? extraOpts.lsLogFile : '';
     const lsSig = extraOpts && typeof extraOpts.lsSig === 'string' ? extraOpts.lsSig : '';
-    const sig = `${rawDbSig}|lim:${manualLim}:${fallbackLim}|ly:${telemetryLayout}:${telemetryCacheMode}${lsSig ? `|ls:${lsSig}` : ''}`;
+    const sig = `${rawDbSig}|lim:${manualLim}:${fallbackLim}|ly:${telemetryLayout}:${telemetryCacheMode}|m:${showSessionStatus ? 1 : 0}:${showUsageStats ? 1 : 0}${lsSig ? `|ls:${lsSig}` : ''}`;
 
     const cached = metricsCache.get(dbPath);
     if (cached && cached.sig === sig) {
@@ -437,10 +443,12 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
       const safeDotTitle = statusTitle.replace(/"/g, '&quot;');
       const statusDotHtml = `<span class="${statusDotClass}" aria-label="${safeDotTitle}"></span>`;
 
-      const turns = buildTurnSummaries(valid, userStepIdxs, manualLim, fallbackLim);
+      const turns = showUsageStats ? buildTurnSummaries(valid, userStepIdxs, manualLim, fallbackLim) : [];
       const inlineHtml = buildInlineTelemetryHtml({
         telemetryLayout,
         telemetryCacheMode,
+        showSessionStatus,
+        showUsageStats,
         statusDotHtml,
         displayTps,
         ttft: last.ttft,
@@ -456,6 +464,8 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
 
       const streamTpsValid = streamTps > 0 && streamTps <= MAX_SANITY_STREAM_TPS;
       const tooltipHtml = buildMetricsTooltipHtml({
+        showSessionStatus,
+        showUsageStats,
         genIdx: last.idx + 1,
         streamTps,
         e2eTps,

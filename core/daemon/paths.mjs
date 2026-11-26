@@ -15,7 +15,7 @@ export const CORE_DIR = path.join(ROOT_DIR, 'core');
 export const STYLES_DIR = path.join(CORE_DIR, 'styles');
 export const RUNTIME_DIR = path.join(CORE_DIR, 'runtime');
 export const USER_DIR = path.join(ROOT_DIR, 'user');
-export const BASE_VERSION = '1.0.0';
+export const BASE_VERSION = '0.1.1';
 
 let openInHelpers = {
   normalizeOpenInConfig: (raw) => ({
@@ -178,6 +178,8 @@ export function resolveActiveChannelEndpoints(channelMode = 'auto', userCfg = {}
 const EDITABLE_MODULE_KEYS = new Set([
   'i18n',
   'metrics',
+  'sessionStatus',
+  'usageStats',
   'openIn',
   'promptSuggestions',
   'deadlockHealer',
@@ -194,10 +196,24 @@ export function sanitizeConfigPatch(currentCfg, patch) {
 
   if (patch.modules && typeof patch.modules === 'object') {
     const nextModules = base.modules && typeof base.modules === 'object' ? { ...base.modules } : {};
+    const prevLegacy = nextModules.metrics !== false;
+    const hasSessionPatch = typeof patch.modules.sessionStatus === 'boolean';
+    const hasUsagePatch = typeof patch.modules.usageStats === 'boolean';
+    const hasLegacyPatch = typeof patch.modules.metrics === 'boolean';
     for (const [k, v] of Object.entries(patch.modules)) {
       if (EDITABLE_MODULE_KEYS.has(k) && typeof v === 'boolean') {
         nextModules[k] = v;
       }
+    }
+    if (hasLegacyPatch && !hasSessionPatch && !hasUsagePatch) {
+      nextModules.sessionStatus = patch.modules.metrics;
+      nextModules.usageStats = patch.modules.metrics;
+    } else if (hasSessionPatch || hasUsagePatch) {
+      const effSession = typeof nextModules.sessionStatus === 'boolean' ? nextModules.sessionStatus : prevLegacy;
+      const effUsage = typeof nextModules.usageStats === 'boolean' ? nextModules.usageStats : prevLegacy;
+      nextModules.sessionStatus = effSession;
+      nextModules.usageStats = effUsage;
+      nextModules.metrics = Boolean(effSession || effUsage);
     }
     base.modules = nextModules;
   }
@@ -237,6 +253,8 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     modules: {
       i18n: true,
       metrics: Boolean(hasSqlite),
+      sessionStatus: true,
+      usageStats: Boolean(hasSqlite),
       openIn: true,
       promptSuggestions: false,
       deadlockHealer: true,
@@ -295,9 +313,12 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     if (typeof rawModules.metricsCapsule === 'boolean' && typeof rawModules.metrics !== 'boolean') {
       rawModules.metrics = rawModules.metricsCapsule;
     }
+    const legacyMetrics = rawModules.metrics !== false;
     const modules = {
       i18n: rawModules.i18n !== false,
-      metrics: rawModules.metrics !== false,
+      sessionStatus: typeof rawModules.sessionStatus === 'boolean' ? rawModules.sessionStatus : legacyMetrics,
+      usageStats: typeof rawModules.usageStats === 'boolean' ? rawModules.usageStats : legacyMetrics,
+      metrics: false,
       openIn: rawModules.openIn !== false,
       promptSuggestions: rawModules.promptSuggestions === true,
       deadlockHealer: rawModules.deadlockHealer !== false,
@@ -310,8 +331,9 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     const hasI18nFiles =
       fs.existsSync(path.join(CORE_DIR, 'i18n.json')) &&
       fs.existsSync(path.join(RUNTIME_DIR, '60-i18n-engine.js'));
+    const hasTelemetryUiFile = fs.existsSync(path.join(RUNTIME_DIR, '50-telemetry-ui.js'));
     const hasMetricsFiles =
-      fs.existsSync(path.join(RUNTIME_DIR, '50-telemetry-ui.js')) &&
+      hasTelemetryUiFile &&
       fs.existsSync(path.join(CORE_DIR, 'daemon', 'sqlite-metrics.mjs'));
     const hasOpenInFiles =
       fs.existsSync(path.join(RUNTIME_DIR, '65-open-in.js')) &&
@@ -322,7 +344,13 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     const hasGuardsFile = fs.existsSync(path.join(RUNTIME_DIR, '10-guards.js'));
 
     if (!hasI18nFiles) modules.i18n = false;
-    if (!hasSqlite || !hasMetricsFiles) modules.metrics = false;
+    if (!hasTelemetryUiFile) {
+      modules.sessionStatus = false;
+      modules.usageStats = false;
+    } else if (!hasSqlite || !hasMetricsFiles) {
+      modules.usageStats = false;
+    }
+    modules.metrics = Boolean(modules.sessionStatus || modules.usageStats);
     if (!hasOpenInFiles) modules.openIn = false;
     if (!hasPromptSuggestFiles) modules.promptSuggestions = false;
     if (!hasGuardsFile) {

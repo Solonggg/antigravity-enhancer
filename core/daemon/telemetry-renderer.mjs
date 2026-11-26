@@ -68,6 +68,8 @@ export function escapeHtml(str) {
 export function buildInlineTelemetryHtml({
   telemetryLayout = 'compact',
   telemetryCacheMode = 'session',
+  showSessionStatus = true,
+  showUsageStats = true,
   statusDotHtml,
   displayTps,
   ttft,
@@ -80,12 +82,17 @@ export function buildInlineTelemetryHtml({
   lastCacheRate,
   sessionCacheRate
 }) {
+  const dotPart = showSessionStatus ? statusDotHtml || '' : '';
+  if (!showUsageStats) {
+    return dotPart;
+  }
+
   if (telemetryLayout === 'detailed') {
     const inlineCtxHtml = compactedPending
       ? '<span class="ag-ctx-compacted">Ctx 已压缩</span>'
       : `<span>Ctx ${fmtTok(lastCtx)}/${limitKStr} <span class="${ctxClass}">(${ctxPct}%)</span></span>`;
     return (
-      statusDotHtml +
+      dotPart +
       [
         `<span>${Math.round(displayTps)} tok/s</span>`,
         '<span class="ag-sep">·</span>',
@@ -104,7 +111,7 @@ export function buildInlineTelemetryHtml({
     : `<span>Ctx <span class="${ctxClass}">${ctxPct}%</span></span>`;
 
   return (
-    statusDotHtml +
+    dotPart +
     [
       `<span>${Math.round(displayTps)} tok/s</span>`,
       '<span class="ag-sep">·</span>',
@@ -116,6 +123,8 @@ export function buildInlineTelemetryHtml({
 }
 
 export function buildMetricsTooltipHtml({
+  showSessionStatus = true,
+  showUsageStats = true,
   genIdx,
   streamTps,
   e2eTps,
@@ -174,7 +183,22 @@ export function buildMetricsTooltipHtml({
       : generatingPending
       ? '新步执行中…'
       : '';
-  const liveChipHtml = `<span class="ag-tt-live-chip${liveChipClass}">${liveChipText}</span>`;
+  const liveChipHtml = showSessionStatus
+    ? `<span class="ag-tt-live-chip${liveChipClass}">${liveChipText}</span>`
+    : '';
+  const waitNoteHtml = showSessionStatus ? '<div class="ag-tt-wait-note" id="ag-tt-wait-note"></div>' : '';
+
+  if (!showUsageStats) {
+    if (!showSessionStatus) return '';
+    return `<div class="ag-tt-wrap ag-tt-status-only">
+    <div class="ag-tt-hdr">
+      <span class="ag-tt-hdr-left">实时会话状态</span>
+      <span class="ag-tt-hdr-right">${liveChipHtml}</span>
+    </div>
+    ${waitNoteHtml}
+    <div class="ag-tt-status-desc" data-ag-status-desc="1">会话连接正常，随时可继续对话。</div>
+  </div>`;
+  }
   const ctxBentoValHtml = compactedPending
     ? '<span class="ag-tt-pill ag-tt-compacted-val">已压缩</span>'
     : `<span class="ag-tt-pill">${ctxPct}%</span>`;
@@ -250,7 +274,7 @@ export function buildMetricsTooltipHtml({
       <span class="ag-tt-hdr-left">本轮最新调用</span>
       <span class="ag-tt-hdr-right">${liveChipHtml}<span class="ag-tt-gen-chip">Gen #${genIdx}</span></span>
     </div>
-    <div class="ag-tt-wait-note" id="ag-tt-wait-note"></div>
+    ${waitNoteHtml}
     <div class="ag-tt-bento">
       <div class="ag-tt-bento-cell">
         <div class="ag-tt-bento-lbl">生成速度</div>
@@ -348,10 +372,12 @@ export function buildMetricsTooltipHtml({
         </div>
       </div>
     </div>
+    <div class="ag-tt-quota-sec" data-ag-quota-slot="1"></div>
     <div class="ag-tt-footer">
       <span class="ag-tt-footer-summary">${userStepsCount} 轮 · ${validCount} 次 · 耗时 ${last.totDur.toFixed(2)}s</span>
       <button type="button" class="ag-tt-btn-toggle" data-ag-tt-toggle="1">
-        <span>展开明细</span>
+        <span class="ag-tt-toggle-lbl-expanded">收起明细</span>
+        <span class="ag-tt-toggle-lbl-collapsed">展开明细</span>
         <svg class="ag-tt-chevron" width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>
       </button>
     </div>

@@ -547,16 +547,192 @@
 #ag-live-metrics-tooltip .ag-tt-c-ctx-new { background-color: var(--ag-tt-lvl-new); }
 #ag-live-metrics-tooltip .ag-tt-c-ctx-cache { background-color: var(--ag-tt-lvl-cache); }
 
-#ag-live-metrics-tooltip:not([data-expanded="1"]) .ag-tt-l2 {
+#ag-live-metrics-tooltip[data-collapsed="1"] .ag-tt-l2 {
   display: none !important;
 }
 
-#ag-live-metrics-tooltip[data-expanded="1"] {
-  padding-bottom: 11px;
+#ag-live-metrics-tooltip:not([data-collapsed="1"]) {
+  padding-bottom: 10px;
 }
 
-#ag-live-metrics-tooltip[data-expanded="1"] .ag-tt-footer {
+#ag-live-metrics-tooltip:not([data-collapsed="1"]) .ag-tt-toggle-lbl-collapsed {
   display: none !important;
+}
+
+#ag-live-metrics-tooltip[data-collapsed="1"] .ag-tt-toggle-lbl-expanded {
+  display: none !important;
+}
+
+#ag-live-metrics-tooltip:not([data-collapsed="1"]) .ag-tt-chevron {
+  transform: rotate(180deg);
+}
+
+#ag-live-metrics-tooltip .ag-tt-status-desc {
+  font-size: 10.5px !important;
+  line-height: 1.45 !important;
+  color: var(--ag-tt-ink-2) !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-status-desc[hidden] {
+  display: none !important;
+}
+
+/* Official Model Quota section embedded in Usage Stats */
+#ag-live-metrics-tooltip .ag-tt-quota-sec:empty {
+  display: none !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-hdr {
+  margin-top: 8px;
+  margin-bottom: 5px;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-btn {
+  appearance: none;
+  border: 0 !important;
+  margin: 0;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background-color: transparent !important;
+  color: var(--ag-tt-ink-2) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit !important;
+  font-size: 9.5px !important;
+  font-weight: 500 !important;
+  line-height: 1.2 !important;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-btn:hover {
+  background-color: var(--ag-tt-chip-bg) !important;
+  color: var(--ag-tt-ink) !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-refresh.is-loading svg {
+  animation: agQuotaSpin 0.7s linear infinite;
+}
+
+@keyframes agQuotaSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-gname {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  color: var(--ag-tt-ink) !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5px;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-item.is-nested {
+  padding-left: 7px;
+  border-left: 1.5px solid var(--ag-tt-hairline);
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10px !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-name {
+  color: var(--ag-tt-ink-2) !important;
+  font-weight: 500 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-item:not(.is-nested) .ag-tt-quota-name {
+  color: var(--ag-tt-ink) !important;
+  font-weight: 600 !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-pct {
+  font-size: 9.5px !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--ag-tt-emerald) !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-pct.ag-q-warn {
+  color: #D97706 !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-pct.ag-q-crit {
+  color: #DC2626 !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-pct.ag-q-unknown {
+  color: var(--ag-tt-ink-3) !important;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-track {
+  height: 4px;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-fill.ag-q-ok {
+  background-color: var(--ag-tt-emerald);
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-fill.ag-q-warn {
+  background-color: #F59E0B;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-fill.ag-q-crit {
+  background-color: #EF4444;
+}
+
+#ag-live-metrics-tooltip .ag-tt-quota-sub,
+#ag-live-metrics-tooltip .ag-tt-quota-empty {
+  font-size: 9px !important;
+  color: var(--ag-tt-ink-3) !important;
+  line-height: 1.35 !important;
+}
+
+:is(html.dark body, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) #ag-live-metrics-tooltip .ag-tt-quota-pct.ag-q-warn {
+  color: #FBBF24 !important;
+}
+
+:is(html.dark body, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) #ag-live-metrics-tooltip .ag-tt-quota-pct.ag-q-crit {
+  color: #F87171 !important;
 }
 
 #ag-live-metrics-tooltip .ag-tt-l2 {

@@ -41,8 +41,8 @@ export const FEATURE_GROUPS = Object.freeze({
   },
   metrics: {
     id: 'metrics',
-    label: '纯本地实时会话状态指示、一/二级用量面板与每轮尾部统计',
-    configKeys: ['metrics'],
+    label: '纯本地实时会话状态指示、用量统计明细（含官方配额）与每轮尾部统计',
+    configKeys: ['metrics', 'sessionStatus', 'usageStats'],
     sparsePaths: [
       '/core/styles/30-telemetry.css',
       '/core/runtime/30-antigravity-probe.js',

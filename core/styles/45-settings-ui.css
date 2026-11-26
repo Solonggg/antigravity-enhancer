@@ -286,6 +286,10 @@
   padding: 12px 16px;
 }
 
+#ag-settings-pane .ag-s-row[hidden] {
+  display: none !important;
+}
+
 #ag-settings-pane .ag-s-row + .ag-s-row {
   border-top: 1px solid var(--ag-s-hairline);
 }

@@ -591,3 +591,88 @@ test('Detailed mode always mounts in dedicated centered bottom row while compact
   compactEnv.triggerResize();
   assert.equal(compactPill.getAttribute('data-ag-row-mode'), 'middle', 'hysteresis must hold middle mode without flip-flopping');
 });
+
+test('normalizeOfficialQuotaGroups formats official Antigravity quota groups, levels, and reset countdowns', () => {
+  const probeCode = fs.readFileSync(path.join(ROOT_DIR, 'core', 'runtime', '30-antigravity-probe.js'), 'utf8');
+  const sandbox = { SELECTORS: { inputBoxId: 'antigravity.agentSidePanelInputBox' } };
+  vm.runInNewContext(
+    `${probeCode}\nglobalThis.__exports = { normalizeOfficialQuotaGroups, formatQuotaResetCountdown };`,
+    sandbox
+  );
+  const { normalizeOfficialQuotaGroups } = sandbox.__exports;
+  const nowMs = Date.UTC(2026, 10, 26, 10, 0, 0);
+  const groups = normalizeOfficialQuotaGroups(
+    [
+      {
+        displayName: 'Gemini 4',
+        buckets: [
+          {
+            bucketId: 'b1',
+            displayName: '5h',
+            window: '5h',
+            remaining: { case: 'remainingFraction', value: 0.72 },
+            resetTime: { seconds: Math.floor((nowMs + 3 * 3600 * 1000 + 20 * 60 * 1000) / 1000), nanos: 0 }
+          },
+          {
+            bucketId: 'b2',
+            displayName: 'Weekly',
+            window: 'weekly',
+            remaining: { case: 'remainingFraction', value: 0.08 },
+            resetTime: { seconds: Math.floor((nowMs + 2 * 86400 * 1000 + 4 * 3600 * 1000) / 1000), nanos: 0 }
+          }
+        ]
+      }
+    ],
+    { nowMs, isZh: true }
+  );
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].displayName, 'Gemini 4');
+  assert.equal(groups[0].buckets.length, 2);
+  assert.equal(groups[0].buckets[0].windowLabel, '5 小时限额');
+  assert.equal(groups[0].buckets[0].remainingPct, 72);
+  assert.equal(groups[0].buckets[0].level, 'ok');
+  assert.equal(groups[0].buckets[0].resetText, '3 小时 20 分钟后重置');
+  assert.equal(groups[0].buckets[1].windowLabel, '每周限额');
+  assert.equal(groups[0].buckets[1].remainingPct, 8);
+  assert.equal(groups[0].buckets[1].level, 'crit');
+  assert.equal(groups[0].buckets[1].resetText, '2 天 4 小时后重置');
+});
+
+test('50-telemetry-ui respects independent sessionStatus and usageStats toggles', () => {
+  // Usage stats only: pill hidden until metrics arrive, then rendered without status dot
+  const usageDom = buildComposerDom({ withExplicitFooter: true });
+  const usageEnv = mountTelemetryBundle(usageDom, {
+    modules: { i18n: true, sessionStatus: false, usageStats: true, metrics: true }
+  });
+  usageEnv.win.__ag_on_route_change();
+  const hiddenPill = usageEnv.doc.getElementById('ag-live-metrics-pill');
+  assert.ok(!hiddenPill || hiddenPill.style.display === 'none', 'usage-only pill stays hidden before data arrives');
+
+  usageEnv.win.__ag_render_metrics({
+    cid: usageDom.cid,
+    hasData: true,
+    inlineHtml: '<span>190 tok/s</span><span class="ag-sep">·</span><span>Ctx 15%</span>',
+    tooltipHtml: '<div class="ag-tt-wrap"><div class="ag-tt-quota-sec" data-ag-quota-slot="1"></div></div>'
+  });
+  const usagePill = usageEnv.doc.getElementById('ag-live-metrics-pill');
+  assert.ok(usagePill);
+  assert.equal(usagePill.style.display, 'inline-flex');
+  const usageText = usagePill.querySelector('.ag-live-metrics-text');
+  assert.ok(usageText.innerHTML.includes('190 tok/s'));
+  assert.ok(!usageText.innerHTML.includes('ag-ctx-pending-dot'));
+
+  // Session status only: pill shows status dot + 就绪 even when metrics payload has inline metrics
+  const statusDom = buildComposerDom({ withExplicitFooter: true });
+  const statusEnv = mountTelemetryBundle(statusDom, {
+    modules: { i18n: true, sessionStatus: true, usageStats: false, metrics: true }
+  });
+  statusEnv.win.__ag_on_route_change();
+  const statusPill = statusEnv.doc.getElementById('ag-live-metrics-pill');
+  assert.ok(statusPill);
+  assert.equal(statusPill.style.display, 'inline-flex');
+  const statusText = statusPill.querySelector('.ag-live-metrics-text');
+  assert.ok(statusText.innerHTML.includes('ag-ctx-pending-dot'));
+  assert.ok(statusText.innerHTML.includes('就绪'));
+  assert.ok(!statusText.innerHTML.includes('tok/s'));
+});

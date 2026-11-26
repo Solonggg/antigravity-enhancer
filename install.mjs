@@ -247,6 +247,8 @@ async function runInstall() {
   const allowedModules = new Set([
     'i18n',
     'metrics',
+    'sessionStatus',
+    'usageStats',
     'openIn',
     'promptSuggestions',
     'deadlockHealer',
@@ -269,6 +271,17 @@ async function runInstall() {
   }
   if (!fs.existsSync(path.join(targetCore, 'runtime', '50-telemetry-ui.js'))) {
     currentCfg.modules.metrics = false;
+    currentCfg.modules.sessionStatus = false;
+    currentCfg.modules.usageStats = false;
+  } else {
+    const legacyMetrics = currentCfg.modules.metrics !== false;
+    if (typeof currentCfg.modules.sessionStatus !== 'boolean') {
+      currentCfg.modules.sessionStatus = legacyMetrics;
+    }
+    if (typeof currentCfg.modules.usageStats !== 'boolean') {
+      currentCfg.modules.usageStats = legacyMetrics;
+    }
+    currentCfg.modules.metrics = Boolean(currentCfg.modules.sessionStatus || currentCfg.modules.usageStats);
   }
   if (
     !fs.existsSync(path.join(targetCore, 'runtime', '65-open-in.js')) ||

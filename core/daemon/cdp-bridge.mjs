@@ -484,7 +484,10 @@ export function createCdpManager({
         const syncMetricsForSession = async (force = false) => {
           if (isSwarmIframe || !hostConfirmed) return;
           const { activeConfig } = bundleCtrl.getState();
-          if (!hasSqlite() || !activeConfig.modules.metrics || !activeConfig.enabled) return;
+          const needTelemetry = Boolean(
+            activeConfig.modules.sessionStatus || activeConfig.modules.usageStats || activeConfig.modules.metrics
+          );
+          if (!hasSqlite() || !needTelemetry || !activeConfig.enabled) return;
 
           if (activeCascadeIds.length === 0 || force) {
             const evalRes = await send('Runtime.evaluate', {
@@ -529,7 +532,9 @@ export function createCdpManager({
             const prev = pushedSessions.get(cid) || { hash: '', pendingActive: false };
             const rawSig = getDbSignature(cid, endpoint.conversationsDir) || 'empty';
             const lsSig = prev.pendingActive ? getLsLogSig(endpoint.lsLogFile) : '';
-            const sessionKey = `${cid}@${rawSig}|lim:${activeConfig.manualContextLimit || 0}:${activeConfig.fallbackContextLimit || 256000}|ly:${activeConfig.telemetryLayout}:${activeConfig.telemetryCacheMode}${lsSig ? `|ls:${lsSig}` : ''}`;
+            const ssFlag = activeConfig.modules.sessionStatus ? 1 : 0;
+            const usFlag = activeConfig.modules.usageStats ? 1 : 0;
+            const sessionKey = `${cid}@${rawSig}|lim:${activeConfig.manualContextLimit || 0}:${activeConfig.fallbackContextLimit || 256000}|ly:${activeConfig.telemetryLayout}:${activeConfig.telemetryCacheMode}|m:${ssFlag}:${usFlag}${lsSig ? `|ls:${lsSig}` : ''}`;
             if (!force && sessionKey === prev.hash) continue;
 
             const payload = metricsReader.parseConversationMetrics(cid, endpoint.conversationsDir, {

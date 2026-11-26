@@ -33,7 +33,7 @@
 | **中文界面汉化 (`i18n`)** | 内置 `5,200+` 词条、Shadow DOM 穿透、快捷键后缀/权限审批/配额提示/Swarm 动态翻译，`WeakMap` 原地替换，关闭即恢复英文 | 默认开启 |
 | **本地会话状态与统计 (`metrics`)** | 仅读本地 SQLite 与日志：底部四态状态指示、一/二级用量明细面板、每轮悬浮详情卡（覆盖主对话与旁路提问） | 默认开启 |
 | **右键外部打开 (`openIn`)** | 在回复中的文件链接/路径上右键，直接用 **IDEA / Finder / Zed / VS Code / Cursor** 打开并精准跳转行号，不影响左键 | 默认开启 |
-| **原生设置面板** | 嵌入 **设置 → Enhancer 增强**，继承原生浅/深色配色，热重载同步至 `user/config.json` | 默认内置 |
+| **原生设置面板** | 嵌入 **设置 → Antigravity增强**，继承原生浅/深色配色，热重载同步至 `user/config.json` | 默认内置 |
 | **实用修复 (`fixes`)** | 修复设置弹窗路由死锁、补充 `Cmd/Ctrl + -/=/0` 缩放快捷键与 `2.33.0+` 单图标冷启动 CDP 接力 | 默认开启 |
 | **输入框下一句预测 (`suggest`)** | 回复结束后显示 Ghost Text，按 `Tab` / `→` 补全，内置本地 `agy models` 二级级联模型选择 | **默认关闭**（按需开启） |
 
@@ -102,7 +102,7 @@ node install.mjs install --without metrics
 ### 2. 右键打开文件引用（精简子功能）
 
 - **被动拦截，不影响左键**：仅在用户右键点击回复中的 `file://` 链接、React 文件引用组件、代码块/文本中的本地绝对路径（支持 `#L10`、`#L10-L25`、`#L10C4`、`:42`、`:42:12`）或选中路径文本时弹出简洁右键菜单；左键点击仍保持 Antigravity 原生行为。
-- **精简面板选项**：整合进 **设置 → Enhancer 增强**，无需独立后台进程与冗余开关：
+- **精简面板选项**：整合进 **设置 → Antigravity增强**，无需独立后台进程与冗余开关：
   - **5 个核心目标开关胶囊**：`IDEA`、`Finder`、`Zed`、`VS Code`、`Cursor`（带本机探测绿点，点击即切换）。
   - **按需展开 IDEA 路径**：启用 `IDEA` 时单行展示自动探测到的启动器路径，点击「自定义路径」才展开输入框与保存/重置按钮。
   - **默认附带复制路径**：菜单默认提供 `复制路径` / `复制路径:行号`，无需在界面额外占行开关。
@@ -137,7 +137,7 @@ node install.mjs install --without metrics
 
 ### 日常配置（`user/config.json`）
 
-日常开关、右键目标、IDEA 路径与状态栏偏好推荐直接在 **设置 → Enhancer 增强** 中调整，修改会实时写入 `~/.gemini/antigravity/enhancer/user/config.json` 并热重载生效：
+日常开关、右键目标、IDEA 路径与状态栏偏好推荐直接在 **设置 → Antigravity增强** 中调整，修改会实时写入 `~/.gemini/antigravity/enhancer/user/config.json` 并热重载生效：
 
 ```json
 {
@@ -198,6 +198,6 @@ node install.mjs build-manifest && npm run check && npm test && node install.mjs
 - **Expanded Chinese UI Localization (`i18n`)**: `5,200+` curated entries with Shadow DOM penetration, smart-quote fallback, shortcut-suffixed labels, permission prompts, and Swarm frame support—reversible in place via `WeakMap`.
 - **Simplified Right-Click Open In (`openIn`)**: Passive `contextmenu` menu on file links/paths in replies to open in `IDEA`, `Finder`, `Zed`, `VS Code`, or `Cursor` with line/column jumping (discrete `execFile` args, zero shell interpolation, left-click untouched).
 - **Local Session Status & Usage Stats (`metrics`)**: Reads local SQLite & logs for the 4-state bottom status indicator, expandable L1/L2 panels, and per-turn hover cards.
-- **Embedded Settings Panel & Opt-In Prompt Suggestions**: Manage all modules live under **Settings → Enhancer** (`设置 → Enhancer 增强`) with instant hot-reload to `user/config.json`.
+- **Embedded Settings Panel & Opt-In Prompt Suggestions**: Manage all modules live under **Settings → Enhancer** (`设置 → Antigravity增强`) with instant hot-reload to `user/config.json`.
 
 Licensed under the [MIT License](LICENSE).

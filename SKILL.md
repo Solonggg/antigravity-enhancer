@@ -81,7 +81,7 @@ node --disable-warning=ExperimentalWarning install.mjs verify --safe-mode
 ```
 
 ### Configuration Tweaks (Embedded Settings UI or Hot-Reloaded `user/config.json`)
-Users can toggle modules, select right-click Open-In targets (`IDEA`, `Finder`, `Zed`, `VS Code`, `Cursor`), customize `ideaPath`, pick prompt-suggestion models, and change status bar preferences under **Settings → Enhancer** (`设置 → Enhancer 增强`), or edit `~/.gemini/antigravity/enhancer/user/config.json`.
+Users can toggle modules, select right-click Open-In targets (`IDEA`, `Finder`, `Zed`, `VS Code`, `Cursor`), customize `ideaPath`, pick prompt-suggestion models, and change status bar preferences under **Settings → Antigravity Enhancer** (`设置 → Antigravity增强`), or edit `~/.gemini/antigravity/enhancer/user/config.json`.
 
 ### Rollback / Uninstall
 ```bash

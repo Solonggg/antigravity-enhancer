@@ -40,6 +40,8 @@ test('parseFeatureSelection resolves --only and --without flags cleanly', () => 
   assert.deepEqual(onlyI18nOpenIn.modulesPatch, {
     i18n: true,
     metrics: false,
+    sessionStatus: false,
+    usageStats: false,
     openIn: true,
     deadlockHealer: false,
     zoomShortcuts: false,
@@ -193,7 +195,7 @@ test('Assembled partial runtime bundles execute without ReferenceError when opti
 
     const code = sc.parts.map(readPart).join('\n');
     const boot = {
-      version: '1.0.0-test',
+      version: '0.1.1-test',
       platform: 'darwin',
       enabled: true,
       cssText: '',
@@ -213,7 +215,7 @@ test('Assembled partial runtime bundles execute without ReferenceError when opti
     sandbox.top = sandbox;
     vm.createContext(sandbox);
     vm.runInContext(`const __AG_BOOT_PAYLOAD__ = globalThis.__AG_BOOT_PAYLOAD__;\n${code}`, sandbox);
-    assert.equal(sandbox.__ag_patch_version, '1.0.0-test', `${sc.name} should finish booting cleanly`);
+    assert.equal(sandbox.__ag_patch_version, '0.1.1-test', `${sc.name} should finish booting cleanly`);
     const mountedStyle = headChildren.find((el) => el.id === 'ag-enhancer-style');
     assert.ok(mountedStyle && mountedStyle.textContent.length > 0, `${sc.name} should mount #ag-enhancer-style`);
     assert.equal(docAttrs.get('data-ag-preset'), undefined, `${sc.name} must never set theme preset attr`);

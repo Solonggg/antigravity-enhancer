@@ -29,6 +29,9 @@
   } catch (e) {}
 
   const AG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const SHOW_SESSION_STATUS = typeof MODULES.sessionStatus === 'boolean' ? MODULES.sessionStatus : Boolean(MODULES.metrics);
+  const SHOW_USAGE_STATS = typeof MODULES.usageStats === 'boolean' ? MODULES.usageStats : Boolean(MODULES.metrics);
+  const HAS_TELEMETRY_UI = Boolean(SHOW_SESSION_STATUS || SHOW_USAGE_STATS);
   const metricsByCid = (window.__ag_metrics_by_cid = {});
   const paneStates = (window.__ag_pane_states = {});
 
@@ -156,10 +159,258 @@
   window.__ag_get_watched_cascade_ids = getWatchedCascadeIds;
 
   function isMetricsRouteActive(pane) {
-    if (!MODULES.metrics) return false;
+    if (!HAS_TELEMETRY_UI) return false;
     if (!pane) return false;
-    if (pane.cid) return true;
-    return Boolean(pane.inputBox);
+    if (SHOW_SESSION_STATUS) {
+      if (pane.cid) return true;
+      return Boolean(pane.inputBox);
+    }
+    if (SHOW_USAGE_STATS) {
+      if (!pane.cid) return false;
+      const m = metricsByCid[pane.cid];
+      return Boolean(m && m.hasData && m.inlineHtml);
+    }
+    return false;
+  }
+
+  function buildStatusOnlyTooltipHtml(snap) {
+    const chipClass = snap && snap.chipClass ? ' ' + snap.chipClass : '';
+    const chipText = snap && snap.chipText ? escapeStatusHtml(snap.chipText) : '就绪';
+    const noteClass = snap && snap.noteClass ? ' ' + snap.noteClass : '';
+    const noteHtml = snap && snap.noteHtml ? snap.noteHtml : '';
+    const descText =
+      snap && snap.visualState === 'running'
+        ? snap.dotTitle || '会话正在执行中。'
+        : snap && (snap.visualState === 'slow' || snap.visualState === 'error')
+        ? ''
+        : '会话连接正常，随时可继续对话。';
+    return (
+      '<div class="ag-tt-wrap ag-tt-status-only">' +
+      '<div class="ag-tt-hdr">' +
+      '<span class="ag-tt-hdr-left">实时会话状态</span>' +
+      '<span class="ag-tt-hdr-right"><span class="ag-tt-live-chip' +
+      chipClass +
+      '">' +
+      chipText +
+      '</span></span>' +
+      '</div>' +
+      '<div class="ag-tt-wait-note' +
+      noteClass +
+      '" id="ag-tt-wait-note">' +
+      noteHtml +
+      '</div>' +
+      (descText ? '<div class="ag-tt-status-desc" data-ag-status-desc="1">' + escapeStatusHtml(descText) + '</div>' : '<div class="ag-tt-status-desc" data-ag-status-desc="1" hidden></div>') +
+      '</div>'
+    );
+  }
+
+  function openOfficialUsageSettings() {
+    _closeMetricsTooltip();
+    try {
+      const existingNav = document.querySelector('[data-testid="settings-nav-item-Models"]');
+      if (existingNav) {
+        existingNav.click();
+        return;
+      }
+      const settingsBtn = document.querySelector('[data-testid="settings-button"]');
+      if (settingsBtn) {
+        settingsBtn.click();
+        let tries = 0;
+        const pickModelsTab = () => {
+          const nav = document.querySelector('[data-testid="settings-nav-item-Models"]');
+          if (nav) {
+            nav.click();
+            return;
+          }
+          tries += 1;
+          if (tries < 18) setTimeout(pickModelsTab, 50);
+        };
+        setTimeout(pickModelsTab, 60);
+      }
+    } catch (e) {}
+  }
+
+  function renderOfficialQuotaSectionHtml(state, isZh) {
+    const title = isZh ? '官方模型配额' : 'Model Quota';
+    const refreshLbl = isZh ? '刷新配额' : 'Refresh quota';
+    const openSettingsLbl = isZh ? '配额设置' : 'Settings';
+    const loading = Boolean(state && state.loading);
+    const groups = state && Array.isArray(state.groups) ? state.groups : [];
+    const credits =
+      state && typeof state.availableCredits === 'number' && state.availableCredits > 0
+        ? (isZh ? '点数 ' : 'Credits ') + Math.round(state.availableCredits).toLocaleString('en-US')
+        : '';
+
+    let bodyHtml = '';
+    if (loading && groups.length === 0) {
+      bodyHtml = '<div class="ag-tt-quota-empty">' + escapeStatusHtml(isZh ? '正在读取官方配额…' : 'Loading quota…') + '</div>';
+    } else if (groups.length === 0) {
+      bodyHtml =
+        '<div class="ag-tt-quota-empty">' +
+        escapeStatusHtml(isZh ? '暂无配额信息（可点右侧配额设置查看）' : 'No quota info available') +
+        '</div>';
+    } else {
+      bodyHtml =
+        '<div class="ag-tt-quota-list">' +
+        groups
+          .map((g) => {
+            const buckets = g.buckets || [];
+            if (buckets.length === 1) {
+              const b = buckets[0];
+              const rowTitle = g.displayName || b.windowLabel || b.displayName;
+              const subParts = [];
+              if (g.displayName && b.windowLabel && b.windowLabel !== g.displayName) subParts.push(b.windowLabel);
+              if (b.resetText) subParts.push(b.resetText);
+              const pctText =
+                b.disabled
+                  ? isZh ? '未启用' : 'Disabled'
+                  : b.remainingPct !== null
+                  ? b.remainingPct + (isZh ? '% 剩余' : '% left')
+                  : '—';
+              const barWidth = b.remainingPct !== null ? b.remainingPct : 0;
+              return (
+                '<div class="ag-tt-quota-item">' +
+                '<div class="ag-tt-quota-row">' +
+                '<span class="ag-tt-quota-name">' + escapeStatusHtml(rowTitle) + '</span>' +
+                '<span class="ag-tt-quota-pct ag-q-' + escapeStatusHtml(b.level || 'ok') + '">' + escapeStatusHtml(pctText) + '</span>' +
+                '</div>' +
+                (!b.disabled && b.remainingPct !== null
+                  ? '<div class="ag-tt-track ag-tt-quota-track"><div class="ag-tt-seg ag-tt-quota-fill ag-q-' + escapeStatusHtml(b.level || 'ok') + '" style="width:' + barWidth + '%"></div></div>'
+                  : '') +
+                (subParts.length > 0
+                  ? '<div class="ag-tt-quota-sub">' + escapeStatusHtml(subParts.join(' · ')) + '</div>'
+                  : '') +
+                '</div>'
+              );
+            }
+            return (
+              '<div class="ag-tt-quota-group">' +
+              (g.displayName ? '<div class="ag-tt-quota-gname">' + escapeStatusHtml(g.displayName) + '</div>' : '') +
+              buckets
+                .map((b) => {
+                  const rowTitle = b.windowLabel || b.displayName;
+                  const pctText =
+                    b.disabled
+                      ? isZh ? '未启用' : 'Disabled'
+                      : b.remainingPct !== null
+                      ? b.remainingPct + (isZh ? '% 剩余' : '% left')
+                      : '—';
+                  const barWidth = b.remainingPct !== null ? b.remainingPct : 0;
+                  return (
+                    '<div class="ag-tt-quota-item is-nested">' +
+                    '<div class="ag-tt-quota-row">' +
+                    '<span class="ag-tt-quota-name">' + escapeStatusHtml(rowTitle) + '</span>' +
+                    '<span class="ag-tt-quota-pct ag-q-' + escapeStatusHtml(b.level || 'ok') + '">' + escapeStatusHtml(pctText) + '</span>' +
+                    '</div>' +
+                    (!b.disabled && b.remainingPct !== null
+                      ? '<div class="ag-tt-track ag-tt-quota-track"><div class="ag-tt-seg ag-tt-quota-fill ag-q-' + escapeStatusHtml(b.level || 'ok') + '" style="width:' + barWidth + '%"></div></div>'
+                      : '') +
+                    (b.resetText ? '<div class="ag-tt-quota-sub">' + escapeStatusHtml(b.resetText) + '</div>' : '') +
+                    '</div>'
+                  );
+                })
+                .join('') +
+              '</div>'
+            );
+          })
+          .join('') +
+        '</div>';
+    }
+
+    return (
+      '<div class="ag-tt-sec-hdr ag-tt-quota-hdr">' +
+      '<span class="ag-tt-quota-title-wrap"><span>' +
+      escapeStatusHtml(title) +
+      '</span>' +
+      (credits ? '<span class="ag-tt-badge-inline">' + escapeStatusHtml(credits) + '</span>' : '') +
+      '</span>' +
+      '<span class="ag-tt-quota-actions">' +
+      '<button type="button" class="ag-tt-quota-btn ag-tt-quota-refresh' +
+      (loading ? ' is-loading' : '') +
+      '" aria-label="' +
+      escapeStatusHtml(refreshLbl) +
+      '" title="' +
+      escapeStatusHtml(refreshLbl) +
+      '">' +
+      '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.67M13.5 2.5v2.8h-2.8"/></svg>' +
+      '</button>' +
+      '<button type="button" class="ag-tt-quota-btn ag-tt-quota-open-settings">' +
+      escapeStatusHtml(openSettingsLbl) +
+      '</button>' +
+      '</span>' +
+      '</div>' +
+      bodyHtml
+    );
+  }
+
+  function applyOfficialQuotaToTooltipDom(tt, state, ownerPill, ownerBox) {
+    if (!tt || !SHOW_USAGE_STATS) return;
+    const slot = tt.querySelector('[data-ag-quota-slot="1"]');
+    if (!slot) return;
+    const isZh = MODULES.i18n !== false;
+    const html = renderOfficialQuotaSectionHtml(state, isZh);
+    if (slot.getAttribute('data-ag-quota-html') !== html) {
+      slot.setAttribute('data-ag-quota-html', html);
+      slot.innerHTML = html;
+      if (ownerPill && tt.getAttribute('data-visible') === '1') {
+        positionMetricsTooltip(ownerPill, tt, ownerBox);
+      }
+    }
+  }
+
+  function syncOfficialQuotaIntoTooltip(tt, { forceRefresh = false, scopeEl = null } = {}) {
+    if (!tt || !SHOW_USAGE_STATS) return;
+    const slot = tt.querySelector('[data-ag-quota-slot="1"]');
+    if (!slot || typeof loadOfficialQuotaSummary !== 'function') return;
+
+    const isZh = MODULES.i18n !== false;
+    const ownerKey = window.__ag_tt_owner_pane || 'main';
+    const ownerPane = getPaneByKey(ownerKey);
+    const ownerPill = document.getElementById(ownerKey === 'side' ? 'ag-side-metrics-pill' : 'ag-live-metrics-pill');
+    const ownerBox = scopeEl || (ownerPane ? ownerPane.inputBox : null);
+
+    const existingCache = window.__ag_official_quota_cache;
+    if (existingCache && Array.isArray(existingCache.rawGroups)) {
+      const cachedGroups =
+        typeof normalizeOfficialQuotaGroups === 'function'
+          ? normalizeOfficialQuotaGroups(existingCache.rawGroups, { nowMs: Date.now(), isZh })
+          : [];
+      applyOfficialQuotaToTooltipDom(
+        tt,
+        {
+          loading: forceRefresh,
+          groups: cachedGroups,
+          availableCredits: existingCache.availableCredits,
+          useAICredits: existingCache.useAICredits
+        },
+        ownerPill,
+        ownerBox
+      );
+      if (!forceRefresh && Date.now() - existingCache.fetchedAt < 30000) {
+        return;
+      }
+    } else {
+      applyOfficialQuotaToTooltipDom(tt, { loading: true, groups: [] }, ownerPill, ownerBox);
+    }
+
+    loadOfficialQuotaSummary({ forceRefresh, scopeEl: ownerBox, isZh }).then((res) => {
+      const curTt = document.getElementById('ag-live-metrics-tooltip');
+      if (!curTt) return;
+      const curKey = window.__ag_tt_owner_pane || 'main';
+      const curPane = getPaneByKey(curKey);
+      const curPill = document.getElementById(curKey === 'side' ? 'ag-side-metrics-pill' : 'ag-live-metrics-pill');
+      applyOfficialQuotaToTooltipDom(
+        curTt,
+        {
+          loading: false,
+          groups: (res && res.groups) || [],
+          availableCredits: res ? res.availableCredits : null,
+          useAICredits: Boolean(res && res.useAICredits)
+        },
+        curPill,
+        curPane ? curPane.inputBox : ownerBox
+      );
+    });
   }
 
   function positionMetricsTooltip(pill, tt, inputBox) {
@@ -195,10 +446,11 @@
   }
 
   function syncTooltipLiveOverlay(tt, snap, ownerPill, ownerBox) {
-    if (!tt || !snap) return;
+    if (!tt || !snap || !SHOW_SESSION_STATUS) return;
     const chipEl = tt.querySelector('.ag-tt-live-chip');
     if (chipEl) {
-      if (chipEl.textContent !== snap.chipText) chipEl.textContent = snap.chipText;
+      const chipDisplay = !SHOW_USAGE_STATS && !snap.chipText ? '就绪' : snap.chipText;
+      if (chipEl.textContent !== chipDisplay) chipEl.textContent = chipDisplay;
       const targetChipClass = 'ag-tt-live-chip' + (snap.chipClass ? ' ' + snap.chipClass : '');
       if (chipEl.className !== targetChipClass) chipEl.className = targetChipClass;
     }
@@ -212,6 +464,16 @@
         if (ownerPill && tt.getAttribute('data-visible') === '1') {
           positionMetricsTooltip(ownerPill, tt, ownerBox);
         }
+      }
+    }
+    const statusDescEl = tt.querySelector('[data-ag-status-desc="1"]');
+    if (statusDescEl) {
+      if (snap.visualState === 'slow' || snap.visualState === 'error') {
+        statusDescEl.hidden = true;
+      } else {
+        statusDescEl.hidden = false;
+        const txt = snap.visualState === 'running' ? snap.dotTitle || '会话正在执行中。' : '会话连接正常，随时可继续对话。';
+        if (statusDescEl.textContent !== txt) statusDescEl.textContent = txt;
       }
     }
   }
@@ -244,15 +506,29 @@
           clearTimeout(window.__ag_tt_hide_timer);
           window.__ag_tt_hide_timer = null;
         }
+        const refreshQuotaBtn = e.target && e.target.closest ? e.target.closest('.ag-tt-quota-refresh') : null;
+        if (refreshQuotaBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          syncOfficialQuotaIntoTooltip(tt, { forceRefresh: true });
+          return;
+        }
+        const openSettingsBtn = e.target && e.target.closest ? e.target.closest('.ag-tt-quota-open-settings') : null;
+        if (openSettingsBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          openOfficialUsageSettings();
+          return;
+        }
         const btn = e.target && e.target.closest ? e.target.closest('.ag-tt-btn-toggle') : null;
         if (!btn) return;
         e.preventDefault();
         e.stopPropagation();
-        const expanded = tt.getAttribute('data-expanded') === '1';
-        if (expanded) {
-          tt.removeAttribute('data-expanded');
+        const collapsed = tt.getAttribute('data-collapsed') === '1';
+        if (collapsed) {
+          tt.removeAttribute('data-collapsed');
         } else {
-          tt.setAttribute('data-expanded', '1');
+          tt.setAttribute('data-collapsed', '1');
         }
         const ownerKey = window.__ag_tt_owner_pane || 'main';
         const ownerPane = getPaneByKey(ownerKey);
@@ -269,17 +545,26 @@
     const pane = getPaneByKey(paneKey);
     const cid = pane ? pane.cid : paneKey === 'main' ? extractCascadeId() : '';
     const m = cid ? metricsByCid[cid] : null;
-    if (!m || !m.tooltipHtml) return null;
+    const ps = paneStates[paneKey];
+
+    let rawHtml = m && m.tooltipHtml ? m.tooltipHtml : '';
+    if (!SHOW_USAGE_STATS && SHOW_SESSION_STATUS) {
+      rawHtml = buildStatusOnlyTooltipHtml(ps ? ps.lastSnap : null);
+    }
+    if (!rawHtml) return null;
+
     window.__ag_tt_owner_pane = paneKey;
     tt.setAttribute('data-ag-owner-pane', paneKey);
-    if (tt.getAttribute('data-ag-raw-tt') !== m.tooltipHtml) {
-      tt.setAttribute('data-ag-raw-tt', m.tooltipHtml);
-      tt.innerHTML = m.tooltipHtml;
+    if (tt.getAttribute('data-ag-raw-tt') !== rawHtml) {
+      tt.setAttribute('data-ag-raw-tt', rawHtml);
+      tt.innerHTML = rawHtml;
     }
-    const ps = paneStates[paneKey];
-    if (ps && ps.lastSnap) {
+    if (SHOW_SESSION_STATUS && ps && ps.lastSnap) {
       const pill = document.getElementById(pane ? pane.pillId : 'ag-live-metrics-pill');
       syncTooltipLiveOverlay(tt, ps.lastSnap, pill, pane ? pane.inputBox : null);
+    }
+    if (SHOW_USAGE_STATS) {
+      syncOfficialQuotaIntoTooltip(tt, { forceRefresh: false, scopeEl: pane ? pane.inputBox : null });
     }
     return { tt, pane };
   }
@@ -396,9 +681,14 @@
       pill.className = 'ag-live-metrics-pill';
       pill.setAttribute('data-ag-pane', paneKey);
       const textSpanId = paneKey === 'main' ? ' id="ag-live-metrics-text"' : '';
-      pill.innerHTML = '<span' + textSpanId + ' class="ag-live-metrics-text"><span class="ag-ctx-pending-dot ag-dot-idle"></span></span>';
+      pill.innerHTML =
+        '<span' +
+        textSpanId +
+        ' class="ag-live-metrics-text">' +
+        (SHOW_SESSION_STATUS ? '<span class="ag-ctx-pending-dot ag-dot-idle"></span>' : '') +
+        '</span>';
       const cachedM = cid ? metricsByCid[cid] : null;
-      if (cachedM && cachedM.inlineHtml) {
+      if (SHOW_USAGE_STATS && cachedM && cachedM.inlineHtml) {
         const textEl = pill.querySelector('.ag-live-metrics-text');
         if (textEl) {
           textEl.setAttribute('data-ag-raw-html', cachedM.inlineHtml);
@@ -457,23 +747,17 @@
         if (!res || !res.tt || !res.tt.innerHTML.trim()) return;
         const tt = res.tt;
         const isVisible = tt.getAttribute('data-visible') === '1';
-        const isExpanded = tt.getAttribute('data-expanded') === '1';
         const switchedOwner = prevOwner && prevOwner !== paneKey;
 
         if (!isVisible || !window.__ag_tt_pinned || switchedOwner) {
-          // 1st click (or switching from the other pane): open & pin L1 summary panel
-          tt.removeAttribute('data-expanded');
+          // 1st click (or switching from the other pane): open & pin with details expanded by default
+          tt.removeAttribute('data-collapsed');
           tt.setAttribute('data-visible', '1');
           window.__ag_tt_pinned = true;
           window.__ag_tt_hover_opened_at = 0;
-        } else if (!isExpanded) {
-          // 2nd click: expand L2 detail breakdown
-          tt.setAttribute('data-expanded', '1');
-          tt.setAttribute('data-visible', '1');
-          window.__ag_tt_pinned = true;
         } else {
-          // 3rd click: close panel
-          tt.removeAttribute('data-expanded');
+          // 2nd click: close panel
+          tt.removeAttribute('data-collapsed');
           tt.removeAttribute('data-visible');
           window.__ag_tt_pinned = false;
           window.__ag_tt_hover_opened_at = 0;
@@ -596,7 +880,7 @@
         const tt = document.getElementById('ag-live-metrics-tooltip');
         if (tt) {
           tt.removeAttribute('data-visible');
-          tt.removeAttribute('data-expanded');
+          tt.removeAttribute('data-collapsed');
         }
       }
     }
@@ -617,6 +901,36 @@
     const { key: paneKey, pillId, inputBox, container, cid: curCid } = pane;
     const ps = getOrCreatePaneState(paneKey);
     const m = curCid && metricsByCid[curCid] ? metricsByCid[curCid] : null;
+
+    if (!SHOW_SESSION_STATUS) {
+      ps.cid = curCid;
+      ps.lastSnap = null;
+      const hasInlineData = Boolean(SHOW_USAGE_STATS && m && m.hasData && m.inlineHtml);
+      let pill = document.getElementById(pillId);
+      if (hasInlineData && !pill) {
+        pill = ensureMetricsPillForPane(pane, false, false);
+      }
+      if (pill) {
+        const nextDisplay = hasInlineData ? 'inline-flex' : 'none';
+        const displayChanged = pill.style.display !== nextDisplay;
+        pill.style.display = nextDisplay;
+        const textEl = pill.querySelector('.ag-live-metrics-text');
+        let inlineTextChanged = false;
+        if (textEl && hasInlineData && textEl.getAttribute('data-ag-raw-html') !== m.inlineHtml) {
+          textEl.setAttribute('data-ag-raw-html', m.inlineHtml);
+          textEl.innerHTML = m.inlineHtml;
+          inlineTextChanged = true;
+        }
+        if ((inlineTextChanged || displayChanged) && hasInlineData) {
+          ensureMetricsPillForPane(pane, false, false);
+        }
+        if (pill.hasAttribute('title')) pill.removeAttribute('title');
+        const usageAria = '用量统计 · 悬停或点击查看明细与官方配额';
+        if (pill.getAttribute('aria-label') !== usageAria) pill.setAttribute('aria-label', usageAria);
+      }
+      return null;
+    }
+
     const st = m && m.status ? m.status : null;
     const live =
       typeof readLiveCascadeRuntimeState === 'function'
@@ -701,7 +1015,7 @@
     }
 
     if (pill) {
-      const hasInlineData = Boolean(m && m.hasData && m.inlineHtml);
+      const hasInlineData = Boolean(SHOW_USAGE_STATS && m && m.hasData && m.inlineHtml);
       const showPill = Boolean(hasInlineData || routeVisible);
       const nextDisplay = showPill ? 'inline-flex' : 'none';
       const displayChanged = pill.style.display !== nextDisplay;
@@ -776,7 +1090,7 @@
   }
 
   function applyPendingWaitVisuals() {
-    if (!MODULES.metrics) return null;
+    if (!HAS_TELEMETRY_UI) return null;
     const now = Date.now();
     const panes = discoverConversationPanes();
     pruneStalePills(panes);
@@ -1088,7 +1402,7 @@
         const row = (directDivs.length > 0 ? directDivs[directDivs.length - 1] : null) || tb.lastElementChild;
         if (!row) continue;
         let badge = row.querySelector(':scope > .ag-turn-metrics');
-        if (!MODULES.metrics) {
+        if (!SHOW_USAGE_STATS) {
           if (badge) badge.remove();
           if (row.hasAttribute('data-ag-turn-row')) row.removeAttribute('data-ag-turn-row');
           continue;
@@ -1148,7 +1462,7 @@
   }
 
   function ensureTurnMetricsObserver() {
-    if (!MODULES.metrics || !document.body || typeof MutationObserver === 'undefined') return;
+    if (!HAS_TELEMETRY_UI || !document.body || typeof MutationObserver === 'undefined') return;
     if (window.__ag_turn_metrics_observer) return;
     const scheduleSync = (withPaneCheck) => {
       if (withPaneCheck) window.__ag_turn_sync_needs_pane = true;
@@ -1233,7 +1547,7 @@
     if (payloadCid === mainCid) {
       window.__ag_last_metrics = payload;
     }
-    if (!MODULES.metrics) return;
+    if (!HAS_TELEMETRY_UI) return;
 
     const panes = discoverConversationPanes();
     pruneStalePills(panes);
@@ -1241,7 +1555,7 @@
       const pane = panes[i];
       if (pane.cid !== payloadCid) continue;
       const pill = ensureMetricsPillForPane(pane, false, false);
-      if (pill && payload.inlineHtml) {
+      if (SHOW_USAGE_STATS && pill && payload.inlineHtml) {
         const textEl = pill.querySelector('.ag-live-metrics-text');
         if (textEl && textEl.getAttribute('data-ag-raw-html') !== payload.inlineHtml) {
           textEl.setAttribute('data-ag-raw-html', payload.inlineHtml);
@@ -1249,11 +1563,12 @@
           ensureMetricsPillForPane(pane, false, false);
         }
       }
-      if (payload.tooltipHtml && (window.__ag_tt_owner_pane || 'main') === pane.key) {
+      if (SHOW_USAGE_STATS && payload.tooltipHtml && (window.__ag_tt_owner_pane || 'main') === pane.key) {
         const tt = ensureMetricsTooltipEl();
         if (tt && tt.getAttribute('data-ag-raw-tt') !== payload.tooltipHtml) {
           tt.setAttribute('data-ag-raw-tt', payload.tooltipHtml);
           tt.innerHTML = payload.tooltipHtml;
+          syncOfficialQuotaIntoTooltip(tt, { forceRefresh: false, scopeEl: pane.inputBox });
           if (pill && tt.getAttribute('data-visible') === '1') {
             positionMetricsTooltip(pill, tt, pane.inputBox);
           }
@@ -1267,7 +1582,7 @@
   };
 
   function checkRouteAndMountMetrics() {
-    if (!MODULES.metrics) return;
+    if (!HAS_TELEMETRY_UI) return;
     const mainCid = extractCascadeId();
     const panes = discoverConversationPanes();
     pruneStalePills(panes);
@@ -1302,7 +1617,7 @@
           const tt = document.getElementById('ag-live-metrics-tooltip');
           if (tt) {
             tt.removeAttribute('data-visible');
-            tt.removeAttribute('data-expanded');
+            tt.removeAttribute('data-collapsed');
             tt.removeAttribute('data-ag-raw-tt');
             tt.innerHTML = '';
           }
@@ -1316,15 +1631,18 @@
         const textEl = pill && pill.querySelector('.ag-live-metrics-text');
         if (textEl) {
           const cachedM = pane.cid ? metricsByCid[pane.cid] : null;
-          if (cachedM && cachedM.hasData && cachedM.inlineHtml) {
+          if (SHOW_USAGE_STATS && cachedM && cachedM.hasData && cachedM.inlineHtml) {
             textEl.setAttribute('data-ag-raw-html', cachedM.inlineHtml);
             textEl.innerHTML = cachedM.inlineHtml;
-          } else {
+          } else if (SHOW_SESSION_STATUS) {
             textEl.removeAttribute('data-ag-raw-html');
             textEl.innerHTML =
               '<span class="ag-ctx-pending-dot ag-dot-idle"></span><span>' +
-              (pane.cid ? '读取中...' : '就绪') +
+              (SHOW_USAGE_STATS && pane.cid ? '读取中...' : '就绪') +
               '</span>';
+          } else {
+            textEl.removeAttribute('data-ag-raw-html');
+            textEl.innerHTML = '';
           }
         }
       }
@@ -1368,7 +1686,7 @@
     hideTurnMetricsTooltip(true);
     const tt = document.getElementById('ag-live-metrics-tooltip');
     if (tt) {
-      tt.removeAttribute('data-expanded');
+      tt.removeAttribute('data-collapsed');
       tt.removeAttribute('data-visible');
     }
   };
@@ -1391,7 +1709,7 @@
     _closeMetricsTooltip();
   };
   const _onTurnMouseOver = (e) => {
-    if (!MODULES.metrics) return;
+    if (!SHOW_USAGE_STATS) return;
     const t = e && e.target;
     if (!t || !t.closest) return;
     const badge = t.closest('.ag-turn-metrics');
@@ -1430,7 +1748,7 @@
   document.addEventListener('mouseout', _onTurnMouseOut, true);
   window.addEventListener('scroll', _onTurnScroll, true);
 
-  if (MODULES.metrics) {
+  if (HAS_TELEMETRY_UI) {
     if (!window.__ag_visible_since) window.__ag_visible_since = Date.now();
     window.__ag_metrics_route_watcher = setInterval(() => {
       if (!document.hidden) checkRouteAndMountMetrics();
