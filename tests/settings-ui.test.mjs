@@ -449,3 +449,25 @@ test('60-i18n-engine handles Antigravity 2.35.1 labels, newly added rules, short
   assert.equal(textNodes[0].nodeValue, 'Prevent sleep');
   assert.equal(shadowTextNode.nodeValue, 'Agent Settings', 'Shadow DOM text nodes must restore when i18n disabled');
 });
+
+test('75-settings-ui uses manual popovers inside settings dialog, updates worker status in place, and defers rerender while menu is open', () => {
+  const src = fs.readFileSync(path.join(ROOT_DIR, 'core', 'runtime', '75-settings-ui.js'), 'utf8');
+
+  // Popovers must use manual mode (never auto light-dismiss fighting Radix Dialog)
+  assert.ok(src.includes("root.setAttribute('popover', 'manual')"), 'root model menu must use popover="manual"');
+  assert.ok(src.includes("sub.setAttribute('popover', 'manual')"), 'effort submenu must use popover="manual"');
+  assert.ok(!src.includes("setAttribute('popover', 'auto')"), 'must not use popover="auto"');
+
+  // Popovers must mount inside activeDlg so Radix FocusScope treats clicks as inside the dialog
+  assert.ok(
+    src.includes('const hostContainer = (activeDlg && activeDlg.isConnected ? activeDlg : document.body);'),
+    'model popovers should mount inside activeDlg when available'
+  );
+
+  // Status polling must update DOM in-place without rebuilding pane.innerHTML, and defer renderPane while menu is open
+  assert.ok(src.includes('function updateWorkerStatusDom()'), 'must provide in-place updateWorkerStatusDom()');
+  assert.ok(src.includes('statusOnly: true'), 'poller must request statusOnly updates');
+  assert.ok(src.includes('pendingPaneRender = true'), 'must defer renderPane while model menu is open');
+  assert.ok(src.includes('uiState.agyStatus.authRequired'), 'must surface agy authRequired status in UI');
+  assert.ok(src.includes('agy 未登录'), 'must include Chinese auth-required badge label');
+});

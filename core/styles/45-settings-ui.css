@@ -432,8 +432,36 @@
   animation: agSettingsPulseDot 1.2s ease-in-out infinite;
 }
 
-#ag-settings-pane .ag-s-worker-pill[data-status="missing"] .ag-s-worker-dot {
+#ag-settings-pane .ag-s-worker-pill[data-status="missing"] .ag-s-worker-dot,
+#ag-settings-pane .ag-s-worker-pill[data-status="error"] .ag-s-worker-dot {
   background-color: var(--ag-s-err);
+}
+
+#ag-settings-pane .ag-s-worker-pill[data-status="auth"] .ag-s-worker-dot {
+  background-color: var(--ag-s-warn);
+}
+
+#ag-settings-pane .ag-s-worker-pill[data-status="auth"] {
+  color: var(--ag-s-warn) !important;
+}
+
+#ag-settings-pane .ag-s-worker-pill[data-status="error"] {
+  color: var(--ag-s-err) !important;
+}
+
+#ag-settings-pane .ag-s-worker-hint {
+  margin-top: 6px;
+  font-size: 11.5px !important;
+  line-height: 16px !important;
+  color: var(--ag-s-warn) !important;
+}
+
+#ag-settings-pane .ag-s-worker-hint[data-tone="error"] {
+  color: var(--ag-s-err) !important;
+}
+
+#ag-settings-pane .ag-s-worker-hint[hidden] {
+  display: none !important;
 }
 
 @keyframes agSettingsPulseDot {

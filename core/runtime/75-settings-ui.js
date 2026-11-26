@@ -135,13 +135,6 @@
         typeof HTMLElement !== 'undefined' && Object.hasOwn(HTMLElement.prototype, 'popover');
       const SUPPORTS_FOCUSGROUP =
         typeof HTMLElement !== 'undefined' && 'focusGroup' in HTMLElement.prototype;
-      const SUPPORTS_IMPLICIT_ANCHOR =
-        SUPPORTS_POPOVER &&
-        typeof CSS !== 'undefined' &&
-        typeof CSS.supports === 'function' &&
-        CSS.supports('position-area: block-end') &&
-        typeof ToggleEvent !== 'undefined' &&
-        'source' in ToggleEvent.prototype;
 
       let disposed = false;
       let reqSeq = 0;
@@ -150,7 +143,7 @@
       let statusPollTimer = null;
       let saveBadgeTimer = null;
       let hoverSwitchTimer = null;
-      let lastSubAnchorBtn = null;
+      let pendingPaneRender = false;
       let hoveredFamilyKey = '';
       let editingIdeaPath = false;
       let invalidIdeaPath = false;
@@ -246,6 +239,9 @@
             agyWarming: '预热中…',
             agyReady: 'agy 就绪',
             agyMissing: '未检测到 agy',
+            agyAuthRequired: 'agy 未登录',
+            agyAuthHint: '请先在终端执行 agy 完成登录，然后点击顶部刷新按钮即可生效',
+            agyError: 'agy 启动异常',
             suggestModelLbl: '预测模型',
             suggestModelDescPre: '由 ',
             suggestModelDescPost: ' 自动按模型与档位分组，推荐 Gemini 3.8 Flash Low',
@@ -299,6 +295,9 @@
           agyWarming: 'Warming up…',
           agyReady: 'agy Ready',
           agyMissing: 'agy not found',
+          agyAuthRequired: 'Sign in to agy',
+          agyAuthHint: 'Run agy in your terminal to sign in, then click the reload button above',
+          agyError: 'agy error',
           suggestModelLbl: 'Suggestion Model',
           suggestModelDescPre: 'Grouped automatically from ',
           suggestModelDescPost: '; Gemini 3.8 Flash Low recommended',
@@ -379,8 +378,56 @@
         }
       };
 
-      function applyRemoteState(res, flashSaved) {
+      function getWorkerStatusView(s) {
+        const psOn = Boolean(uiState.config.modules && uiState.config.modules.promptSuggestions);
+        if (!psOn) {
+          return { status: 'idle', label: s.agyIdle, hint: '', hintTone: '' };
+        }
+        if (uiState.agyStatus.available === false) {
+          return { status: 'missing', label: s.agyMissing, hint: '', hintTone: '' };
+        }
+        if (uiState.agyStatus.authRequired) {
+          return { status: 'auth', label: s.agyAuthRequired, hint: s.agyAuthHint, hintTone: 'warn' };
+        }
+        if (uiState.agyStatus.warmed) {
+          return { status: 'ready', label: s.agyReady, hint: '', hintTone: '' };
+        }
+        if (uiState.agyStatus.lastError && !uiState.agyStatus.running) {
+          return {
+            status: 'error',
+            label: s.agyError,
+            hint: String(uiState.agyStatus.lastError).slice(0, 140),
+            hintTone: 'error'
+          };
+        }
+        return { status: 'warming', label: s.agyWarming, hint: '', hintTone: '' };
+      }
+
+      function updateWorkerStatusDom() {
+        const s = getStrings();
+        const view = getWorkerStatusView(s);
+        const pill = document.getElementById('ag-s-worker-pill');
+        if (pill) {
+          pill.setAttribute('data-status', view.status);
+          const lbl = pill.querySelector('.ag-s-worker-label');
+          if (lbl && lbl.textContent !== view.label) lbl.textContent = view.label;
+        }
+        const hintEl = document.getElementById('ag-s-worker-hint');
+        if (hintEl) {
+          if (view.hint) {
+            hintEl.textContent = view.hint;
+            hintEl.setAttribute('data-tone', view.hintTone || 'warn');
+            hintEl.hidden = false;
+          } else {
+            hintEl.textContent = '';
+            hintEl.hidden = true;
+          }
+        }
+      }
+
+      function applyRemoteState(res, flashSaved, { statusOnly = false } = {}) {
         if (!res || !res.ok) return;
+        let familiesChanged = false;
         if (res.config) {
           const nextOpenIn = res.config.openIn && typeof res.config.openIn === 'object' ? res.config.openIn : uiState.config.openIn;
           uiState.config = {
@@ -405,6 +452,9 @@
           window.__ag_settings_agy_cache = Object.assign({}, res.agyStatus);
         }
         if (res.modelsInfo && Array.isArray(res.modelsInfo.families) && res.modelsInfo.families.length > 0) {
+          const prevJson = JSON.stringify(uiState.families || []);
+          const nextJson = JSON.stringify(res.modelsInfo.families);
+          if (prevJson !== nextJson) familiesChanged = true;
           uiState.families = res.modelsInfo.families;
           window.__ag_settings_models_cache = res.modelsInfo.families;
         }
@@ -412,11 +462,25 @@
           window.__ag_settings_saved_label = flashSaved === 'refreshed' ? 'refreshed' : 'saved';
           window.__ag_settings_saved_until = Date.now() + 1800;
         }
-        renderPane();
+        const menuOpen = isPopoverOpen(document.getElementById('ag-settings-model-menu'));
+        if (statusOnly && !flashSaved) {
+          updateWorkerStatusDom();
+        } else if (menuOpen) {
+          // Never rebuild pane.innerHTML while the model picker dropdown is open,
+          // otherwise destroying #ag-s-model-trigger immediately closes the menu.
+          pendingPaneRender = true;
+          updateWorkerStatusDom();
+          if (familiesChanged) {
+            renderModelMenuItems();
+          }
+        } else {
+          pendingPaneRender = false;
+          renderPane();
+        }
         syncStatusPoller();
       }
 
-      async function fetchSettingsState({ includeModels = false, refreshModels = false, forceReload = false } = {}) {
+      async function fetchSettingsState({ includeModels = false, refreshModels = false, forceReload = false, statusOnly = false } = {}) {
         if (forceReload) {
           refreshingAll = true;
           window.__ag_settings_saved_label = 'refreshed';
@@ -439,7 +503,7 @@
           updateRefreshSpin();
         }
         if (!disposed && res) {
-          applyRemoteState(res, forceReload ? 'refreshed' : false);
+          applyRemoteState(res, forceReload ? 'refreshed' : false, { statusOnly });
         }
       }
 
@@ -447,9 +511,20 @@
         if (patch.modules) {
           Object.assign(uiState.config.modules, patch.modules);
           if (patch.modules.promptSuggestions === false) {
-            uiState.agyStatus = Object.assign({}, uiState.agyStatus, { running: false, ready: false, warmed: false });
+            uiState.agyStatus = Object.assign({}, uiState.agyStatus, {
+              running: false,
+              ready: false,
+              warmed: false,
+              authRequired: false,
+              lastError: ''
+            });
           } else if (patch.modules.promptSuggestions === true && uiState.agyStatus.available) {
-            uiState.agyStatus = Object.assign({}, uiState.agyStatus, { running: true, warmed: false });
+            uiState.agyStatus = Object.assign({}, uiState.agyStatus, {
+              running: true,
+              warmed: false,
+              authRequired: false,
+              lastError: ''
+            });
           }
         }
         if (patch.telemetryLayout) uiState.config.telemetryLayout = patch.telemetryLayout;
@@ -457,7 +532,12 @@
         if (patch.promptSuggestionModel) {
           uiState.config.promptSuggestionModel = patch.promptSuggestionModel;
           if (uiState.config.modules.promptSuggestions && uiState.agyStatus.available) {
-            uiState.agyStatus = Object.assign({}, uiState.agyStatus, { warmed: false, running: true });
+            uiState.agyStatus = Object.assign({}, uiState.agyStatus, {
+              warmed: false,
+              running: true,
+              authRequired: false,
+              lastError: ''
+            });
           }
         }
         if (patch.openIn && typeof patch.openIn === 'object') {
@@ -486,11 +566,16 @@
           clearInterval(statusPollTimer);
           statusPollTimer = null;
         }
+        const terminalFailure = Boolean(
+          uiState.agyStatus.available === false ||
+            uiState.agyStatus.authRequired ||
+            (uiState.agyStatus.lastError && !uiState.agyStatus.running)
+        );
         const needPoll =
           Boolean(window.__ag_settings_tab_open) &&
           Boolean(activeDlg && activeDlg.isConnected) &&
           Boolean(uiState.config.modules.promptSuggestions) &&
-          uiState.agyStatus.available !== false &&
+          !terminalFailure &&
           !uiState.agyStatus.warmed;
         if (!needPoll) return;
         statusPollTimer = setInterval(() => {
@@ -498,7 +583,8 @@
             syncStatusPoller();
             return;
           }
-          fetchSettingsState({ includeModels: false, refreshModels: false });
+          if (isPopoverOpen(document.getElementById('ag-settings-model-menu'))) return;
+          fetchSettingsState({ includeModels: false, refreshModels: false, statusOnly: true });
         }, 1500);
       }
 
@@ -510,7 +596,6 @@
       }
 
       function hideModelMenus({ restoreFocus = false, fromPointer = false } = {}) {
-        lastSubAnchorBtn = null;
         if (hoverSwitchTimer) {
           clearTimeout(hoverSwitchTimer);
           hoverSwitchTimer = null;
@@ -545,6 +630,10 @@
               try { trigger.focus(); } catch {}
             }
           }
+        }
+        if (pendingPaneRender && !disposed) {
+          pendingPaneRender = false;
+          renderPane();
         }
       }
 
@@ -598,7 +687,6 @@
         const sub = document.getElementById('ag-settings-effort-menu');
         if (!sub) return;
         if (!fam || !Array.isArray(fam.efforts) || fam.efforts.length === 0) {
-          lastSubAnchorBtn = null;
           if (isPopoverOpen(sub)) {
             if (SUPPORTS_POPOVER) {
               try { sub.hidePopover(); } catch {}
@@ -635,34 +723,12 @@
 
         if (SUPPORTS_POPOVER) {
           try {
-            if (SUPPORTS_IMPLICIT_ANCHOR) {
-              const alreadyOpen = isPopoverOpen(sub);
-              if (!alreadyOpen || lastSubAnchorBtn !== anchorBtn) {
-                if (alreadyOpen) {
-                  try { sub.hidePopover(); } catch {}
-                }
-                sub.removeAttribute('data-js-pos');
-                sub.style.left = '';
-                sub.style.top = '';
-                sub.showPopover({ source: anchorBtn });
-                lastSubAnchorBtn = anchorBtn;
-              }
-            } else {
-              if (!isPopoverOpen(sub)) sub.showPopover();
-              positionFixedOverlay(sub, anchorBtn, 'submenu');
-              lastSubAnchorBtn = anchorBtn;
-            }
-          } catch {
-            try {
-              if (!isPopoverOpen(sub)) sub.showPopover();
-              positionFixedOverlay(sub, anchorBtn, 'submenu');
-              lastSubAnchorBtn = anchorBtn;
-            } catch {}
-          }
+            if (!isPopoverOpen(sub)) sub.showPopover();
+            positionFixedOverlay(sub, anchorBtn, 'submenu');
+          } catch {}
         } else {
           sub.hidden = false;
           positionFixedOverlay(sub, anchorBtn, 'submenu');
-          lastSubAnchorBtn = anchorBtn;
         }
 
         if (focusFirst && listEl) {
@@ -727,13 +793,19 @@
       }
 
       function ensureModelPopovers() {
+        const hostContainer = (activeDlg && activeDlg.isConnected ? activeDlg : document.body);
         let root = document.getElementById('ag-settings-model-menu');
-        if (root) return root;
+        if (root) {
+          if (hostContainer && root.parentNode !== hostContainer) {
+            hostContainer.appendChild(root);
+          }
+          return root;
+        }
 
         root = document.createElement('div');
         root.id = 'ag-settings-model-menu';
         if (SUPPORTS_POPOVER) {
-          root.setAttribute('popover', 'auto');
+          root.setAttribute('popover', 'manual');
         } else {
           root.hidden = true;
         }
@@ -751,7 +823,7 @@
         const sub = document.createElement('div');
         sub.id = 'ag-settings-effort-menu';
         if (SUPPORTS_POPOVER) {
-          sub.setAttribute('popover', 'auto');
+          sub.setAttribute('popover', 'manual');
         } else {
           sub.hidden = true;
         }
@@ -773,7 +845,7 @@
         fg.appendChild(list);
         fg.appendChild(sub);
         root.appendChild(fg);
-        document.body.appendChild(root);
+        if (hostContainer) hostContainer.appendChild(root);
 
         root.addEventListener('toggle', (ev) => {
           const trigger = document.getElementById('ag-s-model-trigger');
@@ -921,21 +993,9 @@
 
         if (SUPPORTS_POPOVER) {
           try {
-            if (SUPPORTS_IMPLICIT_ANCHOR) {
-              root.removeAttribute('data-js-pos');
-              root.style.left = '';
-              root.style.top = '';
-              root.showPopover({ source: triggerBtn });
-            } else {
-              root.showPopover();
-              positionFixedOverlay(root, triggerBtn, 'root');
-            }
-          } catch {
-            try {
-              root.showPopover();
-              positionFixedOverlay(root, triggerBtn, 'root');
-            } catch {}
-          }
+            root.showPopover();
+            positionFixedOverlay(root, triggerBtn, 'root');
+          } catch {}
         } else {
           root.hidden = false;
           positionFixedOverlay(root, triggerBtn, 'root');
@@ -1064,20 +1124,9 @@
         const selInfo = findSelectedModelInfo(cfg.promptSuggestionModel);
         const savedActive = Boolean(window.__ag_settings_saved_until && Date.now() < window.__ag_settings_saved_until);
 
-        let workerStatus = 'idle';
-        let workerLabel = s.agyIdle;
-        if (psOn) {
-          if (uiState.agyStatus.available === false) {
-            workerStatus = 'missing';
-            workerLabel = s.agyMissing;
-          } else if (uiState.agyStatus.warmed) {
-            workerStatus = 'ready';
-            workerLabel = s.agyReady;
-          } else {
-            workerStatus = 'warming';
-            workerLabel = s.agyWarming;
-          }
-        }
+        const workerView = getWorkerStatusView(s);
+        const workerStatus = workerView.status;
+        const workerLabel = workerView.label;
 
         const prevScroll = pane.scrollTop || window.__ag_settings_scroll_top || 0;
         const savedLabel = window.__ag_settings_saved_label === 'refreshed' ? s.refreshedBadge : s.savedBadge;
@@ -1182,11 +1231,11 @@
           '<label class="ag-s-row-label" for="ag-s-sw-suggest">' +
           escHtml(s.modSuggest) +
           '</label>' +
-          '<span class="ag-s-worker-pill" data-status="' +
+          '<span id="ag-s-worker-pill" class="ag-s-worker-pill" data-status="' +
           workerStatus +
           '">' +
           '<span class="ag-s-worker-dot"></span>' +
-          '<span>' +
+          '<span class="ag-s-worker-label">' +
           escHtml(workerLabel) +
           '</span>' +
           '</span>' +
@@ -1199,6 +1248,13 @@
           escHtml(s.modSuggestDescPost) +
           '<span class="ag-s-mono">agy</span>' +
           escHtml(s.modSuggestDescEnd) +
+          '</div>' +
+          '<div id="ag-s-worker-hint" class="ag-s-worker-hint" data-tone="' +
+          escHtml(workerView.hintTone || 'warn') +
+          '"' +
+          (workerView.hint ? '' : ' hidden') +
+          '>' +
+          escHtml(workerView.hint) +
           '</div>' +
           '</div>' +
           '<input id="ag-s-sw-suggest" type="checkbox" switch role="switch" class="ag-s-switch" data-bind-mod="promptSuggestions" aria-label="' +
@@ -1593,21 +1649,45 @@
         }, delayMs);
       }
 
+      const onDocMouseDown = (ev) => {
+        if (disposed) return;
+        const root = document.getElementById('ag-settings-model-menu');
+        if (
+          isPopoverOpen(root) &&
+          ev.target &&
+          ev.target.closest &&
+          !ev.target.closest('#ag-settings-model-menu') &&
+          !ev.target.closest('#ag-settings-effort-menu') &&
+          !ev.target.closest('#ag-s-model-trigger')
+        ) {
+          hideModelMenus({ restoreFocus: false });
+        }
+      };
+
+      const onDocKeyDown = (ev) => {
+        if (disposed || ev.key !== 'Escape') return;
+        const root = document.getElementById('ag-settings-model-menu');
+        if (!isPopoverOpen(root)) return;
+        const sub = document.getElementById('ag-settings-effort-menu');
+        if (isPopoverOpen(sub) && ev.target && ev.target.closest && ev.target.closest('#ag-settings-effort-menu')) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (SUPPORTS_POPOVER) {
+            try { sub.hidePopover(); } catch {}
+          } else {
+            sub.hidden = true;
+          }
+          const parentRow = root.querySelector('[data-fam-key="' + hoveredFamilyKey + '"]');
+          if (parentRow) parentRow.focus();
+          return;
+        }
+        ev.preventDefault();
+        ev.stopPropagation();
+        hideModelMenus({ restoreFocus: true, fromPointer: false });
+      };
+
       const onDocClick = (ev) => {
         if (disposed) return;
-        if (!SUPPORTS_POPOVER) {
-          const root = document.getElementById('ag-settings-model-menu');
-          if (
-            root &&
-            !root.hidden &&
-            ev.target &&
-            ev.target.closest &&
-            !ev.target.closest('#ag-settings-model-menu') &&
-            !ev.target.closest('#ag-s-model-trigger')
-          ) {
-            hideModelMenus({ restoreFocus: false });
-          }
-        }
         if (ev.target && ev.target.closest && ev.target.closest('[data-testid="settings-button"]')) {
           scheduleScan(40);
           setTimeout(() => { if (!disposed) tryMountInSettingsModal(); }, 160);
@@ -1636,6 +1716,8 @@
       if (observer && document.body) {
         observer.observe(document.body, { childList: true, subtree: true });
       }
+      document.addEventListener('mousedown', onDocMouseDown, true);
+      document.addEventListener('keydown', onDocKeyDown, true);
       document.addEventListener('click', onDocClick, true);
 
       tryMountInSettingsModal();
@@ -1648,6 +1730,8 @@
           if (saveBadgeTimer) clearTimeout(saveBadgeTimer);
           if (hoverSwitchTimer) clearTimeout(hoverSwitchTimer);
           if (observer) observer.disconnect();
+          document.removeEventListener('mousedown', onDocMouseDown, true);
+          document.removeEventListener('keydown', onDocKeyDown, true);
           document.removeEventListener('click', onDocClick, true);
           if (activeSidebar && boundSidebarClick) {
             try { activeSidebar.removeEventListener('click', boundSidebarClick, true); } catch {}

@@ -254,3 +254,113 @@ test('model switch serializes teardown before spawning new model and disabling d
   await wait(40);
   assert.equal(spawned.length, 2, 'disabling promptSuggestions during rotation must cancel pending spawn');
 });
+
+test('detects unauthenticated agy interactive login prompt, kills hung worker, respects cooldown, and retries on force sync', async () => {
+  const spawned = [];
+  let modelsCallCount = 0;
+  let modelsSignedIn = false;
+  const cfg = {
+    enabled: true,
+    promptSuggestionModel: 'gemini-3.8-flash-low',
+    modules: { promptSuggestions: true }
+  };
+  const engine = createPromptSuggestionEngine({
+    getConfig: () => cfg,
+    resolveBin: () => '/usr/local/bin/agy',
+    spawnImpl: (bin, args) => {
+      const c = createMockChild(bin, args);
+      spawned.push(c);
+      return c;
+    },
+    execFileImpl: async () => {
+      modelsCallCount += 1;
+      if (!modelsSignedIn) {
+        return {
+          stdout: 'Welcome to the Antigravity CLI. You are currently not signed in.\nSelect login method:\n> 1. Google OAuth\n',
+          stderr: ''
+        };
+      }
+      return {
+        stdout: 'gemini-3.8-flash-low   Gemini 3.8 Flash (Low)\ngemini-3.8-flash-high  Gemini 3.8 Flash (High)\n',
+        stderr: ''
+      };
+    },
+    stopKillTimeoutMs: 200,
+    restartGraceMs: 15
+  });
+
+  engine.syncState();
+  assert.equal(spawned.length, 1);
+  const workerA = spawned[0];
+
+  // Simulate agy printing interactive login prompt and blocking on stdin
+  workerA.emitStdout(
+    'Welcome to the Antigravity CLI. You are currently not signed in.\nSelect login method:\n> 1. Google OAuth'
+  );
+  assert.deepEqual(workerA.signals, ['SIGTERM'], 'hung login worker must be terminated immediately');
+  assert.equal(engine.getStatus().authRequired, true);
+  assert.equal(engine.getStatus().running, false);
+  assert.match(engine.getStatus().lastError, /not signed in/i);
+
+  workerA.finishExit(0, 'SIGTERM');
+
+  // Routine syncState() heartbeats must NOT spam-respawn during auth cooldown
+  engine.syncState();
+  engine.syncState();
+  assert.equal(spawned.length, 1, 'must respect auth cooldown on routine syncState()');
+
+  // Non-forced listModels() fast-returns without hanging when authRequired cooldown is active
+  const fastModels = await engine.listModels({ force: false });
+  assert.equal(fastModels.authRequired, true);
+  assert.equal(modelsCallCount, 0);
+
+  // Forced listModels() after user signs in clears authRequired and parses live models
+  modelsSignedIn = true;
+  const liveModels = await engine.listModels({ force: true });
+  assert.equal(modelsCallCount, 1);
+  assert.equal(liveModels.fetched, true);
+  assert.equal(liveModels.authRequired, false);
+  assert.equal(engine.getStatus().authRequired, false);
+
+  // Forced syncState() immediately spawns a fresh worker
+  engine.syncState({ force: true });
+  assert.equal(spawned.length, 2, 'syncState({ force: true }) must bypass cooldown and respawn');
+
+  engine.stop();
+  spawned[1].finishExit(0, 'SIGTERM');
+});
+
+test('initTimeoutMs watchdog terminates unresponsive agy worker and reports lastError instead of warming forever', async () => {
+  const spawned = [];
+  const cfg = {
+    enabled: true,
+    promptSuggestionModel: 'gemini-3.8-flash-low',
+    modules: { promptSuggestions: true }
+  };
+  const engine = createPromptSuggestionEngine({
+    getConfig: () => cfg,
+    resolveBin: () => '/usr/local/bin/agy',
+    spawnImpl: (bin, args) => {
+      const c = createMockChild(bin, args);
+      spawned.push(c);
+      return c;
+    },
+    initTimeoutMs: 35,
+    stopKillTimeoutMs: 200,
+    restartGraceMs: 15
+  });
+
+  engine.syncState();
+  assert.equal(spawned.length, 1);
+  const worker = spawned[0];
+
+  await wait(60);
+  assert.deepEqual(worker.signals, ['SIGTERM'], 'unresponsive agy process must be terminated on init timeout');
+  const st = engine.getStatus();
+  assert.equal(st.running, false);
+  assert.equal(st.warmed, false);
+  assert.equal(st.authRequired, false);
+  assert.match(st.lastError, /timeout/i);
+
+  worker.finishExit(0, 'SIGTERM');
+});

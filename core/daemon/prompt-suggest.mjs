@@ -14,11 +14,15 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 
 const MAX_TURNS_PER_WORKER = 40;
+const INIT_TIMEOUT_MS = 20000;
 const WARMUP_TIMEOUT_MS = 75000;
 const TURN_TIMEOUT_MS = 30000;
 const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
-const MODELS_FETCH_TIMEOUT_MS = 12000;
+const MODELS_FETCH_TIMEOUT_MS = 8000;
+const AUTH_RETRY_COOLDOWN_MS = 30000;
+const ERROR_RETRY_COOLDOWN_MS = 15000;
 const CACHE_LIMIT = 100;
+const AUTH_PROMPT_RE = /(?:not signed in|select login method|google oauth|please sign in|login required|unauthenticated)/i;
 
 const EFFORT_RANK = Object.freeze({
   minimal: 1,
@@ -308,6 +312,7 @@ export function createPromptSuggestionEngine({
   execFileImpl = execFileAsync,
   stopKillTimeoutMs = STOP_KILL_TIMEOUT_MS,
   restartGraceMs = RESTART_GRACE_MS,
+  initTimeoutMs = INIT_TIMEOUT_MS,
   maxTurnsPerWorker = MAX_TURNS_PER_WORKER
 } = {}) {
   let agyBinCache = undefined;
@@ -315,11 +320,15 @@ export function createPromptSuggestionEngine({
   let activeModel = '';
   let ready = false;
   let warmed = false;
+  let authRequired = false;
+  let lastError = '';
+  let retryBlockedUntil = 0;
   let turns = 0;
   let pending = null;
   let starting = false;
   let pendingStart = false;
   let restartTimer = null;
+  let initTimer = null;
   let modelsCache = null;
   let modelsCacheAt = 0;
   let modelsInFlight = null;
@@ -435,7 +444,15 @@ export function createPromptSuggestionEngine({
     }
   }
 
-  function stop({ wantRestart = false, terminateAll = false } = {}) {
+  function clearInitTimer() {
+    if (initTimer) {
+      clearTimeout(initTimer);
+      initTimer = null;
+    }
+  }
+
+  function stop({ wantRestart = false, terminateAll = false, preserveFailure = false } = {}) {
+    clearInitTimer();
     if (restartTimer) {
       clearTimeout(restartTimer);
       restartTimer = null;
@@ -446,6 +463,11 @@ export function createPromptSuggestionEngine({
     ready = false;
     warmed = false;
     turns = 0;
+    if (!preserveFailure) {
+      authRequired = false;
+      lastError = '';
+      retryBlockedUntil = 0;
+    }
     if (pending) {
       const cur = pending;
       pending = null;
@@ -556,8 +578,21 @@ export function createPromptSuggestionEngine({
     }
   }
 
-  function ensureStarted() {
+  function failWorker(child, { isAuth = false, message = '', cooldownMs = ERROR_RETRY_COOLDOWN_MS } = {}) {
+    if (proc !== child) return;
+    authRequired = Boolean(isAuth);
+    lastError = message || (isAuth ? 'agy CLI not signed in' : 'agy worker failed');
+    retryBlockedUntil = Date.now() + cooldownMs;
+    stop({ wantRestart: false, preserveFailure: true });
+  }
+
+  function ensureStarted({ force = false } = {}) {
     if (!isEnabled()) return false;
+    if (force) {
+      authRequired = false;
+      lastError = '';
+      retryBlockedUntil = 0;
+    }
     const model = getTargetModel();
     if (proc && !proc.killed && proc.exitCode === null) {
       if (activeModel === model) return true;
@@ -565,12 +600,15 @@ export function createPromptSuggestionEngine({
       stop({ wantRestart: true });
       return true;
     }
+    if (!force && retryBlockedUntil > Date.now()) {
+      return false;
+    }
     if (stoppingProcs.size > 0) {
       pendingStart = true;
       return true;
     }
     if (starting) return true;
-    const bin = getAgyBin();
+    const bin = getAgyBin({ refresh: force });
     if (!bin) return false;
 
     starting = true;
@@ -578,6 +616,8 @@ export function createPromptSuggestionEngine({
     activeModel = model;
     ready = false;
     warmed = false;
+    authRequired = false;
+    lastError = '';
     turns = 0;
 
     let child;
@@ -624,13 +664,52 @@ export function createPromptSuggestionEngine({
     proc = child;
     starting = false;
     let childBuf = '';
-    if (child.stderr && typeof child.stderr.resume === 'function') {
+    let stderrTail = '';
+
+    clearInitTimer();
+    if (Number.isFinite(initTimeoutMs) && initTimeoutMs > 0) {
+      initTimer = setTimeout(() => {
+        initTimer = null;
+        if (proc !== child || ready) return;
+        const isAuth = AUTH_PROMPT_RE.test(stderrTail);
+        failWorker(child, {
+          isAuth,
+          message: isAuth ? 'agy CLI not signed in' : stderrTail.trim().slice(0, 160) || 'agy startup timeout',
+          cooldownMs: isAuth ? AUTH_RETRY_COOLDOWN_MS : ERROR_RETRY_COOLDOWN_MS
+        });
+      }, initTimeoutMs);
+      if (typeof initTimer.unref === 'function') initTimer.unref();
+    }
+
+    if (child.stderr && typeof child.stderr.on === 'function') {
+      child.stderr.on('data', (chunk) => {
+        if (proc !== child) return;
+        const text = chunk.toString('utf8').replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
+        stderrTail = (stderrTail + text).slice(-512);
+        if (!ready && AUTH_PROMPT_RE.test(stderrTail)) {
+          failWorker(child, {
+            isAuth: true,
+            message: 'agy CLI not signed in',
+            cooldownMs: AUTH_RETRY_COOLDOWN_MS
+          });
+        }
+      });
+    } else if (child.stderr && typeof child.stderr.resume === 'function') {
       child.stderr.resume();
     }
 
     child.stdout.on('data', (chunk) => {
       if (proc !== child) return;
-      childBuf += chunk.toString('utf8');
+      const rawChunk = chunk.toString('utf8');
+      childBuf += rawChunk;
+      if (!ready && AUTH_PROMPT_RE.test(childBuf)) {
+        failWorker(child, {
+          isAuth: true,
+          message: 'agy CLI not signed in',
+          cooldownMs: AUTH_RETRY_COOLDOWN_MS
+        });
+        return;
+      }
       const lines = childBuf.split('\n');
       childBuf = lines.pop() || '';
       for (const line of lines) {
@@ -640,9 +719,18 @@ export function createPromptSuggestionEngine({
         try {
           evt = JSON.parse(line);
         } catch {
+          if (!ready && AUTH_PROMPT_RE.test(line)) {
+            failWorker(child, {
+              isAuth: true,
+              message: 'agy CLI not signed in',
+              cooldownMs: AUTH_RETRY_COOLDOWN_MS
+            });
+            return;
+          }
           continue;
         }
         if (evt.event === 'init') {
+          clearInitTimer();
           ready = true;
           sendWarmup();
         } else if (evt.event === 'step_update') {
@@ -667,6 +755,9 @@ export function createPromptSuggestionEngine({
           }
           if (!warmed) {
             warmed = true;
+            authRequired = false;
+            lastError = '';
+            retryBlockedUntil = 0;
           } else {
             turns += 1;
           }
@@ -679,13 +770,19 @@ export function createPromptSuggestionEngine({
       }
     });
 
-    child.on('error', () => {
+    child.on('error', (err) => {
       if (proc !== child) return;
-      stop();
+      failWorker(child, {
+        isAuth: false,
+        message: err?.message || 'agy spawn error',
+        cooldownMs: ERROR_RETRY_COOLDOWN_MS
+      });
     });
-    child.on('exit', () => {
+    child.on('exit', (code, signal) => {
       destroyChildStreams(child);
       if (proc !== child) return;
+      clearInitTimer();
+      const wasWarmed = warmed;
       ready = false;
       warmed = false;
       proc = null;
@@ -698,6 +795,15 @@ export function createPromptSuggestionEngine({
           cur.resolve('');
         }
       }
+      if (!wasWarmed && code !== 0 && code !== null && !signal) {
+        const isAuth = AUTH_PROMPT_RE.test(stderrTail);
+        authRequired = isAuth;
+        lastError = isAuth
+          ? 'agy CLI not signed in'
+          : stderrTail.trim().slice(0, 160) || `agy exited with code ${code}`;
+        retryBlockedUntil = Date.now() + (isAuth ? AUTH_RETRY_COOLDOWN_MS : ERROR_RETRY_COOLDOWN_MS);
+        return;
+      }
       if (queue.length > 0 && isEnabled()) {
         scheduleStart(800);
       }
@@ -706,12 +812,12 @@ export function createPromptSuggestionEngine({
     return true;
   }
 
-  function syncState() {
+  function syncState({ force = false } = {}) {
     if (!isEnabled()) {
       stop();
       return;
     }
-    ensureStarted();
+    ensureStarted({ force });
   }
 
   async function suggest({ fingerprint = '', lastUser = '', lastAssistant = '' } = {}) {
@@ -761,6 +867,14 @@ export function createPromptSuggestionEngine({
         families: DEFAULT_MODEL_FAMILIES
       };
     }
+    if (!force && authRequired && retryBlockedUntil > now) {
+      return {
+        available: true,
+        authRequired: true,
+        fetched: false,
+        families: modelsCache || DEFAULT_MODEL_FAMILIES
+      };
+    }
     if (!force && modelsCache && now - modelsCacheAt < MODELS_CACHE_TTL_MS) {
       return {
         available: true,
@@ -778,7 +892,7 @@ export function createPromptSuggestionEngine({
           ? ''
           : `${path.join(os.homedir(), '.local', 'bin')}:/opt/homebrew/bin:/usr/local/bin:`;
         const useShell = isWin && /\.(cmd|bat)$/i.test(bin);
-        const { stdout } = await execFileImpl(bin, ['models'], {
+        const { stdout, stderr } = await execFileImpl(bin, ['models'], {
           cwd: os.tmpdir(),
           timeout: MODELS_FETCH_TIMEOUT_MS,
           maxBuffer: 512 * 1024,
@@ -789,20 +903,43 @@ export function createPromptSuggestionEngine({
             PATH: extraPath ? `${extraPath}${process.env.PATH || ''}` : process.env.PATH
           }
         });
+        if (AUTH_PROMPT_RE.test(String(stdout || '') + '\n' + String(stderr || ''))) {
+          authRequired = true;
+          lastError = 'agy CLI not signed in';
+          retryBlockedUntil = Date.now() + AUTH_RETRY_COOLDOWN_MS;
+          return {
+            available: true,
+            authRequired: true,
+            fetched: false,
+            families: modelsCache || DEFAULT_MODEL_FAMILIES
+          };
+        }
         const parsed = parseAgyModelsOutput(stdout);
         if (parsed.length > 0) {
+          authRequired = false;
+          lastError = '';
+          retryBlockedUntil = 0;
           modelsCache = parsed;
           modelsCacheAt = Date.now();
           return {
             available: true,
+            authRequired: false,
             fetched: true,
             cached: false,
             families: parsed
           };
         }
-      } catch {}
+      } catch (err) {
+        const combined = String(err?.stdout || '') + '\n' + String(err?.stderr || '');
+        if (AUTH_PROMPT_RE.test(combined)) {
+          authRequired = true;
+          lastError = 'agy CLI not signed in';
+          retryBlockedUntil = Date.now() + AUTH_RETRY_COOLDOWN_MS;
+        }
+      }
       return {
         available: true,
+        authRequired,
         fetched: false,
         families: modelsCache || DEFAULT_MODEL_FAMILIES
       };
@@ -827,6 +964,8 @@ export function createPromptSuggestionEngine({
       stoppingCount: stoppingProcs.size,
       ready,
       warmed,
+      authRequired,
+      lastError,
       turns,
       activeModel,
       cacheSize: cache.size

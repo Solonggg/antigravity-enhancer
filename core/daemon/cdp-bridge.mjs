@@ -744,7 +744,7 @@ export function createCdpManager({
                   } catch {}
                   if (promptSuggester && typeof promptSuggester.syncState === 'function') {
                     try {
-                      promptSuggester.syncState();
+                      promptSuggester.syncState({ force: true });
                     } catch {}
                   }
                   for (const entry of attachedTargets.values()) {
@@ -757,16 +757,16 @@ export function createCdpManager({
                   }
                 }
                 const { activeConfig, cachedPatchVersion } = bundleCtrl.getState();
-                const agyStatus =
-                  promptSuggester && typeof promptSuggester.getStatus === 'function'
-                    ? promptSuggester.getStatus()
-                    : { available: false, running: false, starting: false, ready: false, warmed: false, activeModel: '' };
                 let modelsInfo = null;
                 if (includeModels && promptSuggester && typeof promptSuggester.listModels === 'function') {
                   try {
                     modelsInfo = await promptSuggester.listModels({ force: refreshModels });
                   } catch {}
                 }
+                const agyStatus =
+                  promptSuggester && typeof promptSuggester.getStatus === 'function'
+                    ? promptSuggester.getStatus()
+                    : { available: false, running: false, starting: false, ready: false, warmed: false, activeModel: '' };
                 const snapshot = buildSettingsSnapshot(activeConfig);
                 const out = {
                   ok: true,
@@ -805,7 +805,7 @@ export function createCdpManager({
                     : { ok: false, error: 'updateUserConfig unavailable' };
                 if (writeRes.ok) {
                   if (promptSuggester && typeof promptSuggester.syncState === 'function') {
-                    promptSuggester.syncState();
+                    promptSuggester.syncState({ force: Boolean(patch?.modules?.promptSuggestions || patch?.promptSuggestionModel) });
                   }
                   for (const entry of attachedTargets.values()) {
                     if (!entry.hostConfirmed) continue;
