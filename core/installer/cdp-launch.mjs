@@ -13,9 +13,11 @@ import {
   stripUtf8Bom
 } from '../shared.mjs';
 
-export const CDP_RELAUNCH_GUARD_FILE = path.join(os.tmpdir(), 'ag-codex-cdp-relaunch-guard.json');
-const MAC_LAUNCHER_BUNDLE_PREFIX = 'com.antigravity.codex-theme.launcher';
-const LINUX_DESKTOP_MARKER = '# X-Antigravity-Codex-Theme=1';
+export const CDP_RELAUNCH_GUARD_FILE = path.join(os.tmpdir(), 'ag-enhancer-cdp-relaunch-guard.json');
+const MAC_LAUNCHER_BUNDLE_PREFIX = 'com.antigravity.enhancer.launcher';
+const LEGACY_MAC_LAUNCHER_BUNDLE_PREFIX = 'com.antigravity.codex-theme.launcher';
+const LINUX_DESKTOP_MARKER = '# X-Antigravity-Enhancer=1';
+const LEGACY_LINUX_DESKTOP_MARKER = '# X-Antigravity-Codex-Theme=1';
 
 export function readHostVersionAndProcesses(channel = 'auto') {
   const home = os.homedir();
@@ -53,8 +55,8 @@ export function readHostVersionAndProcesses(channel = 'auto') {
 
     const launcherApp =
       channel === 'insiders'
-        ? path.join(home, 'Applications', 'Antigravity - Insiders (Codex Theme).app')
-        : path.join(home, 'Applications', 'Antigravity (Codex Theme).app');
+        ? path.join(home, 'Applications', 'Antigravity - Insiders (Enhancer).app')
+        : path.join(home, 'Applications', 'Antigravity (Enhancer).app');
     launcherInstalled = fs.existsSync(path.join(launcherApp, 'Contents', 'MacOS', 'launcher'));
 
     const ps = spawnSync('ps', ['-axo', 'pid=,etime=,command='], { encoding: 'utf8', timeout: 2500 });
@@ -214,9 +216,9 @@ export function ensureCdpLaunchers(channel = 'auto', options = {}) {
         ? {
             channel: 'stable',
             srcApp: ['/Applications/Antigravity.app', path.join(appsDir, 'Antigravity.app')].find((p) => fs.existsSync(p)),
-            launcherName: 'Antigravity (Codex Theme).app',
+            launcherName: 'Antigravity (Enhancer).app',
             bundleId: MAC_LAUNCHER_BUNDLE_PREFIX,
-            displayName: 'Antigravity (Codex Theme)'
+            displayName: 'Antigravity (Enhancer)'
           }
         : null,
       allowInsiders
@@ -225,9 +227,9 @@ export function ensureCdpLaunchers(channel = 'auto', options = {}) {
             srcApp: ['/Applications/Antigravity - Insiders.app', path.join(appsDir, 'Antigravity - Insiders.app')].find(
               (p) => fs.existsSync(p)
             ),
-            launcherName: 'Antigravity - Insiders (Codex Theme).app',
+            launcherName: 'Antigravity - Insiders (Enhancer).app',
             bundleId: `${MAC_LAUNCHER_BUNDLE_PREFIX}.insiders`,
-            displayName: 'Antigravity - Insiders (Codex Theme)'
+            displayName: 'Antigravity - Insiders (Enhancer)'
           }
         : null
     ].filter((s) => s && s.srcApp);
@@ -271,9 +273,9 @@ export function ensureCdpLaunchers(channel = 'auto', options = {}) {
           '  <key>CFBundlePackageType</key>',
           '  <string>APPL</string>',
           '  <key>CFBundleShortVersionString</key>',
-          '  <string>1.3.5</string>',
+          '  <string>1.0.0</string>',
           '  <key>CFBundleVersion</key>',
-          '  <string>110</string>',
+          '  <string>100</string>',
           ...(iconBase ? ['  <key>CFBundleIconFile</key>', `  <string>${iconBase}</string>`] : []),
           '  <key>LSMinimumSystemVersion</key>',
           '  <string>12.0</string>',
@@ -290,7 +292,7 @@ export function ensureCdpLaunchers(channel = 'auto', options = {}) {
         const escapedAppPath = spec.srcApp.replace(/(["\\$`])/g, '\\$1');
         const launcherScript = [
           '#!/bin/sh',
-          '# Managed by antigravity-codex-theme (Optional M1 CDP Opt-in Launcher)',
+          '# Managed by antigravity-enhancer (Optional M1 CDP Opt-in Launcher)',
           `exec /usr/bin/open -a "${escapedAppPath}" --args --remote-debugging-port=0 "$@"`,
           ''
         ].join('\n');
@@ -404,13 +406,18 @@ export function removeCdpLaunchers() {
     const lsreg =
       '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
     const removed = [];
-    for (const name of ['Antigravity (Codex Theme).app', 'Antigravity - Insiders (Codex Theme).app']) {
+    for (const name of [
+      'Antigravity (Enhancer).app',
+      'Antigravity - Insiders (Enhancer).app',
+      'Antigravity (Codex Theme).app',
+      'Antigravity - Insiders (Codex Theme).app'
+    ]) {
       const appPath = path.join(appsDir, name);
       const plistPath = path.join(appPath, 'Contents', 'Info.plist');
       if (!fs.existsSync(plistPath)) continue;
       try {
         const xml = fs.readFileSync(plistPath, 'utf8');
-        if (!xml.includes(MAC_LAUNCHER_BUNDLE_PREFIX)) continue;
+        if (!xml.includes(MAC_LAUNCHER_BUNDLE_PREFIX) && !xml.includes(LEGACY_MAC_LAUNCHER_BUNDLE_PREFIX)) continue;
         if (fs.existsSync(lsreg)) {
           spawnSync(lsreg, ['-u', appPath], { stdio: 'ignore', timeout: 4000 });
         }
@@ -468,7 +475,7 @@ export function removeCdpLaunchers() {
       if (!fs.existsSync(p)) continue;
       try {
         const raw = fs.readFileSync(p, 'utf8');
-        if (raw.includes(LINUX_DESKTOP_MARKER)) {
+        if (raw.includes(LINUX_DESKTOP_MARKER) || raw.includes(LEGACY_LINUX_DESKTOP_MARKER)) {
           fs.unlinkSync(p);
           removed.push(p);
         }
@@ -663,7 +670,7 @@ export async function relaunchAntigravityWithCdp({
       ok,
       stoppedPids: procsToStop.map((p) => p.pid),
       version: live.state?.version || null,
-      themeStyle: Boolean(live.state?.hasStyle),
+      enhancerStyle: Boolean(live.state?.hasStyle),
       dictCount: live.state?.dictCount || 0,
       pillMounted: Boolean(live.state?.pillMounted),
       live

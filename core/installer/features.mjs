@@ -17,7 +17,6 @@ export const BASE_SPARSE_PATHS = Object.freeze([
   '/core/daemon/paths.mjs',
   '/core/daemon/cdp-bridge.mjs',
   '/core/daemon/cdp-relaunch.mjs',
-  '/core/daemon/updater.mjs',
   '/core/styles/45-settings-ui.css',
   '/core/runtime/00-head.js',
   '/core/runtime/75-settings-ui.js',
@@ -25,27 +24,9 @@ export const BASE_SPARSE_PATHS = Object.freeze([
 ]);
 
 export const FEATURE_GROUPS = Object.freeze({
-  theme: {
-    id: 'theme',
-    label: 'Codex 风格昼夜主题 (codex-pure-white / codex-dark)',
-    configKeys: ['theme'],
-    sparsePaths: [
-      '/core/styles/00-base.css',
-      '/core/styles/10-light-codex.css',
-      '/core/styles/20-dark-codex.css',
-      '/core/runtime/20-theme-sync.js'
-    ],
-    coreRelPaths: [
-      'styles/00-base.css',
-      'styles/10-light-codex.css',
-      'styles/20-dark-codex.css',
-      'runtime/20-theme-sync.js'
-    ],
-    aliases: ['theme', 'codex', 'style', 'styles', 'css', 'dark', 'light']
-  },
   i18n: {
     id: 'i18n',
-    label: '中文界面本地化 (900+ 词条)',
+    label: '中文界面本地化（含 Shadow DOM 穿透与动态文案）',
     configKeys: ['i18n'],
     sparsePaths: [
       '/core/i18n.json',
@@ -60,7 +41,7 @@ export const FEATURE_GROUPS = Object.freeze({
   },
   metrics: {
     id: 'metrics',
-    label: '实时会话状态指示、一/二级统计面板与每轮尾部统计',
+    label: '纯本地实时会话状态指示、一/二级用量面板与每轮尾部统计',
     configKeys: ['metrics'],
     sparsePaths: [
       '/core/styles/30-telemetry.css',
@@ -70,7 +51,6 @@ export const FEATURE_GROUPS = Object.freeze({
       '/core/daemon/ls-log.mjs',
       '/core/daemon/protobuf.mjs',
       '/core/daemon/sqlite-metrics.mjs',
-      '/core/daemon/ssh-remote.mjs',
       '/core/daemon/telemetry-renderer.mjs'
     ],
     coreRelPaths: [
@@ -81,10 +61,25 @@ export const FEATURE_GROUPS = Object.freeze({
       'daemon/ls-log.mjs',
       'daemon/protobuf.mjs',
       'daemon/sqlite-metrics.mjs',
-      'daemon/ssh-remote.mjs',
       'daemon/telemetry-renderer.mjs'
     ],
-    aliases: ['metrics', 'status', 'telemetry', 'stats', 'panel', 'metricscapsule']
+    aliases: ['metrics', 'status', 'stats', 'panel', 'metricscapsule']
+  },
+  openIn: {
+    id: 'openIn',
+    label: '右键打开文件引用（IDEA / Finder / Zed / VS Code / Cursor）',
+    configKeys: ['openIn'],
+    sparsePaths: [
+      '/core/styles/42-open-in.css',
+      '/core/runtime/65-open-in.js',
+      '/core/daemon/open-in.mjs'
+    ],
+    coreRelPaths: [
+      'styles/42-open-in.css',
+      'runtime/65-open-in.js',
+      'daemon/open-in.mjs'
+    ],
+    aliases: ['openin', 'open-in', 'open', 'contextmenu', 'rightclick', 'idea', 'finder']
   },
   fixes: {
     id: 'fixes',
@@ -116,7 +111,7 @@ export const FEATURE_GROUPS = Object.freeze({
 const ALIAS_TO_FEATURE = (() => {
   const map = new Map();
   for (const [id, meta] of Object.entries(FEATURE_GROUPS)) {
-    map.set(id, id);
+    map.set(id.toLowerCase(), id);
     for (const alias of meta.aliases) {
       map.set(alias.toLowerCase(), id);
     }
@@ -130,7 +125,7 @@ function parseFeatureTokenList(raw) {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   if (tokens.length === 0) {
-    throw new Error('Empty feature list. Expected one or more of: theme, i18n, metrics, fixes, suggest, all');
+    throw new Error('Empty feature list. Expected one or more of: i18n, metrics, openIn, fixes, suggest, all');
   }
   const ids = [];
   for (const tok of tokens) {
@@ -139,7 +134,7 @@ function parseFeatureTokenList(raw) {
     }
     const resolved = ALIAS_TO_FEATURE.get(tok);
     if (!resolved) {
-      throw new Error(`Unknown feature "${tok}". Valid options: theme, i18n, metrics, fixes, suggest, all`);
+      throw new Error(`Unknown feature "${tok}". Valid options: i18n, metrics, openIn, fixes, suggest, all`);
     }
     if (!ids.includes(resolved)) ids.push(resolved);
   }
@@ -182,7 +177,7 @@ export function parseFeatureSelection({ onlyArg = null, withoutArg = null } = {}
 }
 
 export function getSparseCheckoutPaths(
-  selected = { theme: true, i18n: true, metrics: true, fixes: true, suggest: false }
+  selected = { i18n: true, metrics: true, openIn: true, fixes: true, suggest: false }
 ) {
   const out = [...BASE_SPARSE_PATHS];
   for (const [id, meta] of Object.entries(FEATURE_GROUPS)) {

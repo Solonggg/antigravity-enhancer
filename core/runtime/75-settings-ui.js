@@ -1,8 +1,9 @@
 /**
- * Part 75: Embedded Native Codex Settings Panel (inside Antigravity Settings Modal)
- * Mounts a native-style "Codex 主题" tab into [data-testid="settings-sidebar"],
- * persists changes to user/config.json via CDP bindings with ~200ms hot-reload,
- * and provides a 2-level popover cascading model picker populated from `agy models`.
+ * Part 75: Embedded Native Enhancer Settings Panel (inside Antigravity Settings Modal)
+ * Mounts a native-style "Enhancer 增强" tab into [data-testid="settings-sidebar"],
+ * persists changes to user/config.json via local CDP bindings with ~200ms hot-reload,
+ * provides simplified Open-In target toggles, and includes a 2-level popover model picker
+ * populated from local `agy models`. Zero outbound network calls or external links.
  */
   const AG_SETTINGS_FALLBACK_FAMILIES = [
     {
@@ -93,7 +94,15 @@
     }
   ];
 
-  function cleanupCodexSettingsDom() {
+  const AG_OPEN_IN_TARGET_META = [
+    { id: 'idea', name: 'IDEA' },
+    { id: 'finder', name: 'Finder' },
+    { id: 'zed', name: 'Zed' },
+    { id: 'vscode', name: 'VS Code' },
+    { id: 'cursor', name: 'Cursor' }
+  ];
+
+  function cleanupEnhancerSettingsDom() {
     try {
       for (const id of [
         'ag-settings-nav-divider',
@@ -105,8 +114,8 @@
         const el = document.getElementById(id);
         if (el) el.remove();
       }
-      document.querySelectorAll('[data-ag-codex-settings-open]').forEach((el) => {
-        el.removeAttribute('data-ag-codex-settings-open');
+      document.querySelectorAll('[data-ag-enhancer-settings-open]').forEach((el) => {
+        el.removeAttribute('data-ag-enhancer-settings-open');
       });
       document.querySelectorAll('[data-ag-settings-right-pane]').forEach((el) => {
         el.removeAttribute('data-ag-settings-right-pane');
@@ -114,15 +123,14 @@
     } catch {}
   }
 
-  function mountCodexSettingsUi() {
+  function mountEnhancerSettingsUi() {
     if (IS_SWARM_PLUGIN_FRAME || !ENABLED) {
-      cleanupCodexSettingsDom();
+      cleanupEnhancerSettingsDom();
       return;
     }
     if (typeof document === 'undefined' || !document.body) return;
 
-    (function initCodexSettingsUi() {
-      const VALID_HOST_RE = /^[a-zA-Z0-9_@][a-zA-Z0-9._:@-]{0,127}$/;
+    (function initEnhancerSettingsUi() {
       const SUPPORTS_POPOVER =
         typeof HTMLElement !== 'undefined' && Object.hasOwn(HTMLElement.prototype, 'popover');
       const SUPPORTS_FOCUSGROUP =
@@ -144,8 +152,8 @@
       let hoverSwitchTimer = null;
       let lastSubAnchorBtn = null;
       let hoveredFamilyKey = '';
-      let addingHost = false;
-      let invalidHost = false;
+      let editingIdeaPath = false;
+      let invalidIdeaPath = false;
       let refreshingModels = false;
       let refreshingAll = false;
       let activeDlg = null;
@@ -153,14 +161,21 @@
       let boundSidebarClick = null;
 
       const bootUserCfg = boot.userConfig && typeof boot.userConfig === 'object' ? boot.userConfig : {};
+      const bootOpenIn = bootUserCfg.openIn && typeof bootUserCfg.openIn === 'object' ? bootUserCfg.openIn : {};
       const uiState = {
         config: {
           telemetryLayout: bootUserCfg.telemetryLayout || boot.telemetryLayout || 'compact',
           telemetryCacheMode: bootUserCfg.telemetryCacheMode || boot.telemetryCacheMode || 'session',
           promptSuggestionModel: bootUserCfg.promptSuggestionModel || 'gemini-3.8-flash-low',
-          sshHosts: Array.isArray(bootUserCfg.sshHosts) ? bootUserCfg.sshHosts.slice() : [],
-          modules: Object.assign({}, MODULES, bootUserCfg.modules || {})
+          modules: Object.assign({}, MODULES, bootUserCfg.modules || {}),
+          openIn: {
+            targets: Array.isArray(bootOpenIn.targets) ? bootOpenIn.targets.slice() : ['idea', 'finder'],
+            ideaPath: typeof bootOpenIn.ideaPath === 'string' ? bootOpenIn.ideaPath : '',
+            copyPath: bootOpenIn.copyPath !== false,
+            customTargetsCount: Number(bootOpenIn.customTargetsCount || 0)
+          }
         },
+        openInDetectors: (window.__ag_settings_openin_detectors && Object.assign({}, window.__ag_settings_openin_detectors)) || {},
         agyStatus: (window.__ag_settings_agy_cache && Object.assign({}, window.__ag_settings_agy_cache)) || {
           available: true,
           running: false,
@@ -172,23 +187,20 @@
         families:
           Array.isArray(window.__ag_settings_models_cache) && window.__ag_settings_models_cache.length > 0
             ? window.__ag_settings_models_cache
-            : AG_SETTINGS_FALLBACK_FAMILIES,
-        update: (window.__ag_settings_update_cache && Object.assign({}, window.__ag_settings_update_cache)) || {
-          phase: 'idle',
-          status: 'idle',
-          currentVersion: '',
-          latestVersion: '',
-          updateAvailable: false,
-          canSyncMain: false,
-          changedCount: 0,
-          targetRef: 'main',
-          error: ''
-        }
+            : AG_SETTINGS_FALLBACK_FAMILIES
       };
 
       function getShortVersionTag() {
         const m = String(PATCH_VERSION || '').match(/^(\d+\.\d+(?:\.\d+)?)/);
-        return m ? 'v' + m[1] : 'v1.2';
+        return m ? 'v' + m[1] : 'v1.0.0';
+      }
+
+      function getDictCountLabel() {
+        try {
+          const n = typeof DICT === 'object' && DICT ? Object.keys(DICT).length : 0;
+          if (n >= 1000) return Math.floor(n / 100) * 100 + '+';
+        } catch {}
+        return '4,000+';
       }
 
       function isZhUi() {
@@ -196,24 +208,33 @@
       }
 
       function getStrings() {
+        const dictCnt = getDictCountLabel();
         if (isZhUi()) {
           return {
-            navTitle: 'Codex 主题',
-            pageTitle: 'Codex 主题',
-            manualRefreshLabel: '手动刷新主题与配置',
+            navTitle: 'Enhancer 增强',
+            pageTitle: 'Enhancer 增强',
+            manualRefreshLabel: '手动重载配置与界面',
             savedBadge: '已同步',
             refreshedBadge: '已刷新',
-            githubLabel: 'GitHub',
-            feedbackLabel: '反馈',
-            subtitlePrefix: '管理主题配色、中文界面、会话统计与可选增强模块，修改实时同步至 ',
+            subtitlePrefix: '纯本地运行、零外联：管理中文界面、会话状态统计、右键打开与可选增强，修改实时同步至 ',
             subtitleSuffix: '。',
             secCore: '核心模块',
-            modTheme: 'Codex 昼夜主题',
-            modThemeDesc: '浅色纯白与中性炭灰深色配色，随 IDE 外观自动切换',
             modI18n: '中文界面汉化',
-            modI18nDesc: '内置 1,900+ 界面词条，原地更新不影响交互，关闭即恢复英文',
+            modI18nDesc: '内置 ' + dictCnt + ' 界面词条与 Shadow DOM 穿透，原地更新不影响交互，关闭即恢复英文',
             modMetrics: '实时会话状态与用量统计',
-            modMetricsDesc: '底部四态状态指示、一/二级明细面板与每轮对话尾部统计',
+            modMetricsDesc: '仅读本地会话 SQLite 与日志：底部四态指示、一/二级明细面板与每轮尾部统计',
+            modOpenIn: '右键打开文件引用',
+            modOpenInDesc: '在回复中的文件路径上右键，直接用外部编辑器或 Finder 打开并跳转行号，不影响左键',
+            openInTargetsLbl: '右键菜单目标',
+            ideaPathAutoPrefix: 'IDEA 启动器：',
+            ideaPathCustomPrefix: 'IDEA 自定义路径：',
+            ideaPathMissing: '未自动检测到 IDEA，请配置路径或在 JetBrains Toolbox 开启 Shell Scripts',
+            ideaPathCustomBtn: '自定义路径',
+            ideaPathHideBtn: '收起',
+            ideaPathPlaceholder: '/Applications/IntelliJ IDEA.app 或 idea CLI 路径',
+            ideaPathSave: '保存',
+            ideaPathReset: '自动检测',
+            openInCustomNote: (n) => '另有 ' + n + ' 个自定义命令目标（来自 user/config.json，仅配置文件可编辑）',
             secOptional: '可选增强',
             secOptionalHint: '默认关闭，按需开启',
             modSuggest: '输入框下一句预测',
@@ -231,12 +252,6 @@
             refreshModelsTitle: '重新拉取 agy models',
             menuModelsHdr: '模型',
             recommendedBadge: '推荐',
-            modSsh: 'SSH Remote 远端只读统计',
-            modSshDesc: '通过远端只读 Python 提取脱敏数值元数据，不在本地拷贝 .db 文件',
-            sshHostsLbl: '允许探测的主机（sshHosts）',
-            addHostBtn: '+ 添加主机',
-            addHostPlaceholder: '如 node032',
-            addHostOk: '添加',
             secTelemetry: '状态栏偏好',
             layoutLbl: '底部状态栏密度',
             layoutDesc: '紧凑模式居中嵌在工具栏内；详细模式展开为底部居中独立行，补充 TTFT 与本步输出',
@@ -245,49 +260,34 @@
             cacheLbl: '缓存命中率口径',
             cacheDesc: '选择状态栏展示整个会话的累计命中率，或最近单步命中率',
             cacheSession: '会话累计',
-            cacheStep: '单步',
-            secUpdate: '版本与更新',
-            updTitle: '插件版本',
-            updDescIdle: '从 GitHub 仓库检查新版本并直接更新，保留 user/ 个人配置',
-            updDescChecking: '正在连接 GitHub 检查最新版本与文件清单…',
-            updDescUpToDate: '当前已与远端最新版本保持一致',
-            updDescAhead: '当前本地版本高于远端发布版本',
-            updDescAvailable: '发现新版本，点击直接更新并热重载生效，无需重启 Antigravity',
-            updDescMainDiff: '远端 main 分支有文件差异（含热修复或本地未推送改动），可一键同步最新 main',
-            updDescUpdating: '正在下载并校验更新文件，同时备份旧版本，请稍候…',
-            updDescApplied: '已更新完成，后台服务正在重启并热重载到当前窗口…',
-            updPillChecking: '检查中…',
-            updPillLatest: '已是最新',
-            updPillAhead: '本地领先',
-            updPillAvailablePrefix: '新版本 ',
-            updPillMainDiff: 'main 有差异',
-            updPillUpdating: '更新中…',
-            updPillApplied: '更新完成',
-            updPillErr: '检查失败',
-            updBtnCheck: '检查更新',
-            updBtnChecking: '检查中…',
-            updBtnApply: '立即更新',
-            updBtnSyncMain: '同步 main',
-            updBtnUpdating: '更新中…'
+            cacheStep: '单步'
           };
         }
         return {
-          navTitle: 'Codex Theme',
-          pageTitle: 'Codex Theme',
-          manualRefreshLabel: 'Reload theme & config',
+          navTitle: 'Enhancer',
+          pageTitle: 'Enhancer',
+          manualRefreshLabel: 'Reload config & runtime',
           savedBadge: 'Synced',
           refreshedBadge: 'Refreshed',
-          githubLabel: 'GitHub',
-          feedbackLabel: 'Feedback',
-          subtitlePrefix: 'Manage theme colors, localization, live telemetry, and opt-in modules. Changes sync directly to ',
+          subtitlePrefix: '100% local, zero outbound requests. Manage localization, local status stats, right-click Open In, and opt-in tools; changes sync to ',
           subtitleSuffix: '.',
           secCore: 'Core Modules',
-          modTheme: 'Codex Light & Dark Theme',
-          modThemeDesc: 'Pure white light and charcoal dark palettes that follow IDE appearance automatically',
           modI18n: 'Chinese UI Localization',
-          modI18nDesc: '1,900+ built-in UI entries applied in place; disable to restore English immediately',
-          modMetrics: 'Live Session Status & Telemetry',
-          modMetricsDesc: 'Bottom 4-state status indicator, expandable L1/L2 panels, and per-turn footer stats',
+          modI18nDesc: dictCnt + ' built-in entries with Shadow DOM support applied in place; disable to restore English',
+          modMetrics: 'Local Session Status & Usage Stats',
+          modMetricsDesc: 'Reads local SQLite & logs only: bottom 4-state indicator, L1/L2 panels, and per-turn footer stats',
+          modOpenIn: 'Right-Click Open In',
+          modOpenInDesc: 'Right-click file links/paths in replies to open in IDEA, Finder, or editors with line jumping; left-click untouched',
+          openInTargetsLbl: 'Context Menu Targets',
+          ideaPathAutoPrefix: 'IDEA launcher: ',
+          ideaPathCustomPrefix: 'Custom IDEA path: ',
+          ideaPathMissing: 'IDEA not auto-detected; set custom path or enable JetBrains Toolbox Shell Scripts',
+          ideaPathCustomBtn: 'Custom path',
+          ideaPathHideBtn: 'Hide',
+          ideaPathPlaceholder: '/Applications/IntelliJ IDEA.app or idea CLI path',
+          ideaPathSave: 'Save',
+          ideaPathReset: 'Auto',
+          openInCustomNote: (n) => '+' + n + ' custom command target(s) loaded from user/config.json (config-file only)',
           secOptional: 'Optional Enhancements',
           secOptionalHint: 'Off by default, opt-in',
           modSuggest: 'Prompt Suggestions',
@@ -305,12 +305,6 @@
           refreshModelsTitle: 'Refresh agy models',
           menuModelsHdr: 'Models',
           recommendedBadge: 'Rec',
-          modSsh: 'SSH Remote Read-Only Telemetry',
-          modSshDesc: 'Extracts sanitized numeric metadata via remote read-only Python with zero local .db copy',
-          sshHostsLbl: 'Allowed SSH Hosts (sshHosts)',
-          addHostBtn: '+ Add host',
-          addHostPlaceholder: 'e.g. node032',
-          addHostOk: 'Add',
           secTelemetry: 'Status Bar Preferences',
           layoutLbl: 'Status Bar Density',
           layoutDesc: 'Compact sits centered inline; Detailed expands to a centered bottom row with TTFT and step output',
@@ -319,30 +313,7 @@
           cacheLbl: 'Cache Hit Rate Scope',
           cacheDesc: 'Display cumulative session cache hit rate or last-step hit rate',
           cacheSession: 'Session',
-          cacheStep: 'Step',
-          secUpdate: 'Updates',
-          updTitle: 'Plugin Version',
-          updDescIdle: 'Check GitHub for updates and apply directly; user/ config is preserved',
-          updDescChecking: 'Checking GitHub for the latest release and manifest…',
-          updDescUpToDate: 'You are running the latest version',
-          updDescAhead: 'Local build is ahead of remote release',
-          updDescAvailable: 'A newer release is available; updates apply live without restarting Antigravity',
-          updDescMainDiff: 'Remote main branch differs (hotfix or local changes); click Sync main to pull latest',
-          updDescUpdating: 'Downloading and verifying update files while backing up previous version…',
-          updDescApplied: 'Update applied; restarting background daemon to hot-reload this window…',
-          updPillChecking: 'Checking…',
-          updPillLatest: 'Up to date',
-          updPillAhead: 'Local ahead',
-          updPillAvailablePrefix: 'New ',
-          updPillMainDiff: 'main differs',
-          updPillUpdating: 'Updating…',
-          updPillApplied: 'Updated',
-          updPillErr: 'Failed',
-          updBtnCheck: 'Check for Updates',
-          updBtnChecking: 'Checking…',
-          updBtnApply: 'Update Now',
-          updBtnSyncMain: 'Sync main',
-          updBtnUpdating: 'Updating…'
+          cacheStep: 'Step'
         };
       }
 
@@ -411,13 +382,23 @@
       function applyRemoteState(res, flashSaved) {
         if (!res || !res.ok) return;
         if (res.config) {
+          const nextOpenIn = res.config.openIn && typeof res.config.openIn === 'object' ? res.config.openIn : uiState.config.openIn;
           uiState.config = {
             telemetryLayout: res.config.telemetryLayout || uiState.config.telemetryLayout,
             telemetryCacheMode: res.config.telemetryCacheMode || uiState.config.telemetryCacheMode,
             promptSuggestionModel: res.config.promptSuggestionModel || uiState.config.promptSuggestionModel,
-            sshHosts: Array.isArray(res.config.sshHosts) ? res.config.sshHosts.slice() : uiState.config.sshHosts,
-            modules: Object.assign({}, uiState.config.modules, res.config.modules || {})
+            modules: Object.assign({}, uiState.config.modules, res.config.modules || {}),
+            openIn: {
+              targets: Array.isArray(nextOpenIn.targets) ? nextOpenIn.targets.slice() : uiState.config.openIn.targets,
+              ideaPath: typeof nextOpenIn.ideaPath === 'string' ? nextOpenIn.ideaPath : uiState.config.openIn.ideaPath,
+              copyPath: nextOpenIn.copyPath !== false,
+              customTargetsCount: Number(nextOpenIn.customTargetsCount || 0)
+            }
           };
+        }
+        if (res.openInDetectors && typeof res.openInDetectors === 'object') {
+          uiState.openInDetectors = Object.assign({}, res.openInDetectors);
+          window.__ag_settings_openin_detectors = Object.assign({}, res.openInDetectors);
         }
         if (res.agyStatus) {
           uiState.agyStatus = Object.assign({}, res.agyStatus);
@@ -462,77 +443,7 @@
         }
       }
 
-      async function checkPluginUpdate() {
-        if (uiState.update.phase === 'checking' || uiState.update.phase === 'updating') return;
-        uiState.update = Object.assign({}, uiState.update, { phase: 'checking', error: '' });
-        window.__ag_settings_update_cache = Object.assign({}, uiState.update);
-        renderPane();
-
-        const res = await callDaemonBinding('__agCheckPluginUpdate', {}, 20000);
-        if (disposed) return;
-        if (!res || !res.ok) {
-          uiState.update = Object.assign({}, uiState.update, {
-            phase: 'done',
-            status: 'error',
-            updateAvailable: false,
-            canSyncMain: false,
-            error: (res && res.error) || 'Network error'
-          });
-        } else {
-          uiState.update = {
-            phase: 'done',
-            status: res.status || 'up_to_date',
-            currentVersion: res.currentVersion || '',
-            latestVersion: res.latestVersion || '',
-            updateAvailable: Boolean(res.updateAvailable),
-            canSyncMain: Boolean(res.canSyncMain),
-            changedCount: Number(res.changedCount || 0),
-            targetRef: res.targetRef || 'main',
-            error: ''
-          };
-        }
-        window.__ag_settings_update_cache = Object.assign({}, uiState.update);
-        renderPane();
-      }
-
-      async function applyPluginUpdateAction() {
-        if (uiState.update.phase === 'updating' || uiState.update.phase === 'checking') return;
-        const ref = uiState.update.targetRef || 'main';
-        uiState.update = Object.assign({}, uiState.update, { phase: 'updating', error: '' });
-        window.__ag_settings_update_cache = Object.assign({}, uiState.update);
-        const paneEl = document.getElementById('ag-settings-pane');
-        if (paneEl) window.__ag_settings_scroll_top = paneEl.scrollTop;
-        renderPane();
-
-        const res = await callDaemonBinding('__agApplyPluginUpdate', { ref }, 60000);
-        if (disposed) return;
-        if (!res || !res.ok) {
-          uiState.update = Object.assign({}, uiState.update, {
-            phase: 'done',
-            status: 'error',
-            error: (res && res.error) || 'Update failed'
-          });
-        } else {
-          uiState.update = {
-            phase: 'applied',
-            status: 'applied',
-            currentVersion: res.version || uiState.update.latestVersion,
-            latestVersion: res.version || uiState.update.latestVersion,
-            updateAvailable: false,
-            canSyncMain: false,
-            changedCount: 0,
-            targetRef: 'main',
-            error: ''
-          };
-          window.__ag_settings_saved_label = 'refreshed';
-          window.__ag_settings_saved_until = Date.now() + 3000;
-        }
-        window.__ag_settings_update_cache = Object.assign({}, uiState.update);
-        renderPane();
-      }
-
       async function commitPatch(patch) {
-        // Optimistic local state update for snappy UX
         if (patch.modules) {
           Object.assign(uiState.config.modules, patch.modules);
           if (patch.modules.promptSuggestions === false) {
@@ -549,8 +460,13 @@
             uiState.agyStatus = Object.assign({}, uiState.agyStatus, { warmed: false, running: true });
           }
         }
-        if (Array.isArray(patch.sshHosts)) {
-          uiState.config.sshHosts = patch.sshHosts.slice();
+        if (patch.openIn && typeof patch.openIn === 'object') {
+          if (Array.isArray(patch.openIn.targets)) {
+            uiState.config.openIn.targets = patch.openIn.targets.slice();
+          }
+          if (typeof patch.openIn.ideaPath === 'string') {
+            uiState.config.openIn.ideaPath = patch.openIn.ideaPath;
+          }
         }
         window.__ag_settings_saved_label = 'saved';
         window.__ag_settings_saved_until = Date.now() + 1800;
@@ -594,7 +510,6 @@
       }
 
       function hideModelMenus({ restoreFocus = false, fromPointer = false } = {}) {
-        // Reset cached submenu anchor whenever menus hide
         lastSubAnchorBtn = null;
         if (hoverSwitchTimer) {
           clearTimeout(hoverSwitchTimer);
@@ -659,12 +574,8 @@
           const parentBox = (anchorEl.closest && anchorEl.closest('#ag-settings-model-menu')) || anchorEl;
           const pr = parentBox.getBoundingClientRect();
           left = pr.right + 6;
-          if (left + ow > vw - 12) {
-            left = pr.left - ow - 6;
-          }
-          if (left < 12) {
-            left = Math.max(12, vw - ow - 12);
-          }
+          if (left + ow > vw - 12) left = pr.left - ow - 6;
+          if (left < 12) left = Math.max(12, vw - ow - 12);
           top = ar.top - 6;
           if (top + oh > vh - 12) top = vh - oh - 12;
           if (top < 12) top = 12;
@@ -873,7 +784,6 @@
           }
         });
 
-        // Hover Level 1 row -> preview Level 2 effort submenu (short grace delay when submenu is open to aid diagonal travel)
         sub.addEventListener('mouseenter', () => {
           if (hoverSwitchTimer) {
             clearTimeout(hoverSwitchTimer);
@@ -919,7 +829,6 @@
           }
         });
 
-        // Click Level 1 row
         list.addEventListener('click', (ev) => {
           const row = ev.target && ev.target.closest ? ev.target.closest('[data-fam-key]') : null;
           if (!row) return;
@@ -935,7 +844,6 @@
           }
         });
 
-        // Click Level 2 effort item
         sub.addEventListener('click', (ev) => {
           const btn = ev.target && ev.target.closest ? ev.target.closest('[data-pick-effort]') : null;
           if (!btn) return;
@@ -945,7 +853,6 @@
           commitPatch({ promptSuggestionModel: id });
         });
 
-        // Keyboard navigation across Level 1 & Level 2
         const handleMenuKeydown = (menuEl, isSub) => (ev) => {
           const items = Array.from(menuEl.querySelectorAll('.ag-s-menu-list > button'));
           if (items.length === 0) return;
@@ -1035,7 +942,6 @@
         }
         triggerBtn.setAttribute('aria-expanded', 'true');
 
-        // Preview submenu for currently selected family on open
         const selectedRow = root.querySelector('[data-fam-key="' + hoveredFamilyKey + '"]');
         const selectedFam = (uiState.families || AG_SETTINGS_FALLBACK_FAMILIES).find((f) => f.key === hoveredFamilyKey);
         if (selectedRow && selectedFam && selectedFam.efforts && selectedFam.efforts.length > 0) {
@@ -1045,6 +951,97 @@
           const focusTarget = selectedRow || root.querySelector('.ag-s-menu-list > button');
           if (focusTarget) focusTarget.focus();
         }
+      }
+
+      function renderOpenInSubrow(s, openInCfg) {
+        const enabledSet = new Set(Array.isArray(openInCfg.targets) ? openInCfg.targets : []);
+        const detectors = uiState.openInDetectors || {};
+        const chipsHtml = AG_OPEN_IN_TARGET_META.map((item) => {
+          const on = enabledSet.has(item.id);
+          const det = detectors[item.id];
+          const ok = item.id === 'finder' ? true : Boolean(det && det.available);
+          const titleAttr = det && det.path ? ' title="' + escHtml(det.path) + '"' : '';
+          return (
+            '<button type="button" class="ag-s-target-chip" data-openin-target="' +
+            escHtml(item.id) +
+            '" aria-pressed="' +
+            (on ? 'true' : 'false') +
+            '"' +
+            titleAttr +
+            '>' +
+            '<span class="ag-s-target-dot" data-ok="' +
+            (ok ? '1' : '0') +
+            '"></span>' +
+            '<span>' +
+            escHtml(item.name) +
+            '</span>' +
+            '</button>'
+          );
+        }).join('');
+
+        let ideaHtml = '';
+        if (enabledSet.has('idea')) {
+          const ideaDet = detectors.idea || null;
+          const customPath = String(openInCfg.ideaPath || '').trim();
+          const detectedPath = ideaDet && ideaDet.path ? String(ideaDet.path) : '';
+          const missing = Boolean(ideaDet && !ideaDet.available && !customPath);
+          const statusText = customPath
+            ? s.ideaPathCustomPrefix + customPath
+            : detectedPath
+            ? s.ideaPathAutoPrefix + detectedPath
+            : s.ideaPathMissing;
+
+          ideaHtml =
+            '<div class="ag-s-idea-bar">' +
+            '<span class="ag-s-idea-status ag-s-mono" data-missing="' +
+            (missing ? '1' : '0') +
+            '" title="' +
+            escHtml(statusText) +
+            '">' +
+            escHtml(statusText) +
+            '</span>' +
+            '<button type="button" id="ag-s-toggle-idea-path" class="ag-s-link-btn">' +
+            escHtml(editingIdeaPath ? s.ideaPathHideBtn : s.ideaPathCustomBtn) +
+            '</button>' +
+            '</div>' +
+            (editingIdeaPath
+              ? '<div class="ag-s-idea-form">' +
+                '<input type="text" id="ag-s-idea-input" class="ag-s-idea-input" value="' +
+                escHtml(customPath) +
+                '" placeholder="' +
+                escHtml(s.ideaPathPlaceholder) +
+                '" data-invalid="' +
+                (invalidIdeaPath ? '1' : '0') +
+                '" autocomplete="off" spellcheck="false" />' +
+                '<button type="button" id="ag-s-idea-save" class="ag-s-btn-primary">' +
+                escHtml(s.ideaPathSave) +
+                '</button>' +
+                (customPath
+                  ? '<button type="button" id="ag-s-idea-reset" class="ag-s-btn-secondary">' +
+                    escHtml(s.ideaPathReset) +
+                    '</button>'
+                  : '') +
+                '</div>'
+              : '');
+        }
+
+        const customNoteHtml =
+          openInCfg.customTargetsCount > 0
+            ? '<div class="ag-s-sub-desc">' + escHtml(s.openInCustomNote(openInCfg.customTargetsCount)) + '</div>'
+            : '';
+
+        return (
+          '<div class="ag-s-openin-line">' +
+          '<span class="ag-s-sub-label">' +
+          escHtml(s.openInTargetsLbl) +
+          '</span>' +
+          '<div class="ag-s-openin-chips">' +
+          chipsHtml +
+          '</div>' +
+          '</div>' +
+          ideaHtml +
+          customNoteHtml
+        );
       }
 
       function renderPane() {
@@ -1062,8 +1059,8 @@
 
         const cfg = uiState.config;
         const mods = cfg.modules || {};
+        const openInOn = mods.openIn !== false;
         const psOn = Boolean(mods.promptSuggestions);
-        const sshOn = Boolean(mods.sshRemote);
         const selInfo = findSelectedModelInfo(cfg.promptSuggestionModel);
         const savedActive = Boolean(window.__ag_settings_saved_until && Date.now() < window.__ag_settings_saved_until);
 
@@ -1083,38 +1080,6 @@
         }
 
         const prevScroll = pane.scrollTop || window.__ag_settings_scroll_top || 0;
-
-        const chipsHtml =
-          (cfg.sshHosts || [])
-            .map(
-              (h, idx) =>
-                '<span class="ag-s-chip">' +
-                '<span>' +
-                escHtml(h) +
-                '</span>' +
-                '<button type="button" class="ag-s-chip-rm" data-rm-host="' +
-                idx +
-                '" aria-label="Remove ' +
-                escHtml(h) +
-                '">×</button>' +
-                '</span>'
-            )
-            .join('') +
-          (addingHost
-            ? '<span class="ag-s-host-form">' +
-              '<input type="text" id="ag-s-host-input" class="ag-s-host-input" placeholder="' +
-              escHtml(s.addHostPlaceholder) +
-              '" data-invalid="' +
-              (invalidHost ? '1' : '0') +
-              '" autocomplete="off" spellcheck="false" />' +
-              '<button type="button" id="ag-s-host-ok" class="ag-s-host-ok">' +
-              escHtml(s.addHostOk) +
-              '</button>' +
-              '</span>'
-            : '<button type="button" id="ag-s-add-host" class="ag-s-add-chip-btn">' +
-              escHtml(s.addHostBtn) +
-              '</button>');
-
         const savedLabel = window.__ag_settings_saved_label === 'refreshed' ? s.refreshedBadge : s.savedBadge;
 
         pane.innerHTML =
@@ -1124,6 +1089,9 @@
           '<h2 class="ag-s-title">' +
           escHtml(s.pageTitle) +
           '</h2>' +
+          '<span class="ag-s-ver-badge">' +
+          escHtml(getShortVersionTag()) +
+          '</span>' +
           '<button type="button" id="ag-s-manual-refresh" class="ag-s-hdr-refresh" aria-label="' +
           escHtml(s.manualRefreshLabel) +
           '">' +
@@ -1136,20 +1104,6 @@
           '>' +
           escHtml(savedLabel) +
           '</span>' +
-          '</div>' +
-          '<div class="ag-s-hdr-links">' +
-          '<a id="ag-s-link-github" class="ag-s-hdr-link" href="https://github.com/nkjDSLcvanv/antigravity-codex-theme" target="_blank" rel="noopener noreferrer" data-ext-link="github">' +
-          '<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>' +
-          '<span>' +
-          escHtml(s.githubLabel) +
-          '</span>' +
-          '</a>' +
-          '<a id="ag-s-link-feedback" class="ag-s-hdr-link" href="https://x.com/shehxuhxjx66088/status/2124698149742883293?a=EQtEZD2AMCGaj9bBRIo&s=20" target="_blank" rel="noopener noreferrer" data-ext-link="feedback">' +
-          '<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.52 6.77 15.48 0h-1.41L8.9 5.88 4.77 0H0l6.25 8.9L0 16h1.41l5.46-6.21L11.23 16H16L9.52 6.77Zm-1.93 2.2-.63-.89L1.92 1.04h2.17l4.07 5.7.63.89 5.29 7.4h-2.17L7.59 8.97Z"/></svg>' +
-          '<span>' +
-          escHtml(s.feedbackLabel) +
-          '</span>' +
-          '</a>' +
           '</div>' +
           '</div>' +
           '<p class="ag-s-subtitle">' +
@@ -1165,18 +1119,6 @@
           escHtml(s.secCore) +
           '</span></div>' +
           '<div class="ag-s-card">' +
-          '<div class="ag-s-row"><div class="ag-s-row-main">' +
-          '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-theme">' +
-          escHtml(s.modTheme) +
-          '</label><div class="ag-s-row-desc">' +
-          escHtml(s.modThemeDesc) +
-          '</div></div>' +
-          '<input id="ag-s-sw-theme" type="checkbox" switch role="switch" class="ag-s-switch" data-bind-mod="theme" aria-label="' +
-          escHtml(s.modTheme) +
-          '" ' +
-          (mods.theme !== false ? 'checked' : '') +
-          ' />' +
-          '</div></div>' +
           '<div class="ag-s-row"><div class="ag-s-row-main">' +
           '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-i18n">' +
           escHtml(s.modI18n) +
@@ -1201,6 +1143,25 @@
           (mods.metrics !== false ? 'checked' : '') +
           ' />' +
           '</div></div>' +
+          '<div class="ag-s-row">' +
+          '<div class="ag-s-row-main">' +
+          '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-openin">' +
+          escHtml(s.modOpenIn) +
+          '</label><div class="ag-s-row-desc">' +
+          escHtml(s.modOpenInDesc) +
+          '</div></div>' +
+          '<input id="ag-s-sw-openin" type="checkbox" switch role="switch" class="ag-s-switch" data-bind-mod="openIn" aria-label="' +
+          escHtml(s.modOpenIn) +
+          '" ' +
+          (openInOn ? 'checked' : '') +
+          ' />' +
+          '</div>' +
+          '<div class="ag-s-subrow ag-s-subrow-stack"' +
+          (openInOn ? '' : ' hidden') +
+          '>' +
+          renderOpenInSubrow(s, cfg.openIn) +
+          '</div>' +
+          '</div>' +
           '</div>' +
           '</div>' +
           // Group 2: Optional Enhancements
@@ -1214,7 +1175,6 @@
           '</span>' +
           '</div>' +
           '<div class="ag-s-card">' +
-          // Prompt Suggestions
           '<div class="ag-s-row">' +
           '<div class="ag-s-row-main">' +
           '<div class="ag-s-row-info">' +
@@ -1280,31 +1240,6 @@
           '</div>' +
           '</div>' +
           '</div>' +
-          // SSH Remote
-          '<div class="ag-s-row">' +
-          '<div class="ag-s-row-main">' +
-          '<div class="ag-s-row-info"><label class="ag-s-row-label" for="ag-s-sw-ssh">' +
-          escHtml(s.modSsh) +
-          '</label><div class="ag-s-row-desc">' +
-          escHtml(s.modSshDesc) +
-          '</div></div>' +
-          '<input id="ag-s-sw-ssh" type="checkbox" switch role="switch" class="ag-s-switch" data-bind-mod="sshRemote" aria-label="' +
-          escHtml(s.modSsh) +
-          '" ' +
-          (sshOn ? 'checked' : '') +
-          ' />' +
-          '</div>' +
-          '<div class="ag-s-subrow"' +
-          (sshOn ? '' : ' hidden') +
-          '>' +
-          '<span class="ag-s-sub-label">' +
-          escHtml(s.sshHostsLbl) +
-          '</span>' +
-          '<div class="ag-s-chips">' +
-          chipsHtml +
-          '</div>' +
-          '</div>' +
-          '</div>' +
           '</div>' +
           '</div>' +
           // Group 3: Telemetry Preferences
@@ -1357,114 +1292,22 @@
           '</div></div>' +
           '</div>' +
           '</div>' +
-          // Group 4: Plugin Version & Updates
-          (() => {
-            const u = uiState.update || {};
-            const verStr = u.currentVersion ? 'v' + String(u.currentVersion).replace(/^v/i, '') : getShortVersionTag();
-            const isBusy = u.phase === 'checking' || u.phase === 'updating';
-            let pillHtml = '';
-            let descText = s.updDescIdle;
-            if (u.phase === 'checking') {
-              pillHtml = '<span class="ag-s-upd-pill" data-tone="idle">' + escHtml(s.updPillChecking) + '</span>';
-              descText = s.updDescChecking;
-            } else if (u.phase === 'updating') {
-              pillHtml = '<span class="ag-s-upd-pill" data-tone="warn">' + escHtml(s.updPillUpdating) + '</span>';
-              descText = s.updDescUpdating;
-            } else if (u.status === 'applied') {
-              pillHtml = '<span class="ag-s-upd-pill" data-tone="ok">' + escHtml(s.updPillApplied) + '</span>';
-              descText = s.updDescApplied;
-            } else if (u.status === 'up_to_date') {
-              pillHtml = '<span class="ag-s-upd-pill" data-tone="ok">' + escHtml(s.updPillLatest) + '</span>';
-              descText = s.updDescUpToDate;
-            } else if (u.status === 'ahead') {
-              pillHtml = '<span class="ag-s-upd-pill" data-tone="ok">' + escHtml(s.updPillAhead) + '</span>';
-              descText = s.updDescAhead;
-            } else if (u.status === 'update_available') {
-              const latestTag = u.latestVersion ? 'v' + String(u.latestVersion).replace(/^v/i, '') : '';
-              pillHtml =
-                '<span class="ag-s-upd-pill" data-tone="warn">' +
-                escHtml(s.updPillAvailablePrefix + latestTag) +
-                '</span>';
-              descText = s.updDescAvailable;
-            } else if (u.status === 'main_diff') {
-              const diffSuffix = u.changedCount > 0 ? ' (' + u.changedCount + ')' : '';
-              pillHtml =
-                '<span class="ag-s-upd-pill" data-tone="warn">' +
-                escHtml(s.updPillMainDiff + diffSuffix) +
-                '</span>';
-              descText = s.updDescMainDiff;
-            } else if (u.status === 'error') {
-              pillHtml = '<span class="ag-s-upd-pill" data-tone="err">' + escHtml(s.updPillErr) + '</span>';
-              descText = u.error ? String(u.error).slice(0, 140) : s.updPillErr;
-            }
-
-            const showApply = u.status === 'update_available' || u.status === 'main_diff' || u.phase === 'updating';
-            const applyLabel =
-              u.phase === 'updating'
-                ? s.updBtnUpdating
-                : u.status === 'update_available'
-                ? s.updBtnApply
-                : s.updBtnSyncMain;
-
-            return (
-              '<div>' +
-              '<div class="ag-s-section-head"><span class="ag-s-section-title">' +
-              escHtml(s.secUpdate) +
-              '</span></div>' +
-              '<div class="ag-s-card">' +
-              '<div class="ag-s-row"><div class="ag-s-row-main">' +
-              '<div class="ag-s-row-info">' +
-              '<div class="ag-s-row-label-wrap">' +
-              '<span class="ag-s-row-label" style="cursor:default">' +
-              escHtml(s.updTitle) +
-              '</span>' +
-              '<span class="ag-s-upd-pill">' +
-              escHtml(verStr) +
-              '</span>' +
-              pillHtml +
-              '</div>' +
-              '<div class="ag-s-row-desc">' +
-              escHtml(descText) +
-              '</div>' +
-              '</div>' +
-              '<div class="ag-s-upd-actions">' +
-              '<button type="button" id="ag-s-check-update" class="ag-s-btn-secondary"' +
-              (isBusy ? ' disabled' : '') +
-              '>' +
-              escHtml(u.phase === 'checking' ? s.updBtnChecking : s.updBtnCheck) +
-              '</button>' +
-              (showApply
-                ? '<button type="button" id="ag-s-apply-update" class="' +
-                  (u.status === 'update_available' || u.phase === 'updating' ? 'ag-s-btn-primary' : 'ag-s-btn-secondary') +
-                  '"' +
-                  (isBusy ? ' disabled' : '') +
-                  '>' +
-                  escHtml(applyLabel) +
-                  '</button>'
-                : '') +
-              '</div>' +
-              '</div></div>' +
-              '</div>' +
-              '</div>'
-            );
-          })() +
           '</div>';
 
         if (prevScroll > 0) pane.scrollTop = prevScroll;
 
-        if (addingHost) {
-          const inp = document.getElementById('ag-s-host-input');
+        if (editingIdeaPath) {
+          const inp = document.getElementById('ag-s-idea-input');
           if (inp) {
-            inp.focus();
             inp.addEventListener('keydown', (ev) => {
               if (ev.key === 'Enter') {
                 ev.preventDefault();
-                submitNewHost(inp.value);
+                submitIdeaPath(inp.value);
               } else if (ev.key === 'Escape') {
                 ev.preventDefault();
                 ev.stopPropagation();
-                addingHost = false;
-                invalidHost = false;
+                editingIdeaPath = false;
+                invalidIdeaPath = false;
                 renderPane();
               }
             });
@@ -1476,9 +1319,7 @@
           const remain = Math.max(100, window.__ag_settings_saved_until - Date.now());
           saveBadgeTimer = setTimeout(() => {
             const b = document.getElementById('ag-s-hot-badge');
-            if (b) {
-              b.hidden = true;
-            }
+            if (b) b.hidden = true;
           }, remain);
         }
 
@@ -1487,37 +1328,29 @@
         }
       }
 
-      function submitNewHost(rawVal) {
-        const host = String(rawVal || '').trim();
-        if (!host) {
-          addingHost = false;
-          invalidHost = false;
-          renderPane();
-          return;
-        }
-        if (host.startsWith('-') || !VALID_HOST_RE.test(host)) {
-          invalidHost = true;
-          const inp = document.getElementById('ag-s-host-input');
+      function submitIdeaPath(rawVal) {
+        const val = String(rawVal || '').trim();
+        if (val && (!val.startsWith('/') || val.startsWith('//') || /[\0\r\n]/.test(val))) {
+          invalidIdeaPath = true;
+          const inp = document.getElementById('ag-s-idea-input');
           if (inp) {
             inp.setAttribute('data-invalid', '1');
             inp.focus();
           }
           return;
         }
-        addingHost = false;
-        invalidHost = false;
-        const nextHosts = (uiState.config.sshHosts || []).slice();
-        if (!nextHosts.includes(host)) nextHosts.push(host);
-        commitPatch({ sshHosts: nextHosts });
+        invalidIdeaPath = false;
+        editingIdeaPath = false;
+        commitPatch({ openIn: { ideaPath: val } });
       }
 
-      function setCodexTabOpen(open) {
+      function setEnhancerTabOpen(open) {
         window.__ag_settings_tab_open = Boolean(open);
         if (activeDlg) {
           if (open) {
-            activeDlg.setAttribute('data-ag-codex-settings-open', '1');
+            activeDlg.setAttribute('data-ag-enhancer-settings-open', '1');
           } else {
-            activeDlg.removeAttribute('data-ag-codex-settings-open');
+            activeDlg.removeAttribute('data-ag-enhancer-settings-open');
           }
         }
         if (open) {
@@ -1555,32 +1388,45 @@
             return;
           }
 
-          const checkUpd = ev.target && ev.target.closest ? ev.target.closest('#ag-s-check-update') : null;
-          if (checkUpd) {
+          const targetChip = ev.target && ev.target.closest ? ev.target.closest('[data-openin-target]') : null;
+          if (targetChip) {
             ev.preventDefault();
             ev.stopPropagation();
-            checkPluginUpdate();
-            return;
-          }
-
-          const applyUpd = ev.target && ev.target.closest ? ev.target.closest('#ag-s-apply-update') : null;
-          if (applyUpd) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            applyPluginUpdateAction();
-            return;
-          }
-
-          const extLink = ev.target && ev.target.closest ? ev.target.closest('a[data-ext-link]') : null;
-          if (extLink) {
-            const key = extLink.getAttribute('data-ext-link');
-            if (key && typeof window.__agOpenExternalUrl === 'function') {
-              ev.preventDefault();
-              ev.stopPropagation();
-              try {
-                window.__agOpenExternalUrl(JSON.stringify({ key }));
-              } catch {}
+            const id = targetChip.getAttribute('data-openin-target');
+            if (!id) return;
+            const cur = Array.isArray(uiState.config.openIn.targets) ? uiState.config.openIn.targets.slice() : [];
+            const idx = cur.indexOf(id);
+            if (idx >= 0) {
+              cur.splice(idx, 1);
+            } else {
+              // Keep canonical display order
+              const order = AG_OPEN_IN_TARGET_META.map((m) => m.id);
+              cur.push(id);
+              cur.sort((a, b) => order.indexOf(a) - order.indexOf(b));
             }
+            commitPatch({ openIn: { targets: cur } });
+            return;
+          }
+
+          if (ev.target && ev.target.closest && ev.target.closest('#ag-s-toggle-idea-path')) {
+            editingIdeaPath = !editingIdeaPath;
+            invalidIdeaPath = false;
+            renderPane();
+            if (editingIdeaPath) {
+              const inp = document.getElementById('ag-s-idea-input');
+              if (inp) inp.focus();
+            }
+            return;
+          }
+
+          if (ev.target && ev.target.closest && ev.target.closest('#ag-s-idea-save')) {
+            const inp = document.getElementById('ag-s-idea-input');
+            submitIdeaPath(inp ? inp.value : '');
+            return;
+          }
+
+          if (ev.target && ev.target.closest && ev.target.closest('#ag-s-idea-reset')) {
+            submitIdeaPath('');
             return;
           }
 
@@ -1607,30 +1453,6 @@
             if (field && val && uiState.config[field] !== val) {
               commitPatch({ [field]: val });
             }
-            return;
-          }
-
-          const rmBtn = ev.target && ev.target.closest ? ev.target.closest('[data-rm-host]') : null;
-          if (rmBtn) {
-            const idx = Number(rmBtn.getAttribute('data-rm-host'));
-            const nextHosts = (uiState.config.sshHosts || []).slice();
-            if (idx >= 0 && idx < nextHosts.length) {
-              nextHosts.splice(idx, 1);
-              commitPatch({ sshHosts: nextHosts });
-            }
-            return;
-          }
-
-          if (ev.target && ev.target.closest && ev.target.closest('#ag-s-add-host')) {
-            addingHost = true;
-            invalidHost = false;
-            renderPane();
-            return;
-          }
-
-          if (ev.target && ev.target.closest && ev.target.closest('#ag-s-host-ok')) {
-            const inp = document.getElementById('ag-s-host-input');
-            submitNewHost(inp ? inp.value : '');
           }
         });
 
@@ -1676,7 +1498,7 @@
           listRoot &&
           (Array.from(listRoot.children).find((el) => el.querySelector && el.querySelector('[data-testid^="settings-nav-item-"]')) ||
             listRoot.children[1]);
-        const splitRow = sidebar.closest('.relative.flex.w-full.h-full') || (dlg.querySelector('.relative.flex.w-full.h-full'));
+        const splitRow = sidebar.closest('.relative.flex.w-full.h-full') || dlg.querySelector('.relative.flex.w-full.h-full');
         const rightPane = splitRow && splitRow.children && splitRow.children[1];
         if (!firstNavGroup || !rightPane) return;
 
@@ -1692,7 +1514,7 @@
           boundSidebarClick = (ev) => {
             const btn = ev.target && ev.target.closest ? ev.target.closest('button') : null;
             if (btn && btn.id !== 'ag-settings-nav-btn' && window.__ag_settings_tab_open) {
-              setCodexTabOpen(false);
+              setEnhancerTabOpen(false);
             }
           };
           sidebar.addEventListener('click', boundSidebarClick, true);
@@ -1716,12 +1538,11 @@
           const btn = document.createElement('button');
           btn.id = 'ag-settings-nav-btn';
           btn.type = 'button';
-          btn.setAttribute('data-testid', 'settings-nav-item-CodexTheme');
+          btn.setAttribute('data-testid', 'settings-nav-item-Enhancer');
           btn.innerHTML =
             '<span class="ag-s-nav-left">' +
             '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.85;flex-shrink:0" aria-hidden="true">' +
-            '<circle cx="8" cy="8" r="5.5"></circle>' +
-            '<path d="M8 2.5a5.5 5.5 0 0 0 0 11Z" fill="currentColor" stroke="none"></path>' +
+            '<path d="M8 2.2l1.6 3.5 3.7.5-2.7 2.6.7 3.7L8 10.7l-3.3 1.8.7-3.7-2.7-2.6 3.7-.5L8 2.2Z"></path>' +
             '</svg>' +
             '<span class="ag-s-nav-label"></span>' +
             '</span>' +
@@ -1729,7 +1550,7 @@
           btn.addEventListener('click', (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
-            setCodexTabOpen(true);
+            setEnhancerTabOpen(true);
           });
           navWrap.appendChild(btn);
           justMounted = true;
@@ -1754,7 +1575,7 @@
         if (justMounted) {
           renderPane();
           if (window.__ag_settings_tab_open) {
-            activeDlg.setAttribute('data-ag-codex-settings-open', '1');
+            activeDlg.setAttribute('data-ag-enhancer-settings-open', '1');
             fetchSettingsState({
               includeModels: !window.__ag_settings_models_cache,
               refreshModels: false
@@ -1832,13 +1653,11 @@
             try { activeSidebar.removeEventListener('click', boundSidebarClick, true); } catch {}
           }
           hideModelMenus({ restoreFocus: false });
-          const oldPopovers = [
+          [
             document.getElementById('ag-settings-model-menu'),
             document.getElementById('ag-settings-effort-menu')
-          ];
-          oldPopovers.forEach((el) => { if (el) el.remove(); });
-          // Preserve nav & pane nodes across hot-reloads only if modal is closed? Remove cleanly so new bundle re-mounts fresh with preserved __ag_settings_tab_open!
-          cleanupCodexSettingsDom();
+          ].forEach((el) => { if (el) el.remove(); });
+          cleanupEnhancerSettingsDom();
           try { delete window.__ag_on_settings_state; } catch { window.__ag_on_settings_state = null; }
         });
       }

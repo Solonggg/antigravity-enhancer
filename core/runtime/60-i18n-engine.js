@@ -159,6 +159,36 @@
     const RE_SEE_ALL = /^See all\s*\((\d+)\)$/i;
     const RE_SHOW_BREAKDOWNS = /^Show\s+(\d+)\s+breakdowns?$/i;
     const RE_SHOW_MORE_SUBAGENTS = /^Show\s+(\d+)\s+more\s+subagents?$/i;
+    const RE_SHOW_MORE_GENERIC = /^Show\s+(\d+)\s+more(?:\s+(results?|items?|commands?|options?))?(?:\.\.\.|…)?$/i;
+    const RE_SEE_MORE_COUNT = /^(\+\s*)?See\s+(\d+)\s+more(?:\s+.+)?$/i;
+    const RE_SEE_MORE_IN = /^See\s+more\s+in\s+(.+)$/i;
+    const RE_MARKED_READ = /^Marked\s+(\d+)\s+conversations?\s+as\s+read$/i;
+    const RE_NO_MORE_OLDER = /^No more older messages,\s*showing\s+(\d+)\s+of\s+(\d+)$/i;
+    const RE_STEP_OF = /^Step\s+(\d+)\s+of\s+(\d+)$/i;
+    const RE_QUESTION_OR_TURN_OF = /^(Question|Turn)\s+(\d+)\s+of\s+(\d+)$/i;
+    const RE_TOOLS_ENABLED = /^(\d+)\s+tools?\s+enabled$/i;
+    const RE_RUNNING_COUNT = /^(\d+)\s+(subagents\/tasks|subagents?|tasks?)\s+running$/i;
+    const RE_SUBAGENTS_BLOCKED = /^(\d+)\s+subagents?\s+blocked$/i;
+    const RE_MODEL_UNAVAILABLE_RETRY = /^Model unavailable,\s*retrying(?:\s+in\s+(\d+)s)?(?:\s*\(attempt\s+(\d+)\/(\d+)\))?$/i;
+    const RE_WAITING_CMD_UP_TO = /^Waiting for command completion\s*\(up to (\d+) seconds\)$/i;
+    const RE_THINKING_PAREN = /^Thinking\s*\((\d+)s\)(?:\.\.\.|…)$/i;
+    const RE_STILL_THINKING = /^Still thinking,\s*(\d+)\s+seconds?$/i;
+    const RE_WORKING_DOT_S = /^Working\s*·\s*(\d+)s$/i;
+    const RE_SEND_ALL_COUNT = /^Send all\s*\((\d+)\)$/i;
+    const RE_FOLD_LINES = /^(Unfold|Fold)\s+lines\s+(\d+)-(\d+)$/i;
+    const RE_ZOOM_RESET = /^Zoom\s+(\d+)%,\s*reset to fit$/i;
+    const RE_NOTHING_ON_PORT = /^Nothing is running on port\s+(\d+)$/i;
+    const RE_COUNT_BADGE =
+      /^(\d+)\s+(archived conversations?|background tasks?|browser steps?|models?\s+selected|waiting on you|references?|drafts?|plugins?)$/i;
+    const RE_LINES_ADDED_REMOVED = /^(\d+)\s+lines?\s+added,\s*(\d+)\s+lines?\s+removed$/i;
+    const RE_SHORTCUT_SUFFIX =
+      /^(.+?)\s*\(((?:Ctrl|Cmd|Alt|Shift|⌘|⌥|⇧|⌃)\+?[^)]*|Enter|Escape|Esc|Space|Tab|Backspace|Delete|⏎|←|→|↑|↓)\)$/i;
+    const RE_PERM_SAVE_RULE =
+      /^Yes,\s+save rule for\s+('[\s\S]*'|"[\s\S]*")\s+(in this conversation|globally)$/i;
+    const RE_PERM_ALWAYS_ALLOW = /^Yes,\s+and always allow\s+([\s\S]+)$/i;
+    const RE_PERM_ALLOW_DL = /^Yes,\s+(allow|always allow)\s+downloads from\s+(.+?)(?:\s+(for this run|in this conversation))?$/i;
+    const RE_PERM_ALLOW_CONV = /^Yes,\s+allow\s+(.+?)\s+in this conversation$/i;
+    const RE_PERM_ALWAYS_SIMPLE = /^Yes,\s+always allow\s+(.+)$/i;
     const RE_ZIPPING_FOLDER = /^Zipping\s+(.+?)(?:…|\.\.\.)$/i;
     const RE_PERM_DELETE = /^Permanently delete\s+(.*)\s+including\s+(\d+)\s+active\s+conversations\.?$/i;
     const RE_WORKED_FOR_UPDATES = /^Worked for\s+([<0-9smhd\s]+?)\s*·\s*(\d+)\s+updates?$/i;
@@ -445,14 +475,150 @@
       return baseVal;
     }
 
+    const SWARM_SCOPED_DICT = Object.assign(Object.create(null), {
+      Board: '看板',
+      Graph: '关系图',
+      Raw: '原始数据',
+      Reconnecting: '正在重连',
+      Replay: '回放',
+      Follow: '跟随',
+      Latest: '最新',
+      Channels: '频道',
+      Filters: '筛选',
+      Coordinator: '协调器',
+      Waiting: '等待中',
+      Retired: '已退役',
+      Paused: '已暂停',
+      'Working...': '工作中...',
+      Working: '工作中',
+      'Empty.': '暂无内容。',
+      '(empty)': '（空）',
+      stale: '已过期',
+      'system:': '系统：',
+      Goal: '目标',
+      Team: '团队',
+      Threads: '工作线',
+      Now: '当前',
+      Progress: '进度',
+      Tasks: '任务',
+      Other: '其他',
+      Moving: '推进中',
+      Reply: '回复',
+      Frames: '画面',
+      All: '全部',
+      'all channels': '全部频道',
+      Remote: '远程',
+      updating: '更新中',
+      watching: '监听中',
+      stopped: '已停止',
+      'Needs you': '待你处理',
+      'Not started': '未开始',
+      Blocked: '受阻',
+      Running: '运行中',
+      Done: '已完成',
+      Open: '打开',
+      Active: '活跃',
+      Killed: '已终止',
+      Hive: '蜂巢',
+      'Tasks done': '任务已完成',
+      'Message just sent': '刚发送消息',
+      'Waiting on': '等待中',
+      Stuck: '已卡住',
+      Resting: '休息中',
+      'Latest action': '最新动作'
+    });
+
+    function translateSwarmDynamic(trimmed) {
+      if (SWARM_SCOPED_DICT[trimmed] !== undefined) return SWARM_SCOPED_DICT[trimmed];
+      const mWork = trimmed.match(/^Working for\s+(@\S+)$/i);
+      if (mWork) return '正在为 ' + mWork[1] + ' 工作';
+      const mWaitM = trimmed.match(/^Waiting on\s+(@\S+)$/i);
+      if (mWaitM) return '正在等待 ' + mWaitM[1];
+      const mWaitN = trimmed.match(/^Waiting on\s+(\d+)$/i);
+      if (mWaitN) return '正在等待 ' + mWaitN[1] + ' 位成员';
+      const mWaiters = trimmed.match(/^(\d+)\s+waiting on\s+(@\S+)$/i);
+      if (mWaiters) return mWaiters[1] + ' 位正在等待 ' + mWaiters[2];
+      const mOfDone = trimmed.match(/^(\d+)\s+of\s+(\d+)\s+(?:tasks?\s+)?done$/i);
+      if (mOfDone) return '已完成 ' + mOfDone[1] + ' / ' + mOfDone[2] + ' 项';
+      const mBees = trimmed.match(/^(\d+)\s+bees?$/i);
+      if (mBees) return mBees[1] + ' 位成员';
+      const mPosts = trimmed.match(/^(\d+)\s+posts?$/i);
+      if (mPosts) return mPosts[1] + ' 条消息';
+      if (/^seen just now$/i.test(trimmed)) return '刚刚在线';
+      const mSeen = trimmed.match(/^last seen\s+(.+)\s+ago$/i);
+      if (mSeen) return '最近活跃于 ' + formatCompactDurationZh(mSeen[1]) + ' 前';
+      const mAlert = trimmed.match(/^@(\S+)\s+(ran out of quota|looks stuck|hit an error)$/i);
+      if (mAlert) {
+        const k = mAlert[2].toLowerCase();
+        return '@' + mAlert[1] + (k === 'ran out of quota' ? ' 配额已耗尽' : k === 'looks stuck' ? ' 似乎卡住了' : ' 发生错误');
+      }
+      return null;
+    }
+
+    function normalizeLookupQuotes(s) {
+      return s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, '...');
+    }
+
     function lookupRawDict(trimmed) {
       if (Object.prototype.hasOwnProperty.call(DICT, trimmed)) {
         return DICT[trimmed];
       }
       if (trimmed.indexOf(' ') !== -1) {
-        return LOWER_DICT[trimmed.toLowerCase()];
+        const lowHit = LOWER_DICT[trimmed.toLowerCase()];
+        if (lowHit !== undefined) return lowHit;
+      }
+      if (/[‘’“”…]/.test(trimmed)) {
+        const normQ = normalizeLookupQuotes(trimmed);
+        if (Object.prototype.hasOwnProperty.call(DICT, normQ)) {
+          return DICT[normQ];
+        }
+        if (normQ.indexOf(' ') !== -1) {
+          return LOWER_DICT[normQ.toLowerCase()];
+        }
       }
       return undefined;
+    }
+
+    function translateShortcutSuffixed(trimmed) {
+      if (trimmed.indexOf('(') === -1 || !trimmed.endsWith(')')) return null;
+      const m = trimmed.match(RE_SHORTCUT_SUFFIX);
+      if (!m) return null;
+      const pref = m[1].trim();
+      const hit = lookupRawDict(pref);
+      if (typeof hit === 'string' && hit) {
+        return hit + ' (' + m[2] + ')';
+      }
+      return null;
+    }
+
+    function translatePermissionChoiceZh(trimmed) {
+      if (!trimmed.startsWith('Yes,') && !trimmed.startsWith('yes,')) return null;
+      const mSave = trimmed.match(RE_PERM_SAVE_RULE);
+      if (mSave) {
+        const isConv = mSave[2].toLowerCase() === 'in this conversation';
+        return isConv ? '是，在此会话中为 ' + mSave[1] + ' 保存规则' : '是，全局为 ' + mSave[1] + ' 保存规则';
+      }
+      const mAlways = trimmed.match(RE_PERM_ALWAYS_ALLOW);
+      if (mAlways && !/^in this (?:project|conversation)$/i.test(mAlways[1].trim())) {
+        const scoped = mAlways[1].match(/^('[\s\S]*'|"[\s\S]*")\s+in this (project|conversation)$/i);
+        const cmd = scoped ? scoped[1] : mAlways[1].trimEnd();
+        const scope = scoped && scoped[2] ? scoped[2].toLowerCase() : '';
+        if (scope === 'conversation') return '是，且在此会话中始终允许运行 ' + cmd;
+        if (scope === 'project') return '是，且在此项目中始终允许运行 ' + cmd;
+        return '是，且始终允许运行 ' + cmd;
+      }
+      const mDl = trimmed.match(RE_PERM_ALLOW_DL);
+      if (mDl) {
+        const scope = (mDl[3] || '').toLowerCase();
+        if (mDl[1].toLowerCase() === 'always allow') return '是，始终允许从 ' + mDl[2] + ' 下载';
+        if (scope === 'in this conversation') return '是，在此会话中允许从 ' + mDl[2] + ' 下载';
+        return '是，本次运行允许从 ' + mDl[2] + ' 下载';
+      }
+      const mConv = trimmed.match(RE_PERM_ALLOW_CONV);
+      if (mConv) return '是，在此会话中允许 ' + mConv[1];
+      const mSimple = trimmed.match(RE_PERM_ALWAYS_SIMPLE);
+      if (mSimple) return '是，始终允许 ' + mSimple[1];
+      return null;
     }
 
     function computeTextTranslation(raw, contextEl) {
@@ -478,6 +644,16 @@
       // 2. 快速短路：不含任何英文字母直接跳过动态正则
       if (!RE_HAS_ALPHA.test(trimmed)) return null;
 
+      // 2.5 Swarm 伴生 iframe 作用域词典与复合状态
+      if (IS_SWARM_PLUGIN_FRAME || (contextEl && contextEl.closest && contextEl.closest('[data-testid^="swarm-"]'))) {
+        const swarmHit = translateSwarmDynamic(trimmed);
+        if (typeof swarmHit === 'string') return raw.replace(trimmed, () => swarmHit);
+      }
+
+      // 2.6 带快捷键后缀的标签/提示 (e.g. "Settings (Cmd+,)")
+      const shortcutHit = translateShortcutSuffixed(trimmed);
+      if (typeof shortcutHit === 'string') return raw.replace(trimmed, () => shortcutHit);
+
       // 3. 首字符 O(1) 分流动态正则匹配
       const c0 = trimmed.charCodeAt(0);
       if (c0 >= 48 && c0 <= 57) {
@@ -500,6 +676,7 @@
         }
         if (RE_UPDATES_COUNT.test(trimmed)) return raw.replace(RE_UPDATES_COUNT, '$1 条进展');
         if (RE_FILES_CHANGED.test(trimmed)) return raw.replace(RE_FILES_CHANGED, '$1 个文件变更');
+        if (RE_TOOLS_ENABLED.test(trimmed)) return raw.replace(RE_TOOLS_ENABLED, '$1 个工具已启用');
         if (RE_TOOLS.test(trimmed)) return raw.replace(RE_TOOLS, '$1 个工具');
         if (RE_DEMOTED.test(trimmed)) return raw.replace(RE_DEMOTED, '$1 项已降级');
         if (RE_EXCLUDED.test(trimmed)) return raw.replace(RE_EXCLUDED, '$1 项已排除');
@@ -507,14 +684,55 @@
         if (RE_ACTIVE_CONVS.test(trimmed)) return raw.replace(RE_ACTIVE_CONVS, '$1 个进行中的会话');
         if (RE_PROJECTS_COUNT.test(trimmed)) return raw.replace(RE_PROJECTS_COUNT, '$1 个项目');
         if (RE_CALLS_MB.test(trimmed)) return raw.replace(RE_CALLS_MB, '$1 次通话 · $2');
+        const mRunCnt = trimmed.match(RE_RUNNING_COUNT);
+        if (mRunCnt) {
+          const k = mRunCnt[2].toLowerCase();
+          const noun = k === 'subagents/tasks' ? ' 个子智能体/任务' : k.startsWith('subagent') ? ' 个子智能体' : ' 个任务';
+          return raw.replace(trimmed, () => mRunCnt[1] + noun + '运行中');
+        }
+        if (RE_SUBAGENTS_BLOCKED.test(trimmed)) return raw.replace(RE_SUBAGENTS_BLOCKED, '$1 个子智能体受阻');
+        if (RE_LINES_ADDED_REMOVED.test(trimmed)) return raw.replace(RE_LINES_ADDED_REMOVED, '新增 $1 行，删除 $2 行');
+        const mBadge = trimmed.match(RE_COUNT_BADGE);
+        if (mBadge) {
+          const bLow = mBadge[2].toLowerCase();
+          if (bLow.startsWith('archived')) return raw.replace(trimmed, () => mBadge[1] + ' 个已归档会话');
+          if (bLow.startsWith('background')) return raw.replace(trimmed, () => mBadge[1] + ' 个后台任务');
+          if (bLow.startsWith('browser')) return raw.replace(trimmed, () => mBadge[1] + ' 个浏览器步骤');
+          if (bLow.startsWith('model')) return raw.replace(trimmed, () => '已选择 ' + mBadge[1] + ' 个模型');
+          if (bLow.startsWith('waiting')) return raw.replace(trimmed, () => mBadge[1] + ' 项待您处理');
+          if (bLow.startsWith('reference')) return raw.replace(trimmed, () => mBadge[1] + ' 个引用');
+          if (bLow.startsWith('draft')) return raw.replace(trimmed, () => mBadge[1] + ' 条草稿');
+          if (bLow.startsWith('plugin')) return raw.replace(trimmed, () => mBadge[1] + ' 个插件');
+        }
         return null;
       }
 
       const firstUpper = trimmed[0].toUpperCase();
-      if (firstUpper === 'S') {
+      if (firstUpper === 'S' || firstUpper === '+') {
         if (RE_SEE_ALL.test(trimmed)) return raw.replace(RE_SEE_ALL, '查看全部 ($1)');
+        if (RE_SEND_ALL_COUNT.test(trimmed)) return raw.replace(RE_SEND_ALL_COUNT, '全部发送 ($1)');
         if (RE_SHOW_BREAKDOWNS.test(trimmed)) return raw.replace(RE_SHOW_BREAKDOWNS, '展开明细 ($1 项)');
         if (RE_SHOW_MORE_SUBAGENTS.test(trimmed)) return raw.replace(RE_SHOW_MORE_SUBAGENTS, '显示另外 $1 个子代理');
+        const mShowMore = trimmed.match(RE_SHOW_MORE_GENERIC);
+        if (mShowMore) {
+          const kind = (mShowMore[2] || '').toLowerCase();
+          const unit = kind.startsWith('result')
+            ? '个结果'
+            : kind.startsWith('command')
+            ? '个命令'
+            : kind.startsWith('item')
+            ? '个项目'
+            : kind.startsWith('option')
+            ? '个选项'
+            : '个';
+          return raw.replace(trimmed, () => '显示另外 ' + mShowMore[1] + ' ' + unit + '...');
+        }
+        const mSeeMore = trimmed.match(RE_SEE_MORE_COUNT);
+        if (mSeeMore) return raw.replace(trimmed, () => (mSeeMore[1] ? '+ ' : '') + '展开另外 ' + mSeeMore[2] + ' 项');
+        const mSeeIn = trimmed.match(RE_SEE_MORE_IN);
+        if (mSeeIn) return raw.replace(trimmed, () => '在 ' + mSeeIn[1] + ' 中展开更多');
+        if (RE_STEP_OF.test(trimmed)) return raw.replace(RE_STEP_OF, '第 $1 步，共 $2 步');
+        if (RE_STILL_THINKING.test(trimmed)) return raw.replace(RE_STILL_THINKING, '仍在思考，$1 秒');
         if (RE_SEARCH_GOOGLE.test(trimmed)) return raw.replace(RE_SEARCH_GOOGLE, (_, q) => '使用 Google 搜索“' + q + '”');
         if (!isInHeaderOrBreadcrumb(contextEl)) {
           const mSearch = trimmed.match(RE_EPHEMERAL_ACTIVE);
@@ -534,15 +752,34 @@
           const pZh = NAMED_PERIOD_MAP[mNamed[1].toLowerCase()] || mNamed[1];
           return raw.replace(trimmed, () => pZh + '限额，' + formatCompactDurationZh(mNamed[2]) + '后重置');
         }
+        if (firstUpper === 'M') {
+          if (RE_MARKED_READ.test(trimmed)) return raw.replace(RE_MARKED_READ, '已将 $1 个会话标记为已读');
+          const mUnavail = trimmed.match(RE_MODEL_UNAVAILABLE_RETRY);
+          if (mUnavail) {
+            const att = mUnavail[2] ? '（第 ' + mUnavail[2] + '/' + mUnavail[3] + ' 次尝试）' : '';
+            const out = mUnavail[1]
+              ? '模型暂不可用，' + mUnavail[1] + ' 秒后重试' + att
+              : '模型暂不可用，正在重试' + att;
+            return raw.replace(trimmed, () => out);
+          }
+        }
         if (firstUpper === 'W') {
           if (RE_WORKED_FOR_UPDATES.test(trimmed)) {
             return raw.replace(RE_WORKED_FOR_UPDATES, (_, dur, cnt) => '已工作 ' + dur.trim() + ' · ' + cnt + ' 条进展');
           }
           if (RE_WORKED_FOR.test(trimmed)) return raw.replace(RE_WORKED_FOR, '已工作 $1');
+          if (RE_WORKING_DOT_S.test(trimmed)) return raw.replace(RE_WORKING_DOT_S, '工作中 · $1 秒');
+          if (RE_WAITING_CMD_UP_TO.test(trimmed)) return raw.replace(RE_WAITING_CMD_UP_TO, '正在等待命令完成（最多 $1 秒）');
         }
-      } else if (firstUpper === 'T') {
+      } else if (firstUpper === 'T' || firstUpper === 'Q') {
         if (RE_THOUGHT_FOR.test(trimmed)) return raw.replace(RE_THOUGHT_FOR, '已思考 $1');
         if (RE_THINKING_FOR.test(trimmed)) return raw.replace(RE_THINKING_FOR, '正在思考 $1');
+        if (RE_THINKING_PAREN.test(trimmed)) return raw.replace(RE_THINKING_PAREN, '正在思考 ($1 秒)...');
+        const mQt = trimmed.match(RE_QUESTION_OR_TURN_OF);
+        if (mQt) {
+          const out = /^Question/i.test(mQt[1]) ? '第 ' + mQt[2] + ' / ' + mQt[3] + ' 个问题' : '第 ' + mQt[2] + ' / ' + mQt[3] + ' 轮';
+          return raw.replace(trimmed, () => out);
+        }
         if (RE_DELETE_RECORDINGS_CONFIRM.test(trimmed)) {
           return raw.replace(
             RE_DELETE_RECORDINGS_CONFIRM,
@@ -551,6 +788,12 @@
         }
         const mQuotaT = translateQuotaExhaustedZh(trimmed);
         if (mQuotaT) return raw.replace(trimmed, () => mQuotaT);
+      } else if (firstUpper === 'N') {
+        if (RE_NO_MORE_OLDER.test(trimmed)) return raw.replace(RE_NO_MORE_OLDER, '没有更多历史消息，当前显示 $1 / $2 条');
+        if (RE_NOTHING_ON_PORT.test(trimmed)) return raw.replace(RE_NOTHING_ON_PORT, '端口 $1 上没有正在运行的服务');
+      } else if (firstUpper === 'F') {
+        const mFold = trimmed.match(RE_FOLD_LINES);
+        if (mFold) return raw.replace(trimmed, () => '折叠第 ' + mFold[2] + '-' + mFold[3] + ' 行');
       } else if (firstUpper === 'E' || firstUpper === 'R' || firstUpper === 'L') {
         if (firstUpper === 'R') {
           const mResets = trimmed.match(RE_RESETS_IN);
@@ -592,15 +835,20 @@
           return raw.replace(RE_DELETED_RECORDINGS, '已删除 $1 条录音 ($2)');
         }
       } else if (firstUpper === 'U') {
+        const mUnfold = trimmed.match(RE_FOLD_LINES);
+        if (mUnfold) return raw.replace(trimmed, () => '展开第 ' + mUnfold[2] + '-' + mUnfold[3] + ' 行');
         const mUpd = trimmed.match(RE_UPDATED_AT);
         if (mUpd) {
           return raw.replace(trimmed, () => formatUpdatedAtZh(mUpd[1], mUpd[2]));
         }
       } else if (firstUpper === 'Z') {
+        if (RE_ZOOM_RESET.test(trimmed)) return raw.replace(RE_ZOOM_RESET, '缩放 $1%，重置为适应窗口');
         if (RE_ZIPPING_FOLDER.test(trimmed)) {
           return raw.replace(RE_ZIPPING_FOLDER, (_, folder) => '正在打包 ' + folder + '…');
         }
       } else if (firstUpper === 'Y') {
+        const mPermChoice = translatePermissionChoiceZh(trimmed);
+        if (mPermChoice) return raw.replace(trimmed, () => mPermChoice);
         const mPlan = trimmed.match(RE_YOUR_PLAN);
         if (mPlan) {
           return raw.replace(trimmed, () => '当前套餐：' + mPlan[1].trim());
@@ -821,6 +1069,16 @@
       translateSingleAttr(el, 'aria-label', 'data-ag-orig-aria-label', resolveAttrTranslation);
     }
 
+    const observedShadowRoots = new WeakSet();
+
+    function observeRoot(root) {
+      if (!root || !window.__ag_i18n_observer || observedShadowRoots.has(root)) return;
+      try {
+        window.__ag_i18n_observer.observe(root, I18N_OBS_OPTS);
+        observedShadowRoots.add(root);
+      } catch (e) {}
+    }
+
     const walkerFilter = {
       acceptNode(node) {
         if (node.nodeType === 1) {
@@ -843,6 +1101,10 @@
           ) {
             translateElementAttrs(node);
           }
+          if (node.shadowRoot) {
+            observeRoot(node.shadowRoot);
+            scanAndTranslate(node.shadowRoot);
+          }
           return NodeFilter.FILTER_SKIP;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -854,6 +1116,19 @@
       if (root.nodeType === 3) {
         if (root.parentElement && !isExcludedElement(root.parentElement)) {
           translateTextNode(root);
+        }
+        return;
+      }
+      if (root.nodeType === 11) {
+        if (root.host && isExcludedElement(root.host)) return;
+        observeRoot(root);
+        const shadowWalker = document.createTreeWalker(
+          root,
+          NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+          walkerFilter
+        );
+        while (shadowWalker.nextNode()) {
+          translateTextNode(shadowWalker.currentNode);
         }
         return;
       }
@@ -874,6 +1149,10 @@
         (root.hasAttribute('title') || root.hasAttribute('aria-label') || root.hasAttribute('placeholder'))
       ) {
         translateElementAttrs(root);
+      }
+      if (root.shadowRoot) {
+        observeRoot(root.shadowRoot);
+        scanAndTranslate(root.shadowRoot);
       }
 
       const walker = document.createTreeWalker(
@@ -917,7 +1196,7 @@
 
       for (let i = 0; i < roots.length; i++) {
         const r = roots[i];
-        if (!r || !r.isConnected) continue;
+        if (!r || (!r.isConnected && r.nodeType !== 11)) continue;
         let covered = false;
         for (let p = r.parentNode; p; p = p.parentNode) {
           if (rootSet.has(p)) {
@@ -974,9 +1253,50 @@
     });
 
     if (document.body) {
-      window.__ag_i18n_observer.observe(document.body, I18N_OBS_OPTS);
+      observeRoot(document.body);
+    }
+
+    window.__ag_on_attach_shadow = (sr) => {
+      if (!sr) return;
+      observeRoot(sr);
+      dirtyRoots.add(sr);
+      scheduleFlush();
+    };
+    if (
+      typeof Element !== 'undefined' &&
+      Element.prototype &&
+      typeof Element.prototype.attachShadow === 'function' &&
+      !Element.prototype.attachShadow.__agEnhancerHooked
+    ) {
+      const origAttachShadow = Element.prototype.attachShadow;
+      const hookedAttachShadow = function () {
+        const sr = origAttachShadow.apply(this, arguments);
+        try {
+          if (typeof window.__ag_on_attach_shadow === 'function') {
+            window.__ag_on_attach_shadow(sr);
+          }
+        } catch (e) {}
+        return sr;
+      };
+      hookedAttachShadow.__agEnhancerHooked = true;
+      Element.prototype.attachShadow = hookedAttachShadow;
+    }
+
+    if (Array.isArray(window.__ag_cleanup_fns)) {
+      window.__ag_cleanup_fns.push(() => {
+        window.__ag_on_attach_shadow = null;
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+        if (window.__ag_i18n_observer) {
+          try { window.__ag_i18n_observer.disconnect(); } catch (e) {}
+          window.__ag_i18n_observer = null;
+        }
+      });
     }
   } else if (document.body) {
+    window.__ag_on_attach_shadow = null;
     // 若用户在配置中关闭了 i18n 模块，实时将已翻译的文本与属性还原为原始英文
     restoreAllTranslations(document.body);
   }

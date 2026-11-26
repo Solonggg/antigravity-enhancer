@@ -21,26 +21,26 @@ test('parseFeatureSelection resolves --only and --without flags cleanly', () => 
   const defaultSel = parseFeatureSelection();
   assert.equal(defaultSel.explicit, false);
   assert.deepEqual(defaultSel.selected, {
-    theme: true,
     i18n: true,
     metrics: true,
+    openIn: true,
     fixes: true,
     suggest: false
   });
 
-  const onlyI18n = parseFeatureSelection({ onlyArg: 'i18n,metrics' });
-  assert.equal(onlyI18n.explicit, true);
-  assert.deepEqual(onlyI18n.selected, {
-    theme: false,
+  const onlyI18nOpenIn = parseFeatureSelection({ onlyArg: 'i18n,openIn' });
+  assert.equal(onlyI18nOpenIn.explicit, true);
+  assert.deepEqual(onlyI18nOpenIn.selected, {
     i18n: true,
-    metrics: true,
+    metrics: false,
+    openIn: true,
     fixes: false,
     suggest: false
   });
-  assert.deepEqual(onlyI18n.modulesPatch, {
-    theme: false,
+  assert.deepEqual(onlyI18nOpenIn.modulesPatch, {
     i18n: true,
-    metrics: true,
+    metrics: false,
+    openIn: true,
     deadlockHealer: false,
     zoomShortcuts: false,
     promptSuggestions: false
@@ -53,13 +53,14 @@ test('parseFeatureSelection resolves --only and --without flags cleanly', () => 
   const withoutMetrics = parseFeatureSelection({ withoutArg: 'metrics,fixes' });
   assert.equal(withoutMetrics.explicit, true);
   assert.deepEqual(withoutMetrics.selected, {
-    theme: true,
     i18n: true,
     metrics: false,
+    openIn: true,
     fixes: false,
     suggest: false
   });
 
+  assert.throws(() => parseFeatureSelection({ onlyArg: 'theme' }), /Unknown feature/);
   assert.throws(() => parseFeatureSelection({ onlyArg: 'nonexistent' }), /Unknown feature/);
 });
 
@@ -70,12 +71,13 @@ test('getSparseCheckoutPaths and getExcludedCoreRelPaths partition modules accur
   assert.ok(paths.includes('/core/runtime/60-i18n-engine.js'));
   assert.ok(paths.includes('/core/styles/45-settings-ui.css'));
   assert.ok(paths.includes('/core/runtime/75-settings-ui.js'));
-  assert.ok(paths.includes('/core/daemon/updater.mjs'));
-  assert.ok(!paths.includes('/core/styles/10-light-codex.css'));
+  assert.ok(!paths.includes('/core/daemon/updater.mjs'));
+  assert.ok(!paths.includes('/core/daemon/open-in.mjs'));
   assert.ok(!paths.includes('/core/runtime/50-telemetry-ui.js'));
 
   const excluded = getExcludedCoreRelPaths(onlyI18n.selected);
-  assert.ok(excluded.includes('styles/10-light-codex.css'));
+  assert.ok(excluded.includes('daemon/open-in.mjs'));
+  assert.ok(excluded.includes('runtime/65-open-in.js'));
   assert.ok(excluded.includes('runtime/50-telemetry-ui.js'));
   assert.ok(!excluded.includes('i18n.json'));
 });
@@ -88,32 +90,31 @@ test('Assembled partial runtime bundles execute without ReferenceError when opti
     {
       name: 'i18n-only',
       parts: ['00-head.js', '60-i18n-engine.js', '90-tail.js'],
-      modules: { theme: false, i18n: true, metrics: false, deadlockHealer: false, zoomShortcuts: false }
+      modules: { i18n: true, metrics: false, openIn: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false }
     },
     {
-      name: 'theme-only',
-      parts: ['00-head.js', '20-theme-sync.js', '90-tail.js'],
-      modules: { theme: true, i18n: false, metrics: false, deadlockHealer: false, zoomShortcuts: false }
+      name: 'openin-only',
+      parts: ['00-head.js', '65-open-in.js', '90-tail.js'],
+      modules: { i18n: false, metrics: false, openIn: true, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false }
     },
     {
       name: 'metrics-only',
       parts: ['00-head.js', '30-antigravity-probe.js', '40-status-machine.js', '50-telemetry-ui.js', '90-tail.js'],
-      modules: { theme: false, i18n: false, metrics: true, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false }
+      modules: { i18n: false, metrics: true, openIn: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false }
     },
     {
       name: 'suggest-only',
       parts: ['00-head.js', '70-prompt-suggestions.js', '90-tail.js'],
-      modules: { theme: false, i18n: false, metrics: false, promptSuggestions: true, deadlockHealer: false, zoomShortcuts: false }
+      modules: { i18n: false, metrics: false, openIn: false, promptSuggestions: true, deadlockHealer: false, zoomShortcuts: false }
     },
     {
       name: 'settings-ui',
       parts: ['00-head.js', '75-settings-ui.js', '90-tail.js'],
-      modules: { theme: false, i18n: true, metrics: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false }
+      modules: { i18n: true, metrics: false, openIn: true, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false }
     }
   ];
 
   for (const sc of scenarios) {
-    const styleEl = { id: 'ag-codex-theme', textContent: '', parentNode: null, remove() {} };
     const docAttrs = new Map();
     const headChildren = [];
     const headEl = {
@@ -195,12 +196,11 @@ test('Assembled partial runtime bundles execute without ReferenceError when opti
       version: '1.0.0-test',
       platform: 'darwin',
       enabled: true,
-      preset: 'codex-pure-white',
-      cssText: sc.modules.theme ? 'body { color: #000; }' : '',
+      cssText: '',
       customCss: '',
-      themeVars: {},
       i18nDict: sc.modules.i18n ? { Settings: '设置' } : {},
       modules: sc.modules,
+      openIn: { targets: [], copyPath: true },
       selectors: {},
       userConfig: { modules: sc.modules },
       customJs: ''
@@ -214,17 +214,14 @@ test('Assembled partial runtime bundles execute without ReferenceError when opti
     vm.createContext(sandbox);
     vm.runInContext(`const __AG_BOOT_PAYLOAD__ = globalThis.__AG_BOOT_PAYLOAD__;\n${code}`, sandbox);
     assert.equal(sandbox.__ag_patch_version, '1.0.0-test', `${sc.name} should finish booting cleanly`);
-    const mountedStyle = headChildren.find((el) => el.id === 'ag-codex-theme');
-    assert.ok(mountedStyle && mountedStyle.textContent.length > 0, `${sc.name} should mount #ag-codex-theme style`);
-    if (!sc.modules.theme) {
-      assert.equal(docAttrs.get('data-ag-preset'), undefined, `${sc.name} must not set theme preset attr`);
-    } else {
-      assert.equal(docAttrs.get('data-ag-preset'), 'codex-pure-white');
-    }
+    const mountedStyle = headChildren.find((el) => el.id === 'ag-enhancer-style');
+    assert.ok(mountedStyle && mountedStyle.textContent.length > 0, `${sc.name} should mount #ag-enhancer-style`);
+    assert.equal(docAttrs.get('data-ag-preset'), undefined, `${sc.name} must never set theme preset attr`);
+    assert.equal(docAttrs.get('data-ag-theme-mode'), undefined, `${sc.name} must never set theme mode attr`);
   }
 });
 
-test('core/daemon.mjs loads cleanly in a minimal sparse copy without metrics files', async () => {
+test('core/daemon.mjs loads cleanly in a minimal sparse copy without metrics or openIn files', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-sparse-test-'));
   try {
     const coreDst = path.join(tmpDir, 'core');

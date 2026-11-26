@@ -14,7 +14,7 @@ import {
   stripUtf8Bom
 } from '../shared.mjs';
 
-export const CDP_RELAUNCH_GUARD_FILE = path.join(os.tmpdir(), 'ag-codex-cdp-relaunch-guard.json');
+export const CDP_RELAUNCH_GUARD_FILE = path.join(os.tmpdir(), 'ag-enhancer-cdp-relaunch-guard.json');
 
 function readJsonGuardSafe(filePath) {
   try {

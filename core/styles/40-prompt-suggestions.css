@@ -71,20 +71,20 @@
   border-color: rgba(0, 0, 0, 0.15) !important;
 }
 
-html[data-ag-theme-mode="dark"] #antigravity\.agentSidePanelInputBox .ag-prompt-ghost-text,
-html[data-ag-theme-mode="dark"] .ag-prompt-ghost-text {
+:is(html.dark, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) #antigravity\.agentSidePanelInputBox .ag-prompt-ghost-text,
+:is(html.dark, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) .ag-prompt-ghost-text {
   color: rgba(175, 175, 185, 0.46) !important;
 }
 
-html[data-ag-theme-mode="dark"] #antigravity\.agentSidePanelInputBox .ag-prompt-ghost-kbd,
-html[data-ag-theme-mode="dark"] .ag-prompt-ghost-kbd {
+:is(html.dark, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) #antigravity\.agentSidePanelInputBox .ag-prompt-ghost-kbd,
+:is(html.dark, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) .ag-prompt-ghost-kbd {
   color: rgba(185, 185, 195, 0.65) !important;
   background: rgba(255, 255, 255, 0.06) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
-html[data-ag-theme-mode="dark"] #antigravity\.agentSidePanelInputBox .ag-prompt-ghost-kbd:hover,
-html[data-ag-theme-mode="dark"] .ag-prompt-ghost-kbd:hover {
+:is(html.dark, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) #antigravity\.agentSidePanelInputBox .ag-prompt-ghost-kbd:hover,
+:is(html.dark, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) .ag-prompt-ghost-kbd:hover {
   color: #FFFFFF !important;
   background: rgba(255, 255, 255, 0.13) !important;
   border-color: rgba(255, 255, 255, 0.22) !important;

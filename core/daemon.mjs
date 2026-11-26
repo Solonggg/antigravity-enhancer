@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * antigravity-codex-theme · CDP Theme, Localization & Live Telemetry Daemon (core/daemon.mjs)
+ * antigravity-enhancer · Local-Only CDP Localization, Status Stats & Right-Click Open-In Daemon (core/daemon.mjs)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,6 +33,7 @@ const protoMod = await loadOptionalModule('daemon/protobuf.mjs');
 const lsLogMod = await loadOptionalModule('daemon/ls-log.mjs');
 const sqliteMetricsMod = await loadOptionalModule('daemon/sqlite-metrics.mjs');
 const promptSuggestMod = await loadOptionalModule('daemon/prompt-suggest.mjs');
+const openInMod = await loadOptionalModule('daemon/open-in.mjs');
 
 const parseProto = protoMod?.parseProto || null;
 const parseGenMetadataRow = protoMod?.parseGenMetadataRow || null;
@@ -113,6 +114,7 @@ const cdpManager = createCdpManager({
   bundleCtrl,
   metricsReader,
   promptSuggester,
+  openInMod,
   hasSqlite: () => Boolean(DatabaseSync && sqliteMetricsMod),
   runOnce: cliOpts.runOnce,
   safeMode: cliOpts.safeMode,
@@ -158,7 +160,7 @@ export async function startDaemon() {
 
   const { activeConfig, cachedPatchVersion } = bundleCtrl.getState();
   console.log(
-    `[Antigravity Codex Daemon] Started (${cachedPatchVersion}) | preset=${activeConfig.preset} | channel=${activeConfig.channel} | sqlite=${Boolean(DatabaseSync)} | safeMode=${cliOpts.safeMode}`
+    `[Antigravity Enhancer Daemon] Started (${cachedPatchVersion}) | channel=${activeConfig.channel} | sqlite=${Boolean(DatabaseSync)} | openIn=${Boolean(activeConfig.modules.openIn)} | safeMode=${cliOpts.safeMode}`
   );
 
   await cdpManager.sync();
@@ -172,7 +174,9 @@ export async function startDaemon() {
 
 const invokedArg = process.argv[1] ? path.resolve(process.argv[1]) : '';
 const isDirectDaemon =
-  invokedArg === path.resolve(__filename) || path.basename(invokedArg) === 'antigravity-codex-daemon.mjs';
+  invokedArg === path.resolve(__filename) ||
+  path.basename(invokedArg) === 'antigravity-enhancer-daemon.mjs' ||
+  path.basename(invokedArg) === 'antigravity-codex-daemon.mjs';
 
 if (process.env.AG_DAEMON_LIBRARY !== '1' && isDirectDaemon) {
   await startDaemon();

@@ -15,20 +15,26 @@ import {
 } from '../shared.mjs';
 
 export const SERVICE_IDS = Object.freeze({
-  installDirName: 'codex-theme',
-  wrapperFileName: 'antigravity-codex-daemon.mjs',
-  pidPrefix: 'ag-codex-daemon-',
-  macLabel: 'com.antigravity.codex-theme',
-  macLogOut: '/tmp/antigravity-codex-daemon.log',
-  macLogErr: '/tmp/antigravity-codex-daemon.err',
-  linuxUnit: 'antigravity-codex-theme.service',
-  winTaskName: 'AntigravityCodexThemeDaemon',
-  winVbsName: 'AntigravityCodexThemeDaemon.vbs'
+  installDirName: 'enhancer',
+  wrapperFileName: 'antigravity-enhancer-daemon.mjs',
+  pidPrefix: 'ag-enhancer-daemon-',
+  macLabel: 'com.antigravity.enhancer',
+  macLogOut: '/tmp/antigravity-enhancer-daemon.log',
+  macLogErr: '/tmp/antigravity-enhancer-daemon.err',
+  linuxUnit: 'antigravity-enhancer.service',
+  winTaskName: 'AntigravityEnhancerDaemon',
+  winVbsName: 'AntigravityEnhancerDaemon.vbs'
 });
 
-const LEGACY_PID_PREFIXES = ['ag-theme-daemon-', 'ag-codex-daemon-'];
-const LEGACY_MAC_LABELS = ['com.antigravity.customfont', 'com.antigravity.theme'];
-const LEGACY_EXTRA_PATTERNS = ['theme-patch', 'antigravity-font-daemon.mjs', 'antigravity-codex-daemon.mjs'];
+const LEGACY_PID_PREFIXES = ['ag-theme-daemon-', 'ag-codex-daemon-', 'ag-enhancer-daemon-', 'ag-open-in-daemon'];
+const LEGACY_MAC_LABELS = ['com.antigravity.customfont', 'com.antigravity.theme', 'com.antigravity.codex-theme', 'com.antigravity.open-in'];
+const LEGACY_EXTRA_PATTERNS = [
+  'theme-patch',
+  'antigravity-font-daemon.mjs',
+  'antigravity-codex-daemon.mjs',
+  'antigravity-enhancer-daemon.mjs',
+  'antigravity-open-in'
+];
 
 function bootoutMacLabel(uid, label) {
   try {
@@ -157,8 +163,8 @@ export function stopRunningDaemonProcesses({
 }
 
 /**
- * Ensures older Antigravity theme daemon registrations are cleanly disabled
- * before com.antigravity.codex-theme takes over CDP management.
+ * Ensures older Antigravity theme / open-in daemon registrations are cleanly disabled
+ * before com.antigravity.enhancer takes over CDP management.
  */
 export function cleanupLegacyServices() {
   const home = os.homedir();
@@ -172,31 +178,40 @@ export function cleanupLegacyServices() {
         if (fs.existsSync(plistFile)) fs.unlinkSync(plistFile);
       } catch {}
     }
-    const legacyWrapper = path.join(home, '.gemini', 'antigravity', 'scripts', 'antigravity-font-daemon.mjs');
-    try {
-      if (fs.existsSync(legacyWrapper)) fs.unlinkSync(legacyWrapper);
-    } catch {}
+    for (const legacyName of ['antigravity-font-daemon.mjs', 'antigravity-codex-daemon.mjs']) {
+      const legacyWrapper = path.join(home, '.gemini', 'antigravity', 'scripts', legacyName);
+      try {
+        if (fs.existsSync(legacyWrapper)) fs.unlinkSync(legacyWrapper);
+      } catch {}
+    }
   } else if (process.platform === 'linux') {
-    try {
-      execSync('systemctl --user disable --now antigravity-theme.service 2>/dev/null || true');
-      const legacyUnit = path.join(home, '.config', 'systemd', 'user', 'antigravity-theme.service');
-      if (fs.existsSync(legacyUnit)) fs.unlinkSync(legacyUnit);
-    } catch {}
+    for (const unitName of ['antigravity-theme.service', 'antigravity-codex-theme.service']) {
+      try {
+        execSync(`systemctl --user disable --now ${unitName} 2>/dev/null || true`);
+        const legacyUnit = path.join(home, '.config', 'systemd', 'user', unitName);
+        if (fs.existsSync(legacyUnit)) fs.unlinkSync(legacyUnit);
+      } catch {}
+    }
   } else if (process.platform === 'win32') {
     const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-    const legacyVbs = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'AntigravityThemeDaemon.vbs');
-    try {
-      spawnSync('schtasks', ['/Delete', '/TN', 'AntigravityThemeDaemon', '/F'], { stdio: 'ignore', windowsHide: true });
-    } catch {}
-    try {
-      spawnSync('reg', ['delete', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', 'AntigravityThemeDaemon', '/f'], {
-        stdio: 'ignore',
-        windowsHide: true
-      });
-    } catch {}
-    try {
-      if (fs.existsSync(legacyVbs)) fs.unlinkSync(legacyVbs);
-    } catch {}
+    for (const [taskName, vbsName] of [
+      ['AntigravityThemeDaemon', 'AntigravityThemeDaemon.vbs'],
+      ['AntigravityCodexThemeDaemon', 'AntigravityCodexThemeDaemon.vbs']
+    ]) {
+      const legacyVbs = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', vbsName);
+      try {
+        spawnSync('schtasks', ['/Delete', '/TN', taskName, '/F'], { stdio: 'ignore', windowsHide: true });
+      } catch {}
+      try {
+        spawnSync('reg', ['delete', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', taskName, '/f'], {
+          stdio: 'ignore',
+          windowsHide: true
+        });
+      } catch {}
+      try {
+        if (fs.existsSync(legacyVbs)) fs.unlinkSync(legacyVbs);
+      } catch {}
+    }
   }
 }
 
@@ -213,6 +228,16 @@ export function registerSystemService(targetDir, wrapperDaemon) {
     const label = SERVICE_IDS.macLabel;
     const activePlist = path.join(launchAgentsDir, `${label}.plist`);
 
+    const toolboxScriptsDir = path.join(
+      home,
+      'Library',
+      'Application Support',
+      'JetBrains',
+      'Toolbox',
+      'scripts'
+    );
+    const macPathEnv = `${toolboxScriptsDir}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`;
+
     const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -228,7 +253,7 @@ export function registerSystemService(targetDir, wrapperDaemon) {
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>${macPathEnv}</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -269,7 +294,7 @@ export function registerSystemService(targetDir, wrapperDaemon) {
     fs.mkdirSync(systemdDir, { recursive: true });
     const serviceFile = path.join(systemdDir, SERVICE_IDS.linuxUnit);
     const unitContent = `[Unit]
-Description=Antigravity Codex Theme, Localization & Telemetry Daemon
+Description=Antigravity Enhancer Localization, Open-In & Local Metrics Daemon
 After=default.target
 
 [Service]

@@ -1,9 +1,9 @@
 /* ============================================================================
- * core/styles/45-settings-ui.css — Embedded Native Codex Settings Panel &
- * 2-Level Cascading Model Picker (Light & Dark Codex Tokens)
+ * core/styles/45-settings-ui.css — Embedded Native Enhancer Settings Panel &
+ * 2-Level Cascading Model Picker (Inherits Native Antigravity Theme Tokens)
  * ============================================================================ */
 
-/* Default: inherit native Antigravity theme tokens cleanly when Codex Theme is OFF */
+/* Inherit native Antigravity light/dark theme tokens cleanly */
 #ag-settings-nav-wrap,
 #ag-settings-pane,
 #ag-settings-model-menu,
@@ -35,62 +35,9 @@
   --ag-s-mono: var(--font-mono, "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
 }
 
-:is(html.dark body, body.dark, body.theme-dark, body[data-agy-theme].dark) :is(#ag-settings-nav-wrap, #ag-settings-pane, #ag-settings-model-menu, #ag-settings-effort-menu) {
+:is(html.dark body, body.dark, body.theme-dark, body[data-agy-theme*="dark" i], body[data-newux-theme*="dark" i]) :is(#ag-settings-nav-wrap, #ag-settings-pane, #ag-settings-model-menu, #ag-settings-effort-menu) {
   --ag-s-switch-off: rgba(255, 255, 255, 0.22);
   --ag-s-seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --ag-s-dropdown-shadow: 0 20px 44px -6px rgba(0, 0, 0, 0.72), 0 4px 12px rgba(0, 0, 0, 0.42);
-}
-
-/* Codex Light palette — applied ONLY when Codex Theme module is enabled (html[data-ag-preset]) */
-html[data-ag-preset]:not([data-ag-theme-mode="dark"]):not(:has(> body.dark)) :is(#ag-settings-nav-wrap, #ag-settings-pane, #ag-settings-model-menu, #ag-settings-effort-menu) {
-  --ag-s-bg: var(--background, #FFFFFF);
-  --ag-s-sidebar: var(--sidebar, #F9F9F9);
-  --ag-s-selected: var(--sidebar-secondary, #EFEFEF);
-  --ag-s-hover: rgba(0, 0, 0, 0.045);
-  --ag-s-card: var(--card, #FFFFFF);
-  --ag-s-surface: #F6F7F9;
-  --ag-s-border: rgba(0, 0, 0, 0.08);
-  --ag-s-hairline: rgba(0, 0, 0, 0.06);
-  --ag-s-fg: #0D0D0D;
-  --ag-s-fg-2: #525252;
-  --ag-s-fg-3: #858585;
-  --ag-s-primary: #2B7FFF;
-  --ag-s-focus: #2B7FFF;
-  --ag-s-switch-off: #D1D5DB;
-  --ag-s-ok: #10B981;
-  --ag-s-warn: #D97706;
-  --ag-s-err: #DC2626;
-  --ag-s-seg-bg: #F3F4F6;
-  --ag-s-seg-active: #FFFFFF;
-  --ag-s-seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-  --ag-s-chip-bg: #F3F4F6;
-  --ag-s-badge-bg: #F3F4F6;
-}
-
-/* Codex Dark palette — applied ONLY when Codex Theme module is enabled */
-:is(html[data-ag-preset][data-ag-theme-mode="dark"] body, html[data-ag-preset].dark body, html[data-ag-preset] body.dark, html[data-ag-preset] body.theme-dark, html[data-ag-preset] body[data-agy-theme].dark) :is(#ag-settings-nav-wrap, #ag-settings-pane, #ag-settings-model-menu, #ag-settings-effort-menu) {
-  --ag-s-bg: var(--background, #181818);
-  --ag-s-sidebar: var(--sidebar, #232323);
-  --ag-s-selected: var(--sidebar-secondary, #353535);
-  --ag-s-hover: rgba(255, 255, 255, 0.06);
-  --ag-s-card: var(--card, #212121);
-  --ag-s-surface: #2B2B2B;
-  --ag-s-border: rgba(255, 255, 255, 0.09);
-  --ag-s-hairline: rgba(255, 255, 255, 0.07);
-  --ag-s-fg: #F5F5F5;
-  --ag-s-fg-2: #B8B8B8;
-  --ag-s-fg-3: #8E8E8E;
-  --ag-s-primary: #2C67C5;
-  --ag-s-focus: #60A5FA;
-  --ag-s-switch-off: #444444;
-  --ag-s-ok: #34D399;
-  --ag-s-warn: #FBBF24;
-  --ag-s-err: #F87171;
-  --ag-s-seg-bg: #2A2A2A;
-  --ag-s-seg-active: #3A3A3A;
-  --ag-s-seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --ag-s-chip-bg: #2E2E2E;
-  --ag-s-badge-bg: #303030;
   --ag-s-dropdown-shadow: 0 20px 44px -6px rgba(0, 0, 0, 0.72), 0 4px 12px rgba(0, 0, 0, 0.42);
 }
 
@@ -151,20 +98,20 @@ html[data-ag-preset]:not([data-ag-theme-mode="dark"]):not(:has(> body.dark)) :is
   flex-shrink: 0;
 }
 
-[data-ag-codex-settings-open="1"] #ag-settings-nav-btn {
+[data-ag-enhancer-settings-open="1"] #ag-settings-nav-btn {
   background-color: var(--ag-s-selected) !important;
   color: var(--ag-s-fg) !important;
   font-weight: 500 !important;
 }
 
-/* De-emphasize native active item while Codex Settings tab is open */
-[data-ag-codex-settings-open="1"] [data-testid="settings-sidebar"] button:not(#ag-settings-nav-btn):not(:hover) {
+/* De-emphasize native active item while Enhancer Settings tab is open */
+[data-ag-enhancer-settings-open="1"] [data-testid="settings-sidebar"] button:not(#ag-settings-nav-btn):not(:hover) {
   background-color: transparent !important;
   font-weight: 400 !important;
 }
 
 /* Swap right content pane cleanly without mutating React children or hiding the modal close button */
-[data-ag-codex-settings-open="1"] [data-ag-settings-right-pane="1"] > :not(#ag-settings-pane):not(button):not([data-testid*="close"]) {
+[data-ag-enhancer-settings-open="1"] [data-ag-settings-right-pane="1"] > :not(#ag-settings-pane):not(button):not([data-testid*="close"]) {
   display: none !important;
 }
 
@@ -181,7 +128,7 @@ html[data-ag-preset]:not([data-ag-theme-mode="dark"]):not(:has(> body.dark)) :is
   -webkit-font-smoothing: antialiased;
 }
 
-[data-ag-codex-settings-open="1"] #ag-settings-pane {
+[data-ag-enhancer-settings-open="1"] #ag-settings-pane {
   display: block;
 }
 
@@ -248,40 +195,23 @@ html[data-ag-preset]:not([data-ag-theme-mode="dark"]):not(:has(> body.dark)) :is
   color: var(--ag-s-fg) !important;
 }
 
-#ag-settings-pane .ag-s-hdr-refresh:focus-visible,
-#ag-settings-pane .ag-s-hdr-link:focus-visible {
+#ag-settings-pane .ag-s-hdr-refresh:focus-visible {
   outline: 2px solid var(--ag-s-focus);
   outline-offset: 2px;
 }
 
-#ag-settings-pane .ag-s-hdr-links {
+#ag-settings-pane .ag-s-ver-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-#ag-settings-pane .ag-s-hdr-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 11px;
+  padding: 1px 8px;
   border-radius: 999px;
-  background-color: var(--ag-s-surface) !important;
-  border: 1px solid var(--ag-s-border) !important;
+  background-color: var(--ag-s-surface);
+  border: 1px solid var(--ag-s-border);
   color: var(--ag-s-fg-2) !important;
-  font-family: var(--ag-s-font) !important;
-  font-size: 12px !important;
-  line-height: 16px !important;
-  font-weight: 500;
-  text-decoration: none !important;
-  cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
-}
-
-#ag-settings-pane .ag-s-hdr-link:hover {
-  background-color: var(--ag-s-selected) !important;
-  color: var(--ag-s-fg) !important;
+  font-family: var(--ag-s-mono) !important;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px !important;
+  line-height: 17px !important;
 }
 
 #ag-settings-pane .ag-s-hot-badge {
@@ -621,74 +551,130 @@ html[data-ag-preset]:not([data-ag-theme-mode="dark"]):not(:has(> body.dark)) :is
   outline-offset: 1px;
 }
 
-/* SSH Hosts Chips & Inline Add Input */
-#ag-settings-pane .ag-s-chips {
+/* Open-In Simplified Target Chips & Compact IDEA Path */
+#ag-settings-pane .ag-s-subrow-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+#ag-settings-pane .ag-s-openin-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+#ag-settings-pane .ag-s-openin-chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
 
-#ag-settings-pane .ag-s-chip {
+#ag-settings-pane .ag-s-target-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background-color: var(--ag-s-chip-bg);
-  color: var(--ag-s-fg) !important;
-  border: 1px solid var(--ag-s-border);
-  font-family: var(--ag-s-mono) !important;
-  font-size: 12px !important;
-  line-height: 18px !important;
-}
-
-#ag-settings-pane .ag-s-chip-rm {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 1px;
-  border: none;
-  background: transparent;
-  color: var(--ag-s-fg-3) !important;
-  font-size: 13px !important;
-  line-height: 1 !important;
-  cursor: pointer;
-}
-
-#ag-settings-pane .ag-s-chip-rm:hover {
-  color: var(--ag-s-fg) !important;
-}
-
-#ag-settings-pane .ag-s-add-chip-btn {
-  padding: 2px 8px;
-  border-radius: 6px;
-  border: 1px dashed var(--ag-s-border);
-  background: transparent;
-  color: var(--ag-s-fg-3) !important;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ag-s-border) !important;
+  background-color: var(--ag-s-surface) !important;
+  color: var(--ag-s-fg-2) !important;
   font-family: var(--ag-s-font) !important;
   font-size: 12px !important;
-  line-height: 18px !important;
+  line-height: 16px !important;
+  font-weight: 500;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-#ag-settings-pane .ag-s-add-chip-btn:hover {
-  border-color: var(--ag-s-fg-3);
+#ag-settings-pane .ag-s-target-chip:hover {
+  background-color: var(--ag-s-selected) !important;
   color: var(--ag-s-fg) !important;
 }
 
-#ag-settings-pane .ag-s-host-form {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+#ag-settings-pane .ag-s-target-chip[aria-pressed="true"] {
+  background-color: var(--ag-s-selected) !important;
+  border-color: var(--ag-s-primary) !important;
+  color: var(--ag-s-fg) !important;
 }
 
-#ag-settings-pane .ag-s-host-input {
-  width: 148px;
+#ag-settings-pane .ag-s-target-chip:focus-visible {
+  outline: 2px solid var(--ag-s-focus);
+  outline-offset: 2px;
+}
+
+#ag-settings-pane .ag-s-target-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--ag-s-fg-3);
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+#ag-settings-pane .ag-s-target-dot[data-ok="1"] {
+  background-color: var(--ag-s-ok);
+  opacity: 1;
+}
+
+#ag-settings-pane .ag-s-idea-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px !important;
+  line-height: 17px !important;
+  color: var(--ag-s-fg-3) !important;
+}
+
+#ag-settings-pane .ag-s-idea-status {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ag-settings-pane .ag-s-idea-status[data-missing="1"] {
+  color: var(--ag-s-warn) !important;
+}
+
+#ag-settings-pane .ag-s-link-btn {
   padding: 2px 8px;
   border-radius: 6px;
-  border: 1px solid var(--ag-s-focus);
+  border: 1px solid var(--ag-s-border) !important;
+  background: transparent;
+  color: var(--ag-s-fg-2) !important;
+  font-family: var(--ag-s-font) !important;
+  font-size: 11.5px !important;
+  line-height: 16px !important;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+#ag-settings-pane .ag-s-link-btn:hover {
+  background-color: var(--ag-s-selected) !important;
+  color: var(--ag-s-fg) !important;
+}
+
+#ag-settings-pane .ag-s-idea-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+#ag-settings-pane .ag-s-idea-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ag-s-border);
   background-color: var(--ag-s-bg) !important;
   color: var(--ag-s-fg) !important;
   font-family: var(--ag-s-mono) !important;
@@ -697,53 +683,12 @@ html[data-ag-preset]:not([data-ag-theme-mode="dark"]):not(:has(> body.dark)) :is
   outline: none;
 }
 
-#ag-settings-pane .ag-s-host-input[data-invalid="1"] {
+#ag-settings-pane .ag-s-idea-input:focus {
+  border-color: var(--ag-s-focus);
+}
+
+#ag-settings-pane .ag-s-idea-input[data-invalid="1"] {
   border-color: var(--ag-s-err);
-}
-
-#ag-settings-pane .ag-s-host-ok {
-  padding: 2px 8px;
-  border-radius: 6px;
-  border: none;
-  background-color: var(--ag-s-primary) !important;
-  color: #FFFFFF !important;
-  font-size: 11px !important;
-  line-height: 18px !important;
-  cursor: pointer;
-}
-
-/* Plugin Version & Update Controls */
-#ag-settings-pane .ag-s-upd-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-#ag-settings-pane .ag-s-upd-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background-color: var(--ag-s-surface);
-  color: var(--ag-s-fg-2) !important;
-  font-family: var(--ag-s-mono) !important;
-  font-variant-numeric: tabular-nums;
-  font-size: 11px !important;
-  line-height: 17px !important;
-}
-
-#ag-settings-pane .ag-s-upd-pill[data-tone="ok"] {
-  color: var(--ag-s-ok) !important;
-}
-
-#ag-settings-pane .ag-s-upd-pill[data-tone="warn"] {
-  color: var(--ag-s-focus) !important;
-}
-
-#ag-settings-pane .ag-s-upd-pill[data-tone="err"] {
-  color: var(--ag-s-err) !important;
 }
 
 #ag-settings-pane .ag-s-btn-secondary,

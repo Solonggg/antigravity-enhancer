@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * antigravity-codex-theme · Cross-Platform Installer, Relaunch, Doctor, Verify & Rollback CLI
+ * antigravity-enhancer · Cross-Platform Installer, Relaunch, Doctor, Verify & Rollback CLI
  *
  * Subcommands:
- *   node install.mjs install      [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only <features>] [--without <features>] [--minimal] [--with-launcher] [--target-dir <dir>] [--sync-user]
+ *   node install.mjs install      [--channel auto|stable|insiders] [--only <features>] [--without <features>] [--minimal] [--with-launcher] [--target-dir <dir>] [--sync-user]
  *   node install.mjs relaunch     [--channel auto|stable|insiders] [--force] [--target-dir <dir>]
  *   node install.mjs doctor       [--channel auto|stable|insiders] [--target-dir <dir>]
  *   node install.mjs verify       [--safe-mode] [--channel auto|stable|insiders] [--target-dir <dir>]
@@ -37,7 +37,6 @@ import {
   restartSystemService,
   uninstallSystemService
 } from './core/installer/service.mjs';
-import { checkForUpdates, applyPluginUpdate } from './core/daemon/updater.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,7 +93,12 @@ async function runDoctor() {
   const remediation = cdpMissingFlag ? `node ${JSON.stringify(path.join(targetDir, 'install.mjs'))} relaunch` : null;
   const daemonPids = findRunningDaemonPids({
     excludePids: [process.pid],
-    extraPatterns: ['theme-patch', 'antigravity-font-daemon.mjs', 'antigravity-codex-daemon.mjs']
+    extraPatterns: [
+      'theme-patch',
+      'antigravity-font-daemon.mjs',
+      'antigravity-codex-daemon.mjs',
+      'antigravity-enhancer-daemon.mjs'
+    ]
   });
   const duplicateDaemons = daemonPids.length > 1;
 
@@ -142,7 +146,6 @@ async function runDoctor() {
 async function runInstall() {
   const cliChannel = getArg('--channel', null);
   const channel = cliChannel || 'auto';
-  const presetArg = getArg('--preset', null);
   const onlyArg = getArg('--only', getArg('--features', null));
   const withoutArg = getArg('--without', getArg('--skip', null));
   const minimalMode = hasFlag('--minimal');
@@ -233,21 +236,18 @@ async function runInstall() {
   } else if (!currentCfg.channel) {
     currentCfg.channel = 'auto';
   }
-  if (presetArg) {
-    currentCfg.preset = presetArg === 'codex-dark' || presetArg === 'onyx-dark' ? 'codex-dark' : 'codex-pure-white';
-  } else if (currentCfg.preset !== 'codex-pure-white' && currentCfg.preset !== 'codex-dark') {
-    currentCfg.preset = currentCfg.preset === 'onyx-dark' ? 'codex-dark' : 'codex-pure-white';
-  }
+  delete currentCfg.preset;
+  delete currentCfg.themeVars;
+  delete currentCfg.sshHosts;
   if (!currentCfg.telemetryLayout) currentCfg.telemetryLayout = 'compact';
   if (!currentCfg.telemetryCacheMode) currentCfg.telemetryCacheMode = 'session';
   if (!currentCfg.modules || typeof currentCfg.modules !== 'object') {
     currentCfg.modules = {};
   }
   const allowedModules = new Set([
-    'theme',
     'i18n',
     'metrics',
-    'sshRemote',
+    'openIn',
     'promptSuggestions',
     'deadlockHealer',
     'zoomShortcuts',
@@ -264,17 +264,19 @@ async function runInstall() {
   if (typeof currentCfg.modules.cdpAutoRelaunch !== 'boolean') {
     currentCfg.modules.cdpAutoRelaunch = true;
   }
-  // Automatically disable modules whose optional files were omitted by sparse checkout or --minimal
-  if (!fs.existsSync(path.join(targetCore, 'styles', '10-light-codex.css'))) {
-    currentCfg.modules.theme = false;
-  } else if (typeof currentCfg.modules.theme !== 'boolean') {
-    currentCfg.modules.theme = true;
-  }
   if (!fs.existsSync(path.join(targetCore, 'i18n.json'))) {
     currentCfg.modules.i18n = false;
   }
   if (!fs.existsSync(path.join(targetCore, 'runtime', '50-telemetry-ui.js'))) {
     currentCfg.modules.metrics = false;
+  }
+  if (
+    !fs.existsSync(path.join(targetCore, 'runtime', '65-open-in.js')) ||
+    !fs.existsSync(path.join(targetCore, 'daemon', 'open-in.mjs'))
+  ) {
+    currentCfg.modules.openIn = false;
+  } else if (typeof currentCfg.modules.openIn !== 'boolean') {
+    currentCfg.modules.openIn = true;
   }
   if (
     !fs.existsSync(path.join(targetCore, 'runtime', '70-prompt-suggestions.js')) ||
@@ -285,6 +287,13 @@ async function runInstall() {
   if (!fs.existsSync(path.join(targetCore, 'runtime', '10-guards.js'))) {
     currentCfg.modules.deadlockHealer = false;
     currentCfg.modules.zoomShortcuts = false;
+  }
+  if (!currentCfg.openIn || typeof currentCfg.openIn !== 'object' || Array.isArray(currentCfg.openIn)) {
+    currentCfg.openIn = {
+      targets: ['idea', 'finder'],
+      ideaPath: '',
+      copyPath: true
+    };
   }
 
   fs.writeFileSync(userConfigPath, JSON.stringify(currentCfg, null, 2) + '\n', 'utf8');
@@ -383,7 +392,7 @@ async function runVerify() {
       {
         ok,
         version: live.state?.version || null,
-        themeStyle: Boolean(live.state?.hasStyle),
+        enhancerStyle: Boolean(live.state?.hasStyle),
         cdpStatus,
         remediation,
         safeMode,
@@ -473,35 +482,6 @@ async function runUninstall() {
   );
 }
 
-async function runUpdate() {
-  const targetDir = path.resolve(getArg('--target-dir', resolveDefaultTargetDir()));
-  const checkOnly = hasFlag('--check');
-  const refArg = getArg('--ref', null);
-  const checkRes = await checkForUpdates({ targetDir });
-  if (checkOnly || !checkRes.ok) {
-    console.log(JSON.stringify(checkRes, null, 2));
-    if (!checkRes.ok) process.exitCode = 1;
-    return;
-  }
-  const ref = refArg || checkRes.targetRef || 'main';
-  if (!refArg && !checkRes.updateAvailable && !checkRes.canSyncMain) {
-    console.log(JSON.stringify({ ...checkRes, applied: false, message: 'Already up to date' }, null, 2));
-    return;
-  }
-  const applyRes = await applyPluginUpdate({ targetDir, ref, scheduleRestart: false });
-  if (!applyRes.ok) {
-    console.error(JSON.stringify(applyRes, null, 2));
-    process.exit(1);
-  }
-  const installScript = path.join(targetDir, 'install.mjs');
-  if (fs.existsSync(installScript)) {
-    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', installScript, 'install', '--target-dir', targetDir], {
-      stdio: 'inherit'
-    });
-  }
-  console.log(JSON.stringify(applyRes, null, 2));
-}
-
 switch (subcommand) {
   case 'build-manifest': {
     const m = buildManifest(__dirname);
@@ -518,9 +498,6 @@ switch (subcommand) {
     break;
   case 'install':
     await runInstall();
-    break;
-  case 'update':
-    await runUpdate();
     break;
   case 'relaunch':
     await runRelaunch();
@@ -547,15 +524,14 @@ switch (subcommand) {
     break;
   }
   default:
-    console.log(`antigravity-codex-theme CLI Usage:
-  node install.mjs install        [--channel auto|stable|insiders] [--preset codex-pure-white|codex-dark] [--only theme,i18n,metrics,fixes,suggest] [--without <list>] [--minimal] [--with-launcher] [--sync-user]
-  node install.mjs update         [--check] [--ref <branch|tag>]
+    console.log(`antigravity-enhancer CLI Usage:
+  node install.mjs install        [--channel auto|stable|insiders] [--only i18n,metrics,openIn,fixes,suggest] [--without <list>] [--minimal] [--with-launcher] [--sync-user]
   node install.mjs relaunch       [--channel auto|stable|insiders] [--force]
   node install.mjs doctor         [--channel auto|stable|insiders]
   node install.mjs verify         [--safe-mode] [--channel auto|stable|insiders]
   node install.mjs rollback
   node install.mjs uninstall
-  node install.mjs sparse-paths   [--only theme,i18n,metrics,fixes,suggest] [--without <list>] [--json]
+  node install.mjs sparse-paths   [--only i18n,metrics,openIn,fixes,suggest] [--without <list>] [--json]
   node install.mjs build-manifest
   node install.mjs pack`);
     break;

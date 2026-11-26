@@ -1,0 +1,77 @@
+/* ============================================================================
+ * core/styles/42-open-in.css — Passive Right-Click Context Menu for File Links
+ * ============================================================================ */
+
+#ag-open-in-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 210px;
+  max-width: 340px;
+  padding: 5px;
+  border-radius: 10px;
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif);
+  font-size: 13px;
+  line-height: 1.35;
+  user-select: none;
+  box-sizing: border-box;
+  --ag-menu-bg: rgba(255, 255, 255, 0.96);
+  --ag-menu-fg: #18181b;
+  --ag-menu-muted: #71717a;
+  --ag-menu-border: rgba(0, 0, 0, 0.12);
+  --ag-menu-hover: rgba(0, 0, 0, 0.06);
+  --ag-menu-sep: rgba(0, 0, 0, 0.08);
+  --ag-menu-shadow: 0 12px 32px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.08);
+  background: var(--ag-menu-bg);
+  color: var(--ag-menu-fg);
+  border: 1px solid var(--ag-menu-border);
+  box-shadow: var(--ag-menu-shadow);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+#ag-open-in-menu[data-theme="dark"] {
+  --ag-menu-bg: rgba(34, 34, 38, 0.96);
+  --ag-menu-fg: #f4f4f5;
+  --ag-menu-muted: #a1a1aa;
+  --ag-menu-border: rgba(255, 255, 255, 0.14);
+  --ag-menu-hover: rgba(255, 255, 255, 0.10);
+  --ag-menu-sep: rgba(255, 255, 255, 0.10);
+  --ag-menu-shadow: 0 14px 36px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.30);
+}
+
+#ag-open-in-menu .ag-open-in-header {
+  padding: 5px 10px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ag-menu-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--ag-menu-sep);
+  margin-bottom: 4px;
+}
+
+#ag-open-in-menu .ag-open-in-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ag-menu-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+#ag-open-in-menu .ag-open-in-item:hover {
+  background: var(--ag-menu-hover);
+}
+
+#ag-open-in-menu .ag-open-in-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--ag-menu-sep);
+}

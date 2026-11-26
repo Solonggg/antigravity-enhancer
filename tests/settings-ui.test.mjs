@@ -1,12 +1,10 @@
 /**
- * tests/settings-ui.test.mjs — Settings UI Model Grouping & Config Patch Sanitization Tests
+ * tests/settings-ui.test.mjs — Settings UI Model Grouping, Config Patch Sanitization & Localization Engine Tests
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import {
@@ -14,16 +12,6 @@ import {
   parseAgyModelsOutput
 } from '../core/daemon/prompt-suggest.mjs';
 import { sanitizeConfigPatch } from '../core/daemon/paths.mjs';
-import {
-  ALLOWED_EXTERNAL_LINKS,
-  openAllowlistedExternalLink
-} from '../core/daemon/cdp-bridge.mjs';
-import {
-  compareSemver,
-  isSafeManifestRelPath,
-  checkForUpdates,
-  applyPluginUpdate
-} from '../core/daemon/updater.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -47,7 +35,6 @@ test('parseAgyModelsOutput strips ANSI/spinner frames, groups by base model, sor
   const families = parseAgyModelsOutput(SAMPLE_AGY_MODELS_RAW);
   assert.equal(families.length, 4, 'Orchestrator should be filtered out, leaving 4 model families');
 
-  // Gemini 3.8 Flash pinned first as recommended with sorted efforts
   assert.equal(families[0].name, 'Gemini 3.8 Flash');
   assert.equal(families[0].recommended, true);
   assert.equal(families[0].defaultEffort, 'Low');
@@ -60,7 +47,6 @@ test('parseAgyModelsOutput strips ANSI/spinner frames, groups by base model, sor
     ]
   );
 
-  // XHigh maps cleanly to Extra High
   const neon = families.find((f) => f.name === 'Gemini 4 Neon');
   assert.ok(neon);
   assert.deepEqual(
@@ -68,7 +54,6 @@ test('parseAgyModelsOutput strips ANSI/spinner frames, groups by base model, sor
     ['Low', 'Medium', 'High', 'Extra High']
   );
 
-  // Single-tier model collapses to singleId
   const oss = families.find((f) => f.key === 'gpt-oss-120b');
   assert.ok(oss);
   assert.equal(oss.singleId, 'gpt-oss-120b-medium');
@@ -87,21 +72,23 @@ test('deriveEffortFromModelId maps model ID suffixes to valid agy --effort flags
   assert.equal(deriveEffortFromModelId('unknown-model'), 'low');
 });
 
-test('sanitizeConfigPatch validates whitelisted fields and preserves untouched config keys', () => {
+test('sanitizeConfigPatch validates whitelisted fields, sanitizes openIn, and blocks removed/unsafe keys', () => {
   const baseCfg = {
     enabled: true,
-    preset: 'codex-pure-white',
     telemetryLayout: 'compact',
     telemetryCacheMode: 'session',
     promptSuggestionModel: 'gemini-3.8-flash-low',
-    sshHosts: ['existing-node'],
-    themeVars: { '--ag-chat-font-size': '14px' },
     modules: {
-      theme: true,
       i18n: true,
       metrics: true,
-      promptSuggestions: false,
-      sshRemote: false
+      openIn: true,
+      promptSuggestions: false
+    },
+    openIn: {
+      targets: ['idea', 'finder'],
+      ideaPath: '',
+      copyPath: true,
+      customTargets: [{ id: 'custom-subl', label: 'Sublime', type: 'command', command: 'subl', args: ['{path}'] }]
     }
   };
 
@@ -109,55 +96,42 @@ test('sanitizeConfigPatch validates whitelisted fields and preserves untouched c
     telemetryLayout: 'detailed',
     telemetryCacheMode: 'invalid-mode',
     promptSuggestionModel: 'gemini-4-neon-xhigh',
-    sshHosts: ['node032', '  node032  ', '-oProxyCommand=evil', 'bad host', 'gpu@10.0.0.1'],
+    sshHosts: ['node032'],
     modules: {
       promptSuggestions: true,
+      openIn: false,
+      theme: true,
       sshRemote: true,
-      theme: 0,
+      i18n: 0,
       injectedUnknownModule: true
+    },
+    openIn: {
+      targets: ['idea', 'zed', 'cursor', 'webstorm'],
+      ideaPath: '/Applications/IntelliJ IDEA.app',
+      customTargets: [{ id: 'evil', label: 'Evil', command: '/bin/sh' }]
     }
   });
 
-  assert.equal(next.preset, 'codex-pure-white');
-  assert.deepEqual(next.themeVars, { '--ag-chat-font-size': '14px' });
   assert.equal(next.telemetryLayout, 'detailed');
   assert.equal(next.telemetryCacheMode, 'session', 'invalid cache mode should be ignored');
   assert.equal(next.promptSuggestionModel, 'gemini-4-neon-xhigh');
-  assert.deepEqual(next.sshHosts, ['node032', 'gpu@10.0.0.1']);
+  assert.equal(next.sshHosts, undefined, 'removed sshHosts must be ignored');
   assert.equal(next.modules.promptSuggestions, true);
-  assert.equal(next.modules.sshRemote, true);
-  assert.equal(next.modules.theme, true, 'non-boolean module values should be ignored');
+  assert.equal(next.modules.openIn, false);
+  assert.equal(next.modules.i18n, true, 'non-boolean module values should be ignored');
+  assert.equal(next.modules.theme, undefined, 'removed theme module must be ignored');
+  assert.equal(next.modules.sshRemote, undefined, 'removed sshRemote module must be ignored');
   assert.equal(next.modules.injectedUnknownModule, undefined);
+  assert.deepEqual(next.openIn.targets, ['idea', 'zed', 'cursor']);
+  assert.equal(next.openIn.ideaPath, '/Applications/IntelliJ IDEA.app');
+  assert.deepEqual(next.openIn.customTargets, baseCfg.openIn.customTargets);
 
-  // Reject unsafe model IDs
   const rejected = sanitizeConfigPatch(next, {
-    promptSuggestionModel: '--evil; rm -rf /'
+    promptSuggestionModel: '--evil; rm -rf /',
+    openIn: { ideaPath: 'relative/bad' }
   });
   assert.equal(rejected.promptSuggestionModel, 'gemini-4-neon-xhigh');
-});
-
-test('openAllowlistedExternalLink only opens hardcoded github and feedback URLs', () => {
-  const calls = [];
-  const fakeExec = (cmd, args) => calls.push({ cmd, args });
-
-  const gh = openAllowlistedExternalLink('github', { execFileFn: fakeExec, platform: 'darwin' });
-  assert.equal(gh.ok, true);
-  assert.equal(gh.url, ALLOWED_EXTERNAL_LINKS.github);
-  assert.deepEqual(calls[0], { cmd: 'open', args: [ALLOWED_EXTERNAL_LINKS.github] });
-
-  const fb = openAllowlistedExternalLink('feedback', { execFileFn: fakeExec, platform: 'win32' });
-  assert.equal(fb.ok, true);
-  assert.equal(fb.url, ALLOWED_EXTERNAL_LINKS.feedback);
-  assert.deepEqual(calls[1], {
-    cmd: 'rundll32.exe',
-    args: ['url.dll,FileProtocolHandler', ALLOWED_EXTERNAL_LINKS.feedback]
-  });
-
-  for (const bad of ['https://evil.example', 'toString', '__proto__', '']) {
-    const res = openAllowlistedExternalLink(bad, { execFileFn: fakeExec, platform: 'darwin' });
-    assert.equal(res.ok, false);
-  }
-  assert.equal(calls.length, 2, 'non-allowlisted keys must never invoke OS launcher');
+  assert.equal(rejected.openIn.ideaPath, '/Applications/IntelliJ IDEA.app');
 });
 
 test('60-i18n-engine translates dynamic quota-exhausted banners while preserving model names', () => {
@@ -244,14 +218,13 @@ test('60-i18n-engine translates dynamic quota-exhausted banners while preserving
     NodeFilter: { SHOW_ELEMENT: 1, SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3 },
     MutationObserver: class { observe() {} disconnect() {} },
     __AG_BOOT_PAYLOAD__: {
-      version: '1.2.1-test',
+      version: '1.0.0-test',
       platform: 'darwin',
       enabled: true,
       cssText: '',
       customCss: '',
-      themeVars: {},
       i18nDict,
-      modules: { theme: false, i18n: true, metrics: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false },
+      modules: { i18n: true, metrics: false, openIn: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false },
       selectors: {},
       userConfig: { modules: { i18n: true } },
       customJs: ''
@@ -282,13 +255,13 @@ test('60-i18n-engine translates dynamic quota-exhausted banners while preserving
   assert.equal(textNodes[5].nodeValue, '查看套餐');
 });
 
-test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking for Ns, Your plan, and running-state aria labels', () => {
+test('60-i18n-engine handles Antigravity 2.35.1 labels, newly added rules, shortcut suffixes, permission choices, and Shadow DOM', () => {
   const i18nDict = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'core', 'i18n.json'), 'utf8'));
   const code = ['00-head.js', '60-i18n-engine.js', '90-tail.js']
     .map((f) => fs.readFileSync(path.join(ROOT_DIR, 'core', 'runtime', f), 'utf8'))
     .join('\n');
 
-  const mkEl = (attrs = {}) => {
+  const mkEl = (attrs = {}, extra = {}) => {
     const map = new Map(Object.entries(attrs));
     return {
       nodeType: 1,
@@ -299,9 +272,23 @@ test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking f
       setAttribute: (k, v) => map.set(k, String(v)),
       removeAttribute: (k) => map.delete(k),
       hasAttribute: (k) => map.has(k),
-      querySelectorAll: () => []
+      querySelectorAll: () => [],
+      ...extra
     };
   };
+
+  const shadowTextNode = {
+    nodeType: 3,
+    nodeValue: 'Agent Settings',
+    parentElement: mkEl()
+  };
+  const shadowRoot = {
+    nodeType: 11,
+    host: mkEl(),
+    querySelectorAll: () => [],
+    _nodes: [shadowTextNode]
+  };
+  const shadowHost = mkEl({}, { shadowRoot });
 
   const textNodes = [
     'Prevent sleep',
@@ -317,7 +304,12 @@ test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking f
     'Choose which key sends a message in the chat composer.',
     'Quote',
     'Low',
-    'Extra High'
+    'Extra High',
+    "Yes, and always allow 'npm test' in this project",
+    'Show 5 more results...',
+    'Marked 3 conversations as read',
+    'Model unavailable, retrying in 4s (attempt 2/5)',
+    'No MCP Servers'
   ].map((s) => ({
     nodeType: 3,
     nodeValue: s,
@@ -328,11 +320,11 @@ test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking f
     mkEl({ 'aria-label': 'Model, current: Gemini 4 Neon Extra High, Model cannot be changed while the agent is running' }),
     mkEl({ 'aria-label': 'Permission mode: Turbo (Permissions cannot be changed while the agent is running)' }),
     mkEl({ placeholder: 'Search shortcuts...' }),
-    mkEl({ 'aria-label': 'Where the agent runs, current: This computer' })
+    mkEl({ 'aria-label': 'Where the agent runs, current: This computer' }),
+    mkEl({ title: 'Settings (Cmd+,)' })
   ];
-  const allWalkNodes = [...attrEls, ...textNodes];
+  const allWalkNodes = [shadowHost, ...attrEls, ...textNodes];
 
-  let walkIdx = -1;
   const headChildren = [];
   const headEl = { appendChild(el) { el.parentNode = headEl; headChildren.push(el); } };
   const fakeDoc = {
@@ -363,21 +355,25 @@ test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking f
     getElementsByTagName: (t) => (t === 'head' ? [headEl] : []),
     querySelector: () => null,
     querySelectorAll: () => [],
-    createTreeWalker: (_root, _what, filter) => ({
-      currentNode: null,
-      nextNode() {
-        while (walkIdx + 1 < allWalkNodes.length) {
-          walkIdx += 1;
-          const n = allWalkNodes[walkIdx];
-          const verdict = filter && filter.acceptNode ? filter.acceptNode(n) : 1;
-          if (verdict === 1) {
-            this.currentNode = n;
-            return true;
+    createTreeWalker: (root, _what, filter) => {
+      const list = root === shadowRoot ? shadowRoot._nodes : allWalkNodes;
+      let idx = -1;
+      return {
+        currentNode: null,
+        nextNode() {
+          while (idx + 1 < list.length) {
+            idx += 1;
+            const n = list[idx];
+            const verdict = filter && filter.acceptNode ? filter.acceptNode(n) : 1;
+            if (verdict === 1) {
+              this.currentNode = n;
+              return true;
+            }
           }
+          return false;
         }
-        return false;
-      }
-    }),
+      };
+    },
     addEventListener() {},
     removeEventListener() {}
   };
@@ -397,14 +393,13 @@ test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking f
     NodeFilter: { SHOW_ELEMENT: 1, SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3 },
     MutationObserver: class { observe() {} disconnect() {} },
     __AG_BOOT_PAYLOAD__: {
-      version: '1.3.5-test',
+      version: '1.0.0-test',
       platform: 'darwin',
       enabled: true,
       cssText: '',
       customCss: '',
-      themeVars: {},
       i18nDict,
-      modules: { theme: false, i18n: true, metrics: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false },
+      modules: { i18n: true, metrics: false, openIn: false, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false },
       selectors: {},
       userConfig: { modules: { i18n: true } },
       customJs: ''
@@ -429,6 +424,12 @@ test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking f
   assert.equal(textNodes[11].nodeValue, '引用');
   assert.equal(textNodes[12].nodeValue, 'Low');
   assert.equal(textNodes[13].nodeValue, 'Extra High');
+  assert.equal(textNodes[14].nodeValue, "是，且在此项目中始终允许运行 'npm test'");
+  assert.equal(textNodes[15].nodeValue, '显示另外 5 个结果...');
+  assert.equal(textNodes[16].nodeValue, '已将 3 个会话标记为已读');
+  assert.equal(textNodes[17].nodeValue, '模型暂不可用，4 秒后重试（第 2/5 次尝试）');
+  assert.equal(textNodes[18].nodeValue, '暂无 MCP 服务器');
+  assert.equal(shadowTextNode.nodeValue, '智能体设置', 'Shadow DOM text nodes must be translated');
 
   assert.equal(
     attrEls[0].getAttribute('aria-label'),
@@ -440,101 +441,11 @@ test('60-i18n-engine handles Antigravity 2.35.1 sentence-case labels, Thinking f
   );
   assert.equal(attrEls[2].getAttribute('placeholder'), '搜索快捷键...');
   assert.equal(attrEls[3].getAttribute('aria-label'), '智能体运行位置，当前：本机');
-});
+  assert.equal(attrEls[4].getAttribute('title'), '系统设置 (Cmd+,)');
 
-test('updater validates semver/paths, verifies SHA-256, backs up core/, and preserves user/', async () => {
-  assert.equal(compareSemver('1.2.2', '1.2.1'), 1);
-  assert.equal(compareSemver('v1.2.1', '1.2.1'), 0);
-  assert.equal(compareSemver('1.2.0', '1.2.1'), -1);
-  assert.equal(isSafeManifestRelPath('daemon/updater.mjs'), true);
-  assert.equal(isSafeManifestRelPath('../evil.mjs'), false);
-  assert.equal(isSafeManifestRelPath('/etc/passwd'), false);
-
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-updater-test-'));
-  try {
-    const coreDir = path.join(tmpDir, 'core');
-    const userDir = path.join(tmpDir, 'user');
-    fs.mkdirSync(path.join(coreDir, 'daemon'), { recursive: true });
-    fs.mkdirSync(userDir, { recursive: true });
-
-    const oldContent = Buffer.from('// old daemon v1.2.1\n', 'utf8');
-    const oldHash = crypto.createHash('sha256').update(oldContent).digest('hex');
-    fs.writeFileSync(path.join(coreDir, 'daemon.mjs'), oldContent);
-    fs.writeFileSync(
-      path.join(coreDir, 'manifest.json'),
-      JSON.stringify({ version: '1.2.1', files: { 'daemon.mjs': { sha256: oldHash, bytes: oldContent.length } } })
-    );
-    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'antigravity-codex-theme', version: '1.2.1' }));
-    fs.writeFileSync(path.join(userDir, 'config.json'), JSON.stringify({ preset: 'codex-dark', customFlag: 42 }));
-
-    const newContent = Buffer.from('// new daemon v1.2.2\n', 'utf8');
-    const newHash = crypto.createHash('sha256').update(newContent).digest('hex');
-    const remoteManifest = {
-      name: 'antigravity-codex-theme',
-      version: '1.2.2',
-      files: { 'daemon.mjs': { sha256: newHash, bytes: newContent.length } }
-    };
-
-    const chk = await checkForUpdates({
-      targetDir: tmpDir,
-      fetchJson: async (url) => {
-        if (url.includes('manifest.json')) return remoteManifest;
-        return { tag_name: 'v1.2.2', html_url: 'https://github.com/nkjDSLcvanv/antigravity-codex-theme/releases/tag/v1.2.2' };
-      }
-    });
-    assert.equal(chk.ok, true);
-    assert.equal(chk.status, 'update_available');
-    assert.equal(chk.updateAvailable, true);
-    assert.equal(chk.latestVersion, '1.2.2');
-
-    // Tampered SHA-256 must abort without touching existing core/
-    const badApply = await applyPluginUpdate({
-      targetDir: tmpDir,
-      ref: 'v1.2.2',
-      scheduleRestart: false,
-      fetchJson: async () => remoteManifest,
-      fetchBuffer: async () => Buffer.from('// tampered bytes\n', 'utf8')
-    });
-    assert.equal(badApply.ok, false);
-    assert.match(badApply.error, /SHA-256 mismatch/);
-    assert.equal(fs.readFileSync(path.join(coreDir, 'daemon.mjs'), 'utf8'), '// old daemon v1.2.1\n');
-
-    // Valid SHA-256 updates core/, creates core.prev + backups/, and preserves user/config.json
-    const goodApply = await applyPluginUpdate({
-      targetDir: tmpDir,
-      ref: 'v1.2.2',
-      scheduleRestart: false,
-      fetchJson: async () => remoteManifest,
-      fetchBuffer: async (url) => {
-        if (url.endsWith('core/daemon.mjs')) return newContent;
-        if (url.endsWith('package.json')) return Buffer.from(JSON.stringify({ name: 'antigravity-codex-theme', version: '1.2.2' }));
-        throw new Error('optional doc omitted');
-      }
-    });
-    assert.equal(goodApply.ok, true);
-    assert.equal(goodApply.version, '1.2.2');
-    assert.equal(fs.readFileSync(path.join(coreDir, 'daemon.mjs'), 'utf8'), '// new daemon v1.2.2\n');
-    assert.equal(fs.readFileSync(path.join(tmpDir, 'core.prev', 'daemon.mjs'), 'utf8'), '// old daemon v1.2.1\n');
-    assert.equal(JSON.parse(fs.readFileSync(path.join(userDir, 'config.json'), 'utf8')).customFlag, 42);
-
-    // Stale raw.githubusercontent.com CDN cache serving an older manifest version must not offer main_diff downgrade
-    const staleCdnChk = await checkForUpdates({
-      targetDir: tmpDir,
-      fetchJson: async (url) => {
-        if (url.includes('manifest.json')) {
-          return {
-            name: 'antigravity-codex-theme',
-            version: '1.2.1',
-            files: { 'daemon.mjs': { sha256: oldHash, bytes: oldContent.length } }
-          };
-        }
-        return { tag_name: 'v1.2.2', html_url: 'https://github.com/nkjDSLcvanv/antigravity-codex-theme/releases/tag/v1.2.2' };
-      }
-    });
-    assert.equal(staleCdnChk.ok, true);
-    assert.equal(staleCdnChk.status, 'up_to_date');
-    assert.equal(staleCdnChk.canSyncMain, false);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
+  // Disabling i18n cleanly restores both light DOM and Shadow DOM back to English
+  sandbox.__AG_BOOT_PAYLOAD__.modules.i18n = false;
+  vm.runInContext(`const __AG_BOOT_PAYLOAD__2 = globalThis.__AG_BOOT_PAYLOAD__;\n${code.replace('})(__AG_BOOT_PAYLOAD__);', '})(__AG_BOOT_PAYLOAD__2);')}`, sandbox);
+  assert.equal(textNodes[0].nodeValue, 'Prevent sleep');
+  assert.equal(shadowTextNode.nodeValue, 'Agent Settings', 'Shadow DOM text nodes must restore when i18n disabled');
 });

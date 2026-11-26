@@ -1,5 +1,5 @@
 /**
- * antigravity-codex-theme · Shared Runtime & Installer Utilities (core/shared.mjs)
+ * antigravity-enhancer · Shared Runtime & Installer Utilities (core/shared.mjs)
  */
 import fs from 'node:fs';
 import http from 'node:http';
@@ -210,9 +210,9 @@ export function extractJsoncNumberProperty(raw, propName = 'remote-debugging-por
 
 const NON_DAEMON_NODE_FLAGS_RE = /(?:^|\s)(?:--once|--test|-e|--eval|-p|--print|-c|--check)(?:\s|=|$)/i;
 const INSTALLER_SCRIPT_RE = /(?:^|[\s"'/\\])install\.mjs(?:["'\s]|$)/i;
-const DAEMON_WRAPPER_SCRIPT_RE = /(?:^|[\s"'/\\])antigravity-(?:codex|font)-daemon\.mjs(?:["'\s]|$)/i;
+const DAEMON_WRAPPER_SCRIPT_RE = /(?:^|[\s"'/\\])antigravity-(?:enhancer|codex|font)-daemon\.mjs(?:["'\s]|$)/i;
 const SCOPED_DAEMON_SCRIPT_RE =
-  /(?:^|[\s"'/\\])[^\r\n"'`]*?(?:antigravity|codex-theme|theme-patch)[^\r\n"'`]*?[/\\]daemon\.mjs(?:["'\s]|$)/i;
+  /(?:^|[\s"'/\\])[^\r\n"'`]*?(?:antigravity|enhancer|codex-theme|theme-patch|open-in)[^\r\n"'`]*?[/\\]daemon\.mjs(?:["'\s]|$)/i;
 const GENERIC_DAEMON_SCRIPT_RE = /(?:^|[\s"'/\\])daemon\.mjs(?:["'\s]|$)/i;
 
 function isNodeCommandLine(cmdLine) {

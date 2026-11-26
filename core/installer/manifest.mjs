@@ -32,12 +32,12 @@ function readPackageMeta(baseDir) {
     if (fs.existsSync(pkgPath)) {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
       return {
-        name: pkg.name || 'antigravity-codex-theme',
+        name: pkg.name || 'antigravity-enhancer',
         version: pkg.version || '1.0.0'
       };
     }
   } catch {}
-  return { name: 'antigravity-codex-theme', version: '1.0.0' };
+  return { name: 'antigravity-enhancer', version: '1.0.0' };
 }
 
 export function buildManifest(baseDir) {

@@ -15,7 +15,33 @@ export const CORE_DIR = path.join(ROOT_DIR, 'core');
 export const STYLES_DIR = path.join(CORE_DIR, 'styles');
 export const RUNTIME_DIR = path.join(CORE_DIR, 'runtime');
 export const USER_DIR = path.join(ROOT_DIR, 'user');
-export const BASE_VERSION = '1.3.5';
+export const BASE_VERSION = '1.0.0';
+
+let openInHelpers = {
+  normalizeOpenInConfig: (raw) => ({
+    targets: Array.isArray(raw?.targets) ? raw.targets : ['idea', 'finder'],
+    ideaPath: typeof raw?.ideaPath === 'string' ? raw.ideaPath.trim() : '',
+    copyPath: raw?.copyPath !== false,
+    debug: Boolean(raw?.debug),
+    customTargets: []
+  }),
+  sanitizeOpenInPatch: (cur) => ({
+    targets: Array.isArray(cur?.targets) ? cur.targets : ['idea', 'finder'],
+    ideaPath: typeof cur?.ideaPath === 'string' ? cur.ideaPath.trim() : '',
+    copyPath: cur?.copyPath !== false
+  }),
+  getOpenInMenuDescriptors: () => ({ copyPath: true, debug: false, targets: [] })
+};
+if (fs.existsSync(path.join(__dirname, 'open-in.mjs'))) {
+  try {
+    const mod = await import('./open-in.mjs');
+    openInHelpers = {
+      normalizeOpenInConfig: mod.normalizeOpenInConfig,
+      sanitizeOpenInPatch: mod.sanitizeOpenInPatch,
+      getOpenInMenuDescriptors: mod.getOpenInMenuDescriptors
+    };
+  } catch {}
+}
 
 export function parseDaemonCliArgs(argv = process.argv.slice(2)) {
   const hasFlag = (f) => argv.some((a) => a === f || a.startsWith(f + '='));
@@ -150,18 +176,16 @@ export function resolveActiveChannelEndpoints(channelMode = 'auto', userCfg = {}
 }
 
 const EDITABLE_MODULE_KEYS = new Set([
-  'theme',
   'i18n',
   'metrics',
+  'openIn',
   'promptSuggestions',
-  'sshRemote',
   'deadlockHealer',
   'zoomShortcuts',
   'cdpAutoRelaunch',
   'customCss',
   'customJs'
 ]);
-const VALID_SSH_HOST_RE = /^[a-zA-Z0-9_@][a-zA-Z0-9._:@-]{0,127}$/;
 const VALID_SUGGEST_MODEL_RE = /^[a-zA-Z0-9._:/-]{2,80}$/;
 
 export function sanitizeConfigPatch(currentCfg, patch) {
@@ -190,17 +214,8 @@ export function sanitizeConfigPatch(currentCfg, patch) {
       base.promptSuggestionModel = m;
     }
   }
-  if (Array.isArray(patch.sshHosts)) {
-    const out = [];
-    const seen = new Set();
-    for (const raw of patch.sshHosts) {
-      const h = String(raw || '').trim();
-      if (!h || h.startsWith('-') || !VALID_SSH_HOST_RE.test(h) || seen.has(h)) continue;
-      seen.add(h);
-      out.push(h);
-      if (out.length >= 32) break;
-    }
-    base.sshHosts = out;
+  if (patch.openIn && typeof patch.openIn === 'object' && !Array.isArray(patch.openIn)) {
+    base.openIn = openInHelpers.sanitizeOpenInPatch(base.openIn, patch.openIn);
   }
 
   return base;
@@ -213,7 +228,6 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
   let activeConfig = {
     enabled: true,
     channel: 'auto',
-    preset: 'codex-pure-white',
     telemetryLayout: 'compact',
     telemetryCacheMode: 'session',
     contextLimit: 'auto',
@@ -221,10 +235,9 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     fallbackContextLimit: 256000,
     promptSuggestionModel: 'gemini-3.8-flash-low',
     modules: {
-      theme: true,
       i18n: true,
       metrics: Boolean(hasSqlite),
-      sshRemote: false,
+      openIn: true,
       promptSuggestions: false,
       deadlockHealer: true,
       zoomShortcuts: true,
@@ -232,8 +245,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       customCss: true,
       customJs: true
     },
-    sshHosts: [],
-    themeVars: {},
+    openIn: openInHelpers.normalizeOpenInConfig(null),
     selectors: {},
     allowedOrigins: DEFAULT_ALLOWED_ORIGINS,
     endpoints: []
@@ -265,8 +277,6 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     const userCfg = safeMode ? {} : readJsonSafe(path.join(USER_DIR, 'config.json'), {});
     const enabled = safeMode ? true : userCfg.enabled !== false;
     const channel = cliChannel || userCfg.channel || 'auto';
-    const presetRaw = String(userCfg.preset || 'codex-pure-white').trim();
-    const preset = presetRaw === 'codex-dark' || presetRaw === 'onyx-dark' ? 'codex-dark' : 'codex-pure-white';
     const telemetryLayout = userCfg.telemetryLayout === 'detailed' ? 'detailed' : 'compact';
     const telemetryCacheMode = userCfg.telemetryCacheMode === 'step' ? 'step' : 'session';
 
@@ -285,47 +295,43 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     if (typeof rawModules.metricsCapsule === 'boolean' && typeof rawModules.metrics !== 'boolean') {
       rawModules.metrics = rawModules.metricsCapsule;
     }
-    const modules = Object.assign(
-      {
-        theme: true,
-        i18n: true,
-        metrics: true,
-        sshRemote: false,
-        promptSuggestions: false,
-        deadlockHealer: true,
-        zoomShortcuts: true,
-        cdpAutoRelaunch: true,
-        customCss: true,
-        customJs: true
-      },
-      rawModules
-    );
-    const hasThemeFiles =
-      fs.existsSync(path.join(STYLES_DIR, '10-light-codex.css')) ||
-      fs.existsSync(path.join(STYLES_DIR, '00-base.css'));
+    const modules = {
+      i18n: rawModules.i18n !== false,
+      metrics: rawModules.metrics !== false,
+      openIn: rawModules.openIn !== false,
+      promptSuggestions: rawModules.promptSuggestions === true,
+      deadlockHealer: rawModules.deadlockHealer !== false,
+      zoomShortcuts: rawModules.zoomShortcuts !== false,
+      cdpAutoRelaunch: rawModules.cdpAutoRelaunch !== false,
+      customCss: rawModules.customCss !== false,
+      customJs: rawModules.customJs !== false
+    };
+
     const hasI18nFiles =
       fs.existsSync(path.join(CORE_DIR, 'i18n.json')) &&
       fs.existsSync(path.join(RUNTIME_DIR, '60-i18n-engine.js'));
     const hasMetricsFiles =
       fs.existsSync(path.join(RUNTIME_DIR, '50-telemetry-ui.js')) &&
       fs.existsSync(path.join(CORE_DIR, 'daemon', 'sqlite-metrics.mjs'));
+    const hasOpenInFiles =
+      fs.existsSync(path.join(RUNTIME_DIR, '65-open-in.js')) &&
+      fs.existsSync(path.join(CORE_DIR, 'daemon', 'open-in.mjs'));
     const hasPromptSuggestFiles =
       fs.existsSync(path.join(RUNTIME_DIR, '70-prompt-suggestions.js')) &&
       fs.existsSync(path.join(CORE_DIR, 'daemon', 'prompt-suggest.mjs'));
     const hasGuardsFile = fs.existsSync(path.join(RUNTIME_DIR, '10-guards.js'));
-    if (!hasThemeFiles) modules.theme = false;
+
     if (!hasI18nFiles) modules.i18n = false;
-    if (!hasSqlite || !hasMetricsFiles) {
-      modules.metrics = false;
-      modules.sshRemote = false;
-    }
+    if (!hasSqlite || !hasMetricsFiles) modules.metrics = false;
+    if (!hasOpenInFiles) modules.openIn = false;
     if (!hasPromptSuggestFiles) modules.promptSuggestions = false;
     if (!hasGuardsFile) {
       modules.deadlockHealer = false;
       modules.zoomShortcuts = false;
     }
 
-    const themeVars = !safeMode && userCfg.themeVars && typeof userCfg.themeVars === 'object' ? userCfg.themeVars : {};
+    const openIn = openInHelpers.normalizeOpenInConfig(safeMode ? null : userCfg.openIn);
+    const openInDescriptors = openInHelpers.getOpenInMenuDescriptors(openIn, { platform: process.platform });
     const endpoints = resolveActiveChannelEndpoints(channel, userCfg, cliOpts);
 
     const normalizedSelectors = Object.assign({}, userCfg.selectors || {});
@@ -356,7 +362,6 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
     activeConfig = {
       enabled,
       channel,
-      preset,
       telemetryLayout,
       telemetryCacheMode,
       contextLimit,
@@ -364,8 +369,7 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       fallbackContextLimit,
       promptSuggestionModel,
       modules,
-      sshHosts: Array.isArray(userCfg.sshHosts) ? userCfg.sshHosts : [],
-      themeVars,
+      openIn,
       selectors: normalizedSelectors,
       allowedOrigins: Array.isArray(userCfg.allowedOrigins) ? userCfg.allowedOrigins : DEFAULT_ALLOWED_ORIGINS,
       endpoints
@@ -375,8 +379,9 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       const base = path.basename(filePath);
       if (base === '30-telemetry.css') return Boolean(modules.metrics);
       if (base === '40-prompt-suggestions.css') return Boolean(modules.promptSuggestions);
+      if (base === '42-open-in.css') return Boolean(modules.openIn);
       if (base === '45-settings-ui.css') return Boolean(enabled);
-      return modules.theme !== false;
+      return Boolean(enabled);
     });
     const baseCss = activeStyleFiles.map((f) => readTextSafe(f, '')).join('\n\n');
     const customCss = !safeMode && modules.customCss ? readTextSafe(path.join(USER_DIR, 'custom.css'), '') : '';
@@ -397,13 +402,12 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       .update(customJs)
       .update(
         JSON.stringify({
-          preset,
           telemetryLayout,
           telemetryCacheMode,
           promptSuggestionModel,
-          sshHosts: activeConfig.sshHosts,
           modules,
-          themeVars,
+          openIn: openInDescriptors,
+          ideaPath: openIn.ideaPath,
           selectors: activeConfig.selectors
         })
       )
@@ -417,26 +421,28 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       version: cachedPatchVersion,
       platform: process.platform,
       enabled,
-      preset,
       telemetryLayout,
       telemetryCacheMode,
       cssText: baseCss,
       customCss,
-      themeVars,
       i18nDict: mergedDict,
       modules,
+      openIn: openInDescriptors,
       selectors: activeConfig.selectors,
       userConfig: {
         enabled,
         channel,
-        preset,
         telemetryLayout,
         telemetryCacheMode,
         contextLimit,
         promptSuggestionModel,
-        sshHosts: activeConfig.sshHosts,
         modules,
-        themeVars
+        openIn: {
+          targets: openIn.targets,
+          ideaPath: openIn.ideaPath,
+          copyPath: openIn.copyPath,
+          customTargetsCount: openIn.customTargets.length
+        }
       },
       customJs
     };

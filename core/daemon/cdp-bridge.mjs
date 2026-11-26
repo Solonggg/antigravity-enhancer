@@ -1,10 +1,10 @@
 /**
- * core/daemon/cdp-bridge.mjs — CDP Target Discovery, Host Fingerprint Gate, Swarm Relay, M2 Cold-Start Relay & Log Hygiene
+ * core/daemon/cdp-bridge.mjs — Local-Only CDP Target Discovery, Host Fingerprint Gate,
+ * Swarm Iframe Injection, Open-In Action Dispatch, M2 Cold-Start Relay & Log Hygiene
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
   isAllowedOrigin as sharedIsAllowedOrigin,
@@ -19,41 +19,9 @@ import {
 import { ROOT_DIR } from './paths.mjs';
 import { createCdpRelaunchController } from './cdp-relaunch.mjs';
 
-export const ALLOWED_EXTERNAL_LINKS = Object.freeze({
-  github: 'https://github.com/nkjDSLcvanv/antigravity-codex-theme',
-  feedback: 'https://x.com/shehxuhxjx66088/status/2124698149742883293?a=EQtEZD2AMCGaj9bBRIo&s=20'
-});
-
-export function openAllowlistedExternalLink(key, { execFileFn = execFile, platform = process.platform } = {}) {
-  const url = Object.prototype.hasOwnProperty.call(ALLOWED_EXTERNAL_LINKS, key)
-    ? ALLOWED_EXTERNAL_LINKS[key]
-    : '';
-  if (!url) return { ok: false, url: '' };
-  try {
-    if (platform === 'darwin') {
-      execFileFn('open', [url], { timeout: 5000 }, () => {});
-    } else if (platform === 'win32') {
-      execFileFn('rundll32.exe', ['url.dll,FileProtocolHandler', url], { timeout: 5000, windowsHide: true }, () => {});
-    } else {
-      execFileFn('xdg-open', [url], { timeout: 5000 }, () => {});
-    }
-    return { ok: true, url };
-  } catch {
-    return { ok: false, url };
-  }
-}
-
 const __bridgeDir = path.dirname(fileURLToPath(import.meta.url));
 let getLsLogSig = () => '';
 let getDbSignature = () => null;
-let createSshRemoteController = () => ({
-  getRemoteMetricsSource: () => null,
-  syncState: () => {},
-  stop: () => {}
-});
-let checkForUpdates = async () => ({ ok: false, status: 'error', error: 'updater unavailable' });
-let applyPluginUpdate = async () => ({ ok: false, applied: false, error: 'updater unavailable' });
-let updateApplyInFlight = false;
 if (fs.existsSync(path.join(__bridgeDir, 'ls-log.mjs'))) {
   try {
     const lsMod = await import('./ls-log.mjs');
@@ -64,21 +32,6 @@ if (fs.existsSync(path.join(__bridgeDir, 'sqlite-metrics.mjs'))) {
   try {
     const sqMod = await import('./sqlite-metrics.mjs');
     if (typeof sqMod.getDbSignature === 'function') getDbSignature = sqMod.getDbSignature;
-  } catch {}
-}
-if (fs.existsSync(path.join(__bridgeDir, 'ssh-remote.mjs'))) {
-  try {
-    const sshMod = await import('./ssh-remote.mjs');
-    if (typeof sshMod.createSshRemoteController === 'function') {
-      createSshRemoteController = sshMod.createSshRemoteController;
-    }
-  } catch {}
-}
-if (fs.existsSync(path.join(__bridgeDir, 'updater.mjs'))) {
-  try {
-    const updMod = await import('./updater.mjs');
-    if (typeof updMod.checkForUpdates === 'function') checkForUpdates = updMod.checkForUpdates;
-    if (typeof updMod.applyPluginUpdate === 'function') applyPluginUpdate = updMod.applyPluginUpdate;
   } catch {}
 }
 
@@ -135,8 +88,13 @@ export function isSkippedTargetCoolingDown(entry, currentOrigin, nowMs = Date.no
   return nowMs < Number(entry.nextRetryAtMs || 0);
 }
 
-const DAEMON_EXTRA_PATTERNS = ['theme-patch', 'antigravity-font-daemon.mjs', 'antigravity-codex-daemon.mjs'];
-const DAEMON_PID_PREFIXES = ['ag-theme-daemon-', 'ag-codex-daemon-'];
+const DAEMON_EXTRA_PATTERNS = [
+  'theme-patch',
+  'antigravity-font-daemon.mjs',
+  'antigravity-codex-daemon.mjs',
+  'antigravity-enhancer-daemon.mjs'
+];
+const DAEMON_PID_PREFIXES = ['ag-enhancer-daemon-', 'ag-theme-daemon-', 'ag-codex-daemon-'];
 
 export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutdown = null, options = {}) {
   const {
@@ -162,7 +120,7 @@ export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutd
   }
 
   const pidKey = cliChannel || 'default';
-  const pidFile = path.join(pidDir, `ag-codex-daemon-${pidKey}.pid`);
+  const pidFile = path.join(pidDir, `ag-enhancer-daemon-${pidKey}.pid`);
   const scanDirs = Array.isArray(pidDirs)
     ? pidDirs
     : getDaemonPidCandidateDirs({ platform, tmpDir: pidDir });
@@ -177,7 +135,9 @@ export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutd
         for (const f of fs.readdirSync(dir)) {
           if (!f.endsWith('.pid')) continue;
           const matchesTargetFile = cliChannel
-            ? f === `ag-codex-daemon-${pidKey}.pid` || f.startsWith('ag-theme-daemon-')
+            ? f === `ag-enhancer-daemon-${pidKey}.pid` ||
+              f === `ag-codex-daemon-${pidKey}.pid` ||
+              f.startsWith('ag-theme-daemon-')
             : DAEMON_PID_PREFIXES.some((prefix) => f.startsWith(prefix));
           if (!matchesTargetFile) continue;
           const candidatePath = path.join(dir, f);
@@ -198,8 +158,7 @@ export function acquireDaemonPidLock(cliChannel = null, runOnce = false, onShutd
       } catch {}
     }
 
-    // 2. In default singleton mode, also sweep the real OS process table to catch orphaned daemons
-    //    whose .pid files were missing, overwritten, or written to a different TEMP directory.
+    // 2. Sweep real OS process table to catch orphaned daemons
     if (!cliChannel) {
       try {
         for (const pid of findRunningDaemonPidsImpl({
@@ -309,14 +268,15 @@ export function trimLogFileIfOversized(filePath, maxBytes = 256 * 1024, keepByte
 
 export function trimDaemonLogsIfNeeded(runOnce = false) {
   if (runOnce || process.platform !== 'darwin') return;
-  trimLogFileIfOversized('/tmp/antigravity-codex-daemon.log');
-  trimLogFileIfOversized('/tmp/antigravity-codex-daemon.err');
+  trimLogFileIfOversized('/tmp/antigravity-enhancer-daemon.log');
+  trimLogFileIfOversized('/tmp/antigravity-enhancer-daemon.err');
 }
 
 export function createCdpManager({
   bundleCtrl,
   metricsReader,
   promptSuggester = null,
+  openInMod = null,
   hasSqlite,
   runOnce = false,
   safeMode = false,
@@ -329,9 +289,7 @@ export function createCdpManager({
   const fallbackBackoffUntil = new Map();
   const skippedNonHostTargets = new Map();
   const targetMetaMap = new Map();
-  const targetThemeModes = new Map();
   const cdpRelaunchCtrl = createCdpRelaunchController();
-  const sshRemoteCtrl = createSshRemoteController();
   let isSyncing = false;
   let superseded = false;
   let syncTickCount = 0;
@@ -370,44 +328,28 @@ export function createCdpManager({
     return false;
   }
 
-  function resolveParentThemeMode(targetId, channel) {
-    let curId = targetId;
-    for (let depth = 0; depth < 6 && curId; depth += 1) {
-      const meta = targetMetaMap.get(curId);
-      const pid = meta?.parentId || null;
-      if (pid && targetThemeModes.has(pid)) {
-        return targetThemeModes.get(pid);
-      }
-      curId = pid;
-    }
-    for (const [id, mode] of targetThemeModes.entries()) {
-      const meta = targetMetaMap.get(id);
-      if (!channel || !meta?.channel || meta.channel === channel) {
-        return mode;
-      }
-    }
-    return '';
-  }
-
-  async function relayThemeModeToChildIframes(parentId, channel, mode) {
-    if (mode !== 'dark' && mode !== 'light') return;
-    for (const [id, entry] of attachedTargets.entries()) {
-      if (!entry.isSwarmIframe || !entry.hostConfirmed) continue;
-      if (channel && entry.endpoint?.channel && entry.endpoint.channel !== channel) continue;
-      if (parentId && entry.parentId && entry.parentId !== parentId) {
-        const resolved = resolveParentThemeMode(id, entry.endpoint?.channel);
-        if (resolved && resolved !== mode) continue;
-      }
-      try {
-        await entry.send('Runtime.evaluate', {
-          expression: `window.__ag_host_theme_mode = ${JSON.stringify(mode)}; if (typeof window.__ag_set_host_theme_mode === 'function') window.__ag_set_host_theme_mode(${JSON.stringify(mode)});`,
-          returnByValue: false
-        });
-        if (entry.updateNewDocScript) {
-          await entry.updateNewDocScript();
+  function buildSettingsSnapshot(activeConfig) {
+    const openInCfg = activeConfig.openIn || { targets: ['idea', 'finder'], ideaPath: '', copyPath: true, customTargets: [] };
+    const openInDetectors =
+      openInMod && typeof openInMod.detectOpenInTargets === 'function'
+        ? openInMod.detectOpenInTargets(openInCfg)
+        : {};
+    return {
+      config: {
+        enabled: activeConfig.enabled,
+        telemetryLayout: activeConfig.telemetryLayout,
+        telemetryCacheMode: activeConfig.telemetryCacheMode,
+        promptSuggestionModel: activeConfig.promptSuggestionModel,
+        modules: Object.assign({}, activeConfig.modules),
+        openIn: {
+          targets: Array.isArray(openInCfg.targets) ? openInCfg.targets.slice() : ['idea', 'finder'],
+          ideaPath: typeof openInCfg.ideaPath === 'string' ? openInCfg.ideaPath : '',
+          copyPath: openInCfg.copyPath !== false,
+          customTargetsCount: Array.isArray(openInCfg.customTargets) ? openInCfg.customTargets.length : 0
         }
-      } catch {}
-    }
+      },
+      openInDetectors
+    };
   }
 
   function attachTarget(target, endpoint) {
@@ -475,13 +417,7 @@ export function createCdpManager({
             ws.send(JSON.stringify({ id, method, params }));
           });
 
-        const buildEffectiveScript = () => {
-          const { cachedInjectScript } = bundleCtrl.getState();
-          if (!isSwarmIframe) return cachedInjectScript;
-          const inheritedMode = resolveParentThemeMode(target.id, endpoint.channel);
-          const preamble = inheritedMode ? `window.__ag_host_theme_mode = ${JSON.stringify(inheritedMode)};\n` : '';
-          return `${preamble}${cachedInjectScript}`;
-        };
+        const buildEffectiveScript = () => bundleCtrl.getState().cachedInjectScript;
 
         const verifyHostTarget = async () => {
           if (isSwarmIframe) return { isHost: true, timedOut: false };
@@ -591,39 +527,15 @@ export function createCdpManager({
 
           for (const cid of activeCascadeIds) {
             const prev = pushedSessions.get(cid) || { hash: '', pendingActive: false };
-            let rawSig = getDbSignature(cid, endpoint.conversationsDir);
-            let remoteSource = null;
-            if (!rawSig && activeConfig.modules?.sshRemote === true) {
-              remoteSource = sshRemoteCtrl.getRemoteMetricsSource(cid, {
-                sshHosts: activeConfig.sshHosts,
-                force
-              });
-              if (remoteSource?.sig && typeof remoteSource.openDb === 'function') {
-                rawSig = remoteSource.sig;
-              }
-            }
-            rawSig = rawSig || 'empty';
-            const isRemote = Boolean(remoteSource?.sig && typeof remoteSource.openDb === 'function');
-            const lsSig = prev.pendingActive && !isRemote ? getLsLogSig(endpoint.lsLogFile) : '';
+            const rawSig = getDbSignature(cid, endpoint.conversationsDir) || 'empty';
+            const lsSig = prev.pendingActive ? getLsLogSig(endpoint.lsLogFile) : '';
             const sessionKey = `${cid}@${rawSig}|lim:${activeConfig.manualContextLimit || 0}:${activeConfig.fallbackContextLimit || 256000}|ly:${activeConfig.telemetryLayout}:${activeConfig.telemetryCacheMode}${lsSig ? `|ls:${lsSig}` : ''}`;
             if (!force && sessionKey === prev.hash) continue;
 
-            const payload = metricsReader.parseConversationMetrics(
-              cid,
-              endpoint.conversationsDir,
-              isRemote
-                ? {
-                    cacheKey: `ssh://${remoteSource.host || 'remote'}/${cid}`,
-                    rawDbSig: remoteSource.sig,
-                    openDb: remoteSource.openDb,
-                    lsLogFile: '',
-                    lsSig: ''
-                  }
-                : {
-                    lsLogFile: endpoint.lsLogFile,
-                    lsSig
-                  }
-            );
+            const payload = metricsReader.parseConversationMetrics(cid, endpoint.conversationsDir, {
+              lsLogFile: endpoint.lsLogFile,
+              lsSig
+            });
             if (!payload || payload.transientError) {
               if (force && payload?.cachedPayload) {
                 await send('Runtime.evaluate', {
@@ -656,7 +568,7 @@ export function createCdpManager({
                 JSON.stringify(cachedPatchVersion) +
                 ' && (' +
                 JSON.stringify(!activeConfig.enabled) +
-                ' || (window.__ag_body_ready === true && !!document.getElementById("ag-codex-theme"))))',
+                ' || (window.__ag_body_ready === true && !!document.getElementById("ag-enhancer-style"))))',
               returnByValue: true
             });
             if (checkRes?.result?.result?.value !== true) {
@@ -706,26 +618,13 @@ export function createCdpManager({
           );
           if (!isSwarmIframe) {
             await send('Runtime.addBinding', { name: '__agRequestMetrics' });
-            await send('Runtime.addBinding', { name: '__agSyncHostThemeMode' });
             await send('Runtime.addBinding', { name: '__agRequestPromptSuggestion' });
             await send('Runtime.addBinding', { name: '__agGetSettingsState' });
             await send('Runtime.addBinding', { name: '__agUpdateSettings' });
-            await send('Runtime.addBinding', { name: '__agOpenExternalUrl' });
-            await send('Runtime.addBinding', { name: '__agCheckPluginUpdate' });
-            await send('Runtime.addBinding', { name: '__agApplyPluginUpdate' });
+            await send('Runtime.addBinding', { name: '__agOpenInAction' });
           }
           await updateNewDocScript();
           const ok = await inject();
-          if (!isSwarmIframe) {
-            const modeRes = await send('Runtime.evaluate', {
-              expression: `document.documentElement ? (document.documentElement.getAttribute('data-ag-theme-mode') || '') : ''`,
-              returnByValue: true
-            });
-            const resolvedMode = String(modeRes?.result?.result?.value || '').trim();
-            if (resolvedMode === 'dark' || resolvedMode === 'light') {
-              targetThemeModes.set(target.id, resolvedMode);
-            }
-          }
           await syncMetricsForSession(true);
           initialAttachDone = true;
           clearTimeout(attachTimeout);
@@ -758,15 +657,33 @@ export function createCdpManager({
               }
               return;
             }
-            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agSyncHostThemeMode') {
-              const nextMode = String(msg.params.payload || '').trim();
-              if (nextMode === 'dark' || nextMode === 'light') {
-                const prevMode = targetThemeModes.get(target.id);
-                targetThemeModes.set(target.id, nextMode);
-                if (prevMode !== nextMode) {
-                  relayThemeModeToChildIframes(target.id, endpoint.channel, nextMode);
-                }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agOpenInAction') {
+              const { activeConfig } = bundleCtrl.getState();
+              if (
+                isSwarmIframe ||
+                !hostConfirmed ||
+                !openInMod ||
+                typeof openInMod.executeOpenAction !== 'function' ||
+                !activeConfig.enabled ||
+                !activeConfig.modules.openIn
+              ) {
+                return;
               }
+              let payload = null;
+              try {
+                payload = msg.params.payload ? JSON.parse(String(msg.params.payload)) : null;
+              } catch {}
+              if (!payload) return;
+              void (async () => {
+                try {
+                  const res = await openInMod.executeOpenAction(payload, activeConfig.openIn);
+                  if (!res.ok) {
+                    console.warn(`[Daemon] Open-In action failed (${payload.targetId || '?'}):`, res.error);
+                  }
+                } catch (err) {
+                  console.warn('[Daemon] Open-In action error:', err?.message || err);
+                }
+              })();
               return;
             }
             if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agRequestPromptSuggestion') {
@@ -810,80 +727,6 @@ export function createCdpManager({
               })();
               return;
             }
-            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agOpenExternalUrl') {
-              if (isSwarmIframe || !hostConfirmed) return;
-              let req = {};
-              try {
-                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
-              } catch {}
-              const key = String(req?.key || '').trim();
-              if (key) openAllowlistedExternalLink(key);
-              return;
-            }
-            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agCheckPluginUpdate') {
-              if (isSwarmIframe || !hostConfirmed) return;
-              let req = {};
-              try {
-                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
-              } catch {}
-              const reqId = String(req?.reqId || '');
-              void (async () => {
-                let out;
-                try {
-                  out = await checkForUpdates({ targetDir: ROOT_DIR });
-                } catch (err) {
-                  out = { ok: false, status: 'error', error: err?.message || String(err || 'Check failed') };
-                }
-                if (ws.readyState === WebSocket.OPEN) {
-                  const payloadJson = JSON.stringify(out)
-                    .replace(/\u2028/g, '\\u2028')
-                    .replace(/\u2029/g, '\\u2029');
-                  try {
-                    await send('Runtime.evaluate', {
-                      expression: `if (typeof window.__ag_on_settings_state === 'function') { window.__ag_on_settings_state(${JSON.stringify(reqId)}, ${payloadJson}); }`,
-                      returnByValue: false
-                    });
-                  } catch {}
-                }
-              })();
-              return;
-            }
-            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agApplyPluginUpdate') {
-              if (isSwarmIframe || !hostConfirmed) return;
-              let req = {};
-              try {
-                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
-              } catch {}
-              const reqId = String(req?.reqId || '');
-              const ref = typeof req?.ref === 'string' && req.ref.trim() ? req.ref.trim() : 'main';
-              void (async () => {
-                let out;
-                if (updateApplyInFlight) {
-                  out = { ok: false, applied: false, error: 'Update already in progress' };
-                } else {
-                  updateApplyInFlight = true;
-                  try {
-                    out = await applyPluginUpdate({ targetDir: ROOT_DIR, ref, scheduleRestart: true });
-                  } catch (err) {
-                    out = { ok: false, applied: false, error: err?.message || String(err || 'Update failed') };
-                  } finally {
-                    updateApplyInFlight = false;
-                  }
-                }
-                if (ws.readyState === WebSocket.OPEN) {
-                  const payloadJson = JSON.stringify(out)
-                    .replace(/\u2028/g, '\\u2028')
-                    .replace(/\u2029/g, '\\u2029');
-                  try {
-                    await send('Runtime.evaluate', {
-                      expression: `if (typeof window.__ag_on_settings_state === 'function') { window.__ag_on_settings_state(${JSON.stringify(reqId)}, ${payloadJson}); }`,
-                      returnByValue: false
-                    });
-                  } catch {}
-                }
-              })();
-              return;
-            }
             if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agGetSettingsState') {
               if (isSwarmIframe || !hostConfirmed) return;
               let req = {};
@@ -902,15 +745,6 @@ export function createCdpManager({
                   if (promptSuggester && typeof promptSuggester.syncState === 'function') {
                     try {
                       promptSuggester.syncState();
-                    } catch {}
-                  }
-                  if (sshRemoteCtrl && typeof sshRemoteCtrl.syncState === 'function') {
-                    try {
-                      const stCfg = bundleCtrl.getState().activeConfig;
-                      sshRemoteCtrl.syncState({
-                        enabled: Boolean(stCfg.enabled && stCfg.modules?.sshRemote),
-                        sshHosts: stCfg.sshHosts
-                      });
                     } catch {}
                   }
                   for (const entry of attachedTargets.values()) {
@@ -933,17 +767,12 @@ export function createCdpManager({
                     modelsInfo = await promptSuggester.listModels({ force: refreshModels });
                   } catch {}
                 }
+                const snapshot = buildSettingsSnapshot(activeConfig);
                 const out = {
                   ok: true,
                   version: cachedPatchVersion,
-                  config: {
-                    enabled: activeConfig.enabled,
-                    telemetryLayout: activeConfig.telemetryLayout,
-                    telemetryCacheMode: activeConfig.telemetryCacheMode,
-                    promptSuggestionModel: activeConfig.promptSuggestionModel,
-                    sshHosts: Array.isArray(activeConfig.sshHosts) ? activeConfig.sshHosts : [],
-                    modules: Object.assign({}, activeConfig.modules)
-                  },
+                  config: snapshot.config,
+                  openInDetectors: snapshot.openInDetectors,
                   agyStatus,
                   modelsInfo
                 };
@@ -978,16 +807,6 @@ export function createCdpManager({
                   if (promptSuggester && typeof promptSuggester.syncState === 'function') {
                     promptSuggester.syncState();
                   }
-                  const { activeConfig } = bundleCtrl.getState();
-                  if (sshRemoteCtrl && typeof sshRemoteCtrl.syncState === 'function') {
-                    sshRemoteCtrl.syncState({
-                      enabled: Boolean(activeConfig.enabled && activeConfig.modules?.sshRemote),
-                      sshHosts: activeConfig.sshHosts
-                    });
-                  }
-                  if (!activeConfig.enabled) {
-                    targetThemeModes.clear();
-                  }
                   for (const entry of attachedTargets.values()) {
                     if (!entry.hostConfirmed) continue;
                     try {
@@ -1002,18 +821,13 @@ export function createCdpManager({
                   promptSuggester && typeof promptSuggester.getStatus === 'function'
                     ? promptSuggester.getStatus()
                     : { available: false, running: false, starting: false, ready: false, warmed: false, activeModel: '' };
+                const snapshot = buildSettingsSnapshot(activeConfig);
                 const out = {
                   ok: Boolean(writeRes.ok),
                   error: writeRes.error || '',
                   version: cachedPatchVersion,
-                  config: {
-                    enabled: activeConfig.enabled,
-                    telemetryLayout: activeConfig.telemetryLayout,
-                    telemetryCacheMode: activeConfig.telemetryCacheMode,
-                    promptSuggestionModel: activeConfig.promptSuggestionModel,
-                    sshHosts: Array.isArray(activeConfig.sshHosts) ? activeConfig.sshHosts : [],
-                    modules: Object.assign({}, activeConfig.modules)
-                  },
+                  config: snapshot.config,
+                  openInDetectors: snapshot.openInDetectors,
                   agyStatus
                 };
                 if (ws.readyState === WebSocket.OPEN) {
@@ -1056,7 +870,6 @@ export function createCdpManager({
           for (const [, cb] of pendingCallbacks) cb(null);
           pendingCallbacks.clear();
           const wasAttached = attachedTargets.delete(target.id);
-          targetThemeModes.delete(target.id);
           if (wasAttached && hadAttachedTarget && attachedTargets.size === 0 && !runOnce && !superseded) {
             triggerFastWatch(30000);
           }
@@ -1099,15 +912,6 @@ export function createCdpManager({
         promptSuggester.syncState();
       }
       const { activeConfig } = bundleCtrl.getState();
-      if (sshRemoteCtrl && typeof sshRemoteCtrl.syncState === 'function') {
-        sshRemoteCtrl.syncState({
-          enabled: Boolean(activeConfig.enabled && activeConfig.modules?.sshRemote),
-          sshHosts: activeConfig.sshHosts
-        });
-      }
-      if (!activeConfig.enabled) {
-        targetThemeModes.clear();
-      }
       const shouldHeartbeatCheck = bundleChanged || syncTickCount % 6 === 1;
       const nowMs = Date.now();
       const shouldDiscoverTargets =
@@ -1225,7 +1029,6 @@ export function createCdpManager({
             entry.ws.close();
           } catch {}
           attachedTargets.delete(id);
-          targetThemeModes.delete(id);
         }
       }
 
@@ -1261,16 +1064,12 @@ export function createCdpManager({
     if (promptSuggester && typeof promptSuggester.stop === 'function') {
       promptSuggester.stop({ terminateAll: true });
     }
-    if (sshRemoteCtrl && typeof sshRemoteCtrl.stop === 'function') {
-      sshRemoteCtrl.stop();
-    }
     for (const [, entry] of attachedTargets.entries()) {
       try {
         entry.ws.close();
       } catch {}
     }
     attachedTargets.clear();
-    targetThemeModes.clear();
   }
 
   function getNextSyncDelayMs() {

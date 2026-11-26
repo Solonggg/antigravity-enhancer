@@ -49,10 +49,10 @@ test('NON_HOST_CMD_RE excludes renderer, utility, crashpad, and sidecar_sdk comp
 });
 
 test('stripUtf8Bom removes leading UTF-8 BOM without altering normal JSON strings', () => {
-  const withBom = '\uFEFF{"enabled":true,"preset":"codex-pure-white"}';
+  const withBom = '\uFEFF{"enabled":true,"telemetryLayout":"compact"}';
   const parsed = JSON.parse(stripUtf8Bom(withBom));
   assert.equal(parsed.enabled, true);
-  assert.equal(parsed.preset, 'codex-pure-white');
+  assert.equal(parsed.telemetryLayout, 'compact');
   assert.equal(stripUtf8Bom('{"ok":1}'), '{"ok":1}');
 });
 

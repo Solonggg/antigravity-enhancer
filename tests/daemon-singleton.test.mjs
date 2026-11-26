@@ -17,12 +17,15 @@ import { acquireDaemonPidLock, createCdpManager } from '../core/daemon/cdp-bridg
 
 test('isDaemonCommandLine matches cross-platform daemon commands and rejects non-daemon commands', () => {
   const shouldMatch = [
+    '/opt/homebrew/bin/node --disable-warning=ExperimentalWarning /Users/alice/.gemini/antigravity/scripts/antigravity-enhancer-daemon.mjs',
+    '"C:\\Program Files\\nodejs\\node.exe" --disable-warning=ExperimentalWarning "C:\\Users\\张三\\.gemini\\antigravity\\scripts\\antigravity-enhancer-daemon.mjs"',
     '/opt/homebrew/bin/node --disable-warning=ExperimentalWarning /Users/alice/.gemini/antigravity/scripts/antigravity-codex-daemon.mjs',
     '"C:\\Program Files\\nodejs\\node.exe" --disable-warning=ExperimentalWarning "C:\\Users\\张三\\.gemini\\antigravity\\scripts\\antigravity-codex-daemon.mjs"',
     'C:\\Program Files\\nodejs\\node.exe --disable-warning=ExperimentalWarning C:\\Users\\alice\\.gemini\\antigravity\\scripts\\antigravity-codex-daemon.mjs',
     '/usr/bin/env node /home/alice/.gemini/antigravity/scripts/antigravity-font-daemon.mjs',
+    'node /Users/alice/.gemini/antigravity/enhancer/core/daemon.mjs',
     'node /Users/alice/.gemini/antigravity/codex-theme/core/daemon.mjs',
-    '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\alice\\antigravity-codex-theme\\core\\daemon.mjs"'
+    '"C:\\Program Files\\nodejs\\node.exe" "C:\\Users\\alice\\antigravity-enhancer\\core\\daemon.mjs"'
   ];
   for (const cmd of shouldMatch) {
     assert.equal(isDaemonCommandLine(cmd), true, `Expected match: ${cmd}`);

@@ -108,9 +108,9 @@ export async function detectEnvironment(channel = 'auto') {
     sqliteAvailable,
     tier:
       nodeMinOk && sqliteAvailable
-        ? 'FULL (>= 22.13.0, Codex Theme + i18n + Session Status & Telemetry)'
+        ? 'FULL (>= 22.13.0, Chinese UI + Open In + Local Session Status & Usage Stats)'
         : nodeMinOk
-        ? 'STANDARD (>= 22.13.0, Codex Theme + i18n; node:sqlite unavailable)'
+        ? 'STANDARD (>= 22.13.0, Chinese UI + Open In; node:sqlite unavailable)'
         : 'UNSUPPORTED (< 22.13.0, requires Node >= 22.13.0)',
     channel,
     appExists: chInfo.appExists || insidersInfo.appExists || hostRuntime.runningProcesses.length > 0,
@@ -268,14 +268,13 @@ export async function inspectLiveWindow(portFileOrEnv, fallbackPort = 9222) {
                 ),
                 version: window.__ag_patch_version || null,
                 bodyReady: window.__ag_body_ready === true,
-                hasStyle: !!document.getElementById('ag-codex-theme'),
+                hasStyle: !!document.getElementById('ag-enhancer-style'),
                 hasUserStyle: !!document.getElementById('ag-user-custom-style'),
-                preset: document.documentElement ? document.documentElement.getAttribute('data-ag-preset') : null,
-                themeMode: document.documentElement ? document.documentElement.getAttribute('data-ag-theme-mode') : null,
                 pageType: document.documentElement ? document.documentElement.getAttribute('data-ag-page-type') : null,
                 dictCount: window.__ag_i18n_dict ? Object.keys(window.__ag_i18n_dict).length : 0,
                 protoSafe: window.__ag_i18n_dict ? Object.getPrototypeOf(window.__ag_i18n_dict) === null : false,
-                modules: window.__AG_CODEX_CTX__ ? window.__AG_CODEX_CTX__.modules : null,
+                modules: window.__AG_ENHANCER_CTX__ ? window.__AG_ENHANCER_CTX__.modules : null,
+                openInMounted: typeof window.__agOpenInHelpers === 'object',
                 pillMounted: !!document.getElementById('ag-live-metrics-pill'),
                 pillText: document.getElementById('ag-live-metrics-pill')?.textContent || null
               }))()`,
