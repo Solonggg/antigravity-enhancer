@@ -288,6 +288,36 @@
     return 'Resets in <1m';
   }
 
+  function formatQuotaShortWindowLabel(bucket, isZh = true) {
+    const rawWin = String((bucket && bucket.window) || '').trim().toLowerCase();
+    if (rawWin === 'daily') return isZh ? '每日' : 'Daily';
+    if (rawWin === 'weekly') return isZh ? '每周' : 'Weekly';
+    if (/^\d+[smhd]$/.test(rawWin)) return rawWin;
+    return String((bucket && bucket.displayName) || '').trim();
+  }
+
+  function formatQuotaResetShort(resetTimeMs, nowMs = Date.now()) {
+    if (!resetTimeMs || !Number.isFinite(resetTimeMs)) return '';
+    const diffMs = resetTimeMs - nowMs;
+    if (diffMs <= 0) return '<1m';
+    const totalMins = Math.floor(diffMs / 60000);
+    const days = Math.floor(totalMins / 1440);
+    const hours = Math.floor((totalMins % 1440) / 60);
+    const mins = totalMins % 60;
+    if (days > 0) return hours > 0 ? days + 'd ' + hours + 'h' : days + 'd';
+    if (hours > 0) return mins > 0 ? hours + 'h ' + mins + 'm' : hours + 'h';
+    if (mins > 0) return mins + 'm';
+    return '<1m';
+  }
+
+  function quotaWindowOrder(bucket) {
+    const rawWin = String((bucket && bucket.window) || '').trim().toLowerCase();
+    if (/^\d+[smh]$/.test(rawWin)) return 1;
+    if (rawWin === 'daily' || /^\d+d$/.test(rawWin)) return 2;
+    if (rawWin === 'weekly') return 3;
+    return 4;
+  }
+
   function normalizeOfficialQuotaGroups(rawGroups, { nowMs = Date.now(), isZh = true } = {}) {
     if (!Array.isArray(rawGroups)) return [];
     const groups = [];
@@ -311,16 +341,21 @@
         const level = !hasFraction ? 'unknown' : clamped < 0.1 ? 'crit' : clamped < 0.25 ? 'warn' : 'ok';
         const resetMs = resolveQuotaResetTimeMs(b);
         const resetText = resetMs ? formatQuotaResetCountdown(resetMs, nowMs, isZh) : '';
+        const shortResetText = resetMs ? formatQuotaResetShort(resetMs, nowMs) : '';
         const winLabel = formatQuotaWindowLabel(b, isZh);
+        const shortWinLabel = formatQuotaShortWindowLabel(b, isZh);
         const desc = String(b.description || '').trim();
         buckets.push({
           bucketId: String(b.bucketId || j),
           displayName: String(b.displayName || '').trim(),
           windowLabel: winLabel,
+          shortWindowLabel: shortWinLabel,
+          windowOrder: quotaWindowOrder(b),
           remainingFraction: clamped,
           remainingPct,
           level,
           resetText: resetText || desc,
+          shortResetText,
           disabled: Boolean(b.disabled)
         });
       }

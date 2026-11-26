@@ -230,10 +230,34 @@
     } catch (e) {}
   }
 
+  function renderQuotaRingSvg(pct, level) {
+    const r = 12;
+    const c = 2 * Math.PI * r;
+    const val = typeof pct === 'number' && Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+    const offset = c - (val / 100) * c;
+    const cls = level === 'crit' ? 'ag-q-crit' : level === 'warn' ? 'ag-q-warn' : 'ag-q-ok';
+    return (
+      '<svg class="ag-tt-qring ' +
+      cls +
+      '" width="16" height="16" viewBox="0 0 32 32" aria-hidden="true">' +
+      '<circle class="ag-tt-qring-bg" cx="16" cy="16" r="' +
+      r +
+      '" fill="none" stroke="currentColor" stroke-width="3.4"/>' +
+      '<circle class="ag-tt-qring-fg" cx="16" cy="16" r="' +
+      r +
+      '" fill="none" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="' +
+      c.toFixed(1) +
+      '" stroke-dashoffset="' +
+      offset.toFixed(1) +
+      '"/>' +
+      '</svg>'
+    );
+  }
+
   function renderOfficialQuotaSectionHtml(state, isZh) {
-    const title = isZh ? '官方模型配额' : 'Model Quota';
+    const title = isZh ? '模型配额' : 'Model Quota';
     const refreshLbl = isZh ? '刷新配额' : 'Refresh quota';
-    const openSettingsLbl = isZh ? '配额设置' : 'Settings';
+    const openSettingsLbl = isZh ? '设置 ↗' : 'Settings ↗';
     const loading = Boolean(state && state.loading);
     const groups = state && Array.isArray(state.groups) ? state.groups : [];
     const credits =
@@ -243,73 +267,59 @@
 
     let bodyHtml = '';
     if (loading && groups.length === 0) {
-      bodyHtml = '<div class="ag-tt-quota-empty">' + escapeStatusHtml(isZh ? '正在读取官方配额…' : 'Loading quota…') + '</div>';
+      bodyHtml = '<div class="ag-tt-quota-empty">' + escapeStatusHtml(isZh ? '正在读取配额…' : 'Loading quota…') + '</div>';
     } else if (groups.length === 0) {
       bodyHtml =
         '<div class="ag-tt-quota-empty">' +
-        escapeStatusHtml(isZh ? '暂无配额信息（可点右侧配额设置查看）' : 'No quota info available') +
+        escapeStatusHtml(isZh ? '暂无配额信息' : 'No quota info') +
         '</div>';
     } else {
       bodyHtml =
-        '<div class="ag-tt-quota-list">' +
+        '<div class="ag-tt-qcards">' +
         groups
           .map((g) => {
-            const buckets = g.buckets || [];
-            if (buckets.length === 1) {
-              const b = buckets[0];
-              const rowTitle = g.displayName || b.windowLabel || b.displayName;
-              const subParts = [];
-              if (g.displayName && b.windowLabel && b.windowLabel !== g.displayName) subParts.push(b.windowLabel);
-              if (b.resetText) subParts.push(b.resetText);
-              const pctText =
-                b.disabled
-                  ? isZh ? '未启用' : 'Disabled'
+            const rawBuckets = Array.isArray(g.buckets) ? g.buckets.slice() : [];
+            rawBuckets.sort((a, b) => (a.windowOrder || 9) - (b.windowOrder || 9));
+            const cardTitle = g.displayName || (rawBuckets[0] && (rawBuckets[0].displayName || rawBuckets[0].windowLabel)) || '';
+            const rowsHtml = rawBuckets
+              .map((b) => {
+                const winTxt = b.shortWindowLabel || b.windowLabel || b.displayName || '';
+                const resetTxt = b.shortResetText || (b.remainingPct === 100 && !b.disabled ? (isZh ? '满额' : 'Full') : '');
+                const pctText = b.disabled
+                  ? isZh ? '未启用' : 'Off'
                   : b.remainingPct !== null
-                  ? b.remainingPct + (isZh ? '% 剩余' : '% left')
+                  ? b.remainingPct + '%'
                   : '—';
-              const barWidth = b.remainingPct !== null ? b.remainingPct : 0;
-              return (
-                '<div class="ag-tt-quota-item">' +
-                '<div class="ag-tt-quota-row">' +
-                '<span class="ag-tt-quota-name">' + escapeStatusHtml(rowTitle) + '</span>' +
-                '<span class="ag-tt-quota-pct ag-q-' + escapeStatusHtml(b.level || 'ok') + '">' + escapeStatusHtml(pctText) + '</span>' +
-                '</div>' +
-                (!b.disabled && b.remainingPct !== null
-                  ? '<div class="ag-tt-track ag-tt-quota-track"><div class="ag-tt-seg ag-tt-quota-fill ag-q-' + escapeStatusHtml(b.level || 'ok') + '" style="width:' + barWidth + '%"></div></div>'
-                  : '') +
-                (subParts.length > 0
-                  ? '<div class="ag-tt-quota-sub">' + escapeStatusHtml(subParts.join(' · ')) + '</div>'
-                  : '') +
-                '</div>'
-              );
-            }
+                const rowTitleAttr = b.resetText ? ' title="' + escapeStatusHtml(b.resetText) + '"' : '';
+                return (
+                  '<div class="ag-tt-qcard-row"' +
+                  rowTitleAttr +
+                  '>' +
+                  '<div class="ag-tt-qcard-left">' +
+                  '<span class="ag-tt-qcard-win">' +
+                  escapeStatusHtml(winTxt) +
+                  '</span>' +
+                  (resetTxt ? '<span class="ag-tt-qcard-reset">' + escapeStatusHtml(resetTxt) + '</span>' : '') +
+                  '</div>' +
+                  '<div class="ag-tt-qcard-right">' +
+                  '<span class="ag-tt-quota-pct ag-q-' +
+                  escapeStatusHtml(b.level || 'ok') +
+                  '">' +
+                  escapeStatusHtml(pctText) +
+                  '</span>' +
+                  (!b.disabled && b.remainingPct !== null ? renderQuotaRingSvg(b.remainingPct, b.level) : '') +
+                  '</div>' +
+                  '</div>'
+                );
+              })
+              .join('');
+
             return (
-              '<div class="ag-tt-quota-group">' +
-              (g.displayName ? '<div class="ag-tt-quota-gname">' + escapeStatusHtml(g.displayName) + '</div>' : '') +
-              buckets
-                .map((b) => {
-                  const rowTitle = b.windowLabel || b.displayName;
-                  const pctText =
-                    b.disabled
-                      ? isZh ? '未启用' : 'Disabled'
-                      : b.remainingPct !== null
-                      ? b.remainingPct + (isZh ? '% 剩余' : '% left')
-                      : '—';
-                  const barWidth = b.remainingPct !== null ? b.remainingPct : 0;
-                  return (
-                    '<div class="ag-tt-quota-item is-nested">' +
-                    '<div class="ag-tt-quota-row">' +
-                    '<span class="ag-tt-quota-name">' + escapeStatusHtml(rowTitle) + '</span>' +
-                    '<span class="ag-tt-quota-pct ag-q-' + escapeStatusHtml(b.level || 'ok') + '">' + escapeStatusHtml(pctText) + '</span>' +
-                    '</div>' +
-                    (!b.disabled && b.remainingPct !== null
-                      ? '<div class="ag-tt-track ag-tt-quota-track"><div class="ag-tt-seg ag-tt-quota-fill ag-q-' + escapeStatusHtml(b.level || 'ok') + '" style="width:' + barWidth + '%"></div></div>'
-                      : '') +
-                    (b.resetText ? '<div class="ag-tt-quota-sub">' + escapeStatusHtml(b.resetText) + '</div>' : '') +
-                    '</div>'
-                  );
-                })
-                .join('') +
+              '<div class="ag-tt-qcard">' +
+              (cardTitle ? '<div class="ag-tt-qcard-title">' + escapeStatusHtml(cardTitle) + '</div>' : '') +
+              '<div class="ag-tt-qcard-rows">' +
+              rowsHtml +
+              '</div>' +
               '</div>'
             );
           })
@@ -318,11 +328,11 @@
     }
 
     return (
-      '<div class="ag-tt-sec-hdr ag-tt-quota-hdr">' +
-      '<span class="ag-tt-quota-title-wrap"><span>' +
+      '<div class="ag-tt-hdr ag-tt-quota-hdr">' +
+      '<span class="ag-tt-quota-title-wrap"><span class="ag-tt-hdr-left">' +
       escapeStatusHtml(title) +
       '</span>' +
-      (credits ? '<span class="ag-tt-badge-inline">' + escapeStatusHtml(credits) + '</span>' : '') +
+      (credits ? '<span class="ag-tt-gen-chip">' + escapeStatusHtml(credits) + '</span>' : '') +
       '</span>' +
       '<span class="ag-tt-quota-actions">' +
       '<button type="button" class="ag-tt-quota-btn ag-tt-quota-refresh' +
@@ -332,7 +342,7 @@
       '" title="' +
       escapeStatusHtml(refreshLbl) +
       '">' +
-      '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.67M13.5 2.5v2.8h-2.8"/></svg>' +
+      '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.67M13.5 2.5v2.8h-2.8"/></svg>' +
       '</button>' +
       '<button type="button" class="ag-tt-quota-btn ag-tt-quota-open-settings">' +
       escapeStatusHtml(openSettingsLbl) +
@@ -429,7 +439,8 @@
           : boxRect
           ? boxRect.left + boxRect.width / 2
           : 0;
-      const ttW = tt.offsetWidth || tt.getBoundingClientRect().width || 332;
+      const fallbackW = tt.classList && tt.classList.contains('ag-tt-is-status-only') ? 300 : 532;
+      const ttW = tt.offsetWidth || tt.getBoundingClientRect().width || fallbackW;
       const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
       const vh = window.innerHeight || document.documentElement.clientHeight || 800;
       const left = Math.max(12, Math.min(Math.round(anchorLeft - ttW / 2), vw - ttW - 12));
@@ -555,6 +566,9 @@
 
     window.__ag_tt_owner_pane = paneKey;
     tt.setAttribute('data-ag-owner-pane', paneKey);
+    if (tt.classList) {
+      tt.classList.toggle('ag-tt-is-status-only', Boolean(!SHOW_USAGE_STATS && SHOW_SESSION_STATUS));
+    }
     if (tt.getAttribute('data-ag-raw-tt') !== rawHtml) {
       tt.setAttribute('data-ag-raw-tt', rawHtml);
       tt.innerHTML = rawHtml;
@@ -1565,12 +1579,15 @@
       }
       if (SHOW_USAGE_STATS && payload.tooltipHtml && (window.__ag_tt_owner_pane || 'main') === pane.key) {
         const tt = ensureMetricsTooltipEl();
-        if (tt && tt.getAttribute('data-ag-raw-tt') !== payload.tooltipHtml) {
-          tt.setAttribute('data-ag-raw-tt', payload.tooltipHtml);
-          tt.innerHTML = payload.tooltipHtml;
-          syncOfficialQuotaIntoTooltip(tt, { forceRefresh: false, scopeEl: pane.inputBox });
-          if (pill && tt.getAttribute('data-visible') === '1') {
-            positionMetricsTooltip(pill, tt, pane.inputBox);
+        if (tt) {
+          if (tt.classList) tt.classList.remove('ag-tt-is-status-only');
+          if (tt.getAttribute('data-ag-raw-tt') !== payload.tooltipHtml) {
+            tt.setAttribute('data-ag-raw-tt', payload.tooltipHtml);
+            tt.innerHTML = payload.tooltipHtml;
+            syncOfficialQuotaIntoTooltip(tt, { forceRefresh: false, scopeEl: pane.inputBox });
+            if (pill && tt.getAttribute('data-visible') === '1') {
+              positionMetricsTooltip(pill, tt, pane.inputBox);
+            }
           }
         }
       }

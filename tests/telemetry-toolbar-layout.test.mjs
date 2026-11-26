@@ -630,13 +630,17 @@ test('normalizeOfficialQuotaGroups formats official Antigravity quota groups, le
   assert.equal(groups[0].displayName, 'Gemini 4');
   assert.equal(groups[0].buckets.length, 2);
   assert.equal(groups[0].buckets[0].windowLabel, '5 小时限额');
+  assert.equal(groups[0].buckets[0].shortWindowLabel, '5h');
   assert.equal(groups[0].buckets[0].remainingPct, 72);
   assert.equal(groups[0].buckets[0].level, 'ok');
   assert.equal(groups[0].buckets[0].resetText, '3 小时 20 分钟后重置');
+  assert.equal(groups[0].buckets[0].shortResetText, '3h 20m');
   assert.equal(groups[0].buckets[1].windowLabel, '每周限额');
+  assert.equal(groups[0].buckets[1].shortWindowLabel, '每周');
   assert.equal(groups[0].buckets[1].remainingPct, 8);
   assert.equal(groups[0].buckets[1].level, 'crit');
   assert.equal(groups[0].buckets[1].resetText, '2 天 4 小时后重置');
+  assert.equal(groups[0].buckets[1].shortResetText, '2d 4h');
 });
 
 test('50-telemetry-ui respects independent sessionStatus and usageStats toggles', () => {

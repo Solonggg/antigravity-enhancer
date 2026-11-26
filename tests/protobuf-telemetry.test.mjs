@@ -290,13 +290,17 @@ test('telemetry renderer splits sessionStatus and usageStats independently and e
   assert.ok(!statusOnlyTt.includes('data-ag-quota-slot'));
 
   const usageOnlyTt = buildMetricsTooltipHtml({ ...baseTooltip, showSessionStatus: false, showUsageStats: true });
+  assert.ok(usageOnlyTt.includes('ag-tt-dash'));
+  assert.ok(usageOnlyTt.includes('ag-tt-col-usage'));
+  assert.ok(usageOnlyTt.includes('ag-tt-col-quota'));
   assert.ok(usageOnlyTt.includes('ag-tt-bento'));
   assert.ok(usageOnlyTt.includes('data-ag-quota-slot="1"'));
-  assert.ok(usageOnlyTt.includes('收起明细'));
+  assert.ok(!usageOnlyTt.includes('ag-tt-footer'));
   assert.ok(!usageOnlyTt.includes('ag-tt-live-chip'));
   assert.ok(!usageOnlyTt.includes('ag-tt-wait-note'));
 
   const bothTt = buildMetricsTooltipHtml({ ...baseTooltip, showSessionStatus: true, showUsageStats: true });
+  assert.ok(bothTt.includes('ag-tt-dash'));
   assert.ok(bothTt.includes('ag-tt-live-chip'));
   assert.ok(bothTt.includes('ag-tt-wait-note'));
   assert.ok(bothTt.includes('data-ag-quota-slot="1"'));
