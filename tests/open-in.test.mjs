@@ -309,6 +309,12 @@ test('65-open-in.js runtime extracts file targets from attributes, React props, 
 
   const helpers = sandbox.__agOpenInHelpers;
   assert.ok(helpers, '__agOpenInHelpers must be mounted when openIn is enabled');
+  assert.equal(typeof sandbox.__ag_open_in_icon_svg, 'function', '65-open-in.js should expose __ag_open_in_icon_svg');
+  for (const id of ['idea', 'finder', 'vscode', 'cursor', 'zed', 'copy', 'command']) {
+    const svg = sandbox.__ag_open_in_icon_svg(id);
+    assert.ok(svg.startsWith('<svg ') && svg.endsWith('</svg>'), `icon for ${id} should be valid inline SVG`);
+    assert.ok(!svg.includes('<defs'), `icon for ${id} should avoid <defs> IDs`);
+  }
 
   // 1. Anchor href + anchor text line enrichment
   const anchorEl = {

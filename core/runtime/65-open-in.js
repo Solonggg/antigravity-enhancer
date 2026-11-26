@@ -3,6 +3,81 @@
  * Intercepts contextmenu ONLY when the right-clicked target (or selection) resolves to
  * a local absolute file path / file:// URI. Never touches left-click behavior.
  */
+  function getOpenInIconSvg(idOrType) {
+    const key = String(idOrType || '').toLowerCase();
+    if (key === 'idea') {
+      return (
+        '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
+        '<rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#FE315D"/>' +
+        '<path d="M1.5 12V6.5a5 5 0 0 1 5-5H14L1.5 14Z" fill="#FF7A00"/>' +
+        '<path d="M11 1.5h6.5a5 5 0 0 1 5 5V14L11 1.5Z" fill="#087CFA"/>' +
+        '<path d="M22.5 11v6.5a5 5 0 0 1-5 5H10l12.5-11.5Z" fill="#7B4DFF"/>' +
+        '<rect x="4.8" y="4.8" width="14.4" height="14.4" rx="2.2" fill="#101114"/>' +
+        '<path d="M7.4 7.8h3.1v1.2H9.6v4.1h.9v1.2H7.4v-1.2h.9V9h-.9V7.8Zm4.4 5.2c.5.4 1 .6 1.5.6.7 0 1.1-.4 1.1-1.2V7.8h1.5v4.6c0 1.6-.9 2.5-2.5 2.5-.9 0-1.7-.3-2.2-.9l.6-1Z" fill="#FFFFFF"/>' +
+        '<rect x="7.4" y="16.4" width="5.4" height="1.25" rx="0.6" fill="#FFFFFF"/>' +
+        '</svg>'
+      );
+    }
+    if (key === 'finder') {
+      return (
+        '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
+        '<rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#3BA4FF"/>' +
+        '<path d="M13.2 1.5h4.3a5 5 0 0 1 5 5v11a5 5 0 0 1-5 5h-3.9c-.7-2.2-.8-5.1-.1-8.1h-2.5c-.7-3-.2-8.2 2.2-12.9Z" fill="#E3F2FF"/>' +
+        '<path d="M13.2 1.5c-2.4 4.7-2.9 9.9-2.2 12.9h2.5c-.7 3-.6 5.9.1 8.1" fill="none" stroke="#1565C0" stroke-width="1.15" stroke-linejoin="round"/>' +
+        '<rect x="7.3" y="8" width="1.7" height="3.1" rx="0.85" fill="#123052"/>' +
+        '<rect x="15" y="8" width="1.7" height="3.1" rx="0.85" fill="#123052"/>' +
+        '<path d="M6.8 15.6c1.5 1.8 3.3 2.7 5.2 2.7s3.7-.9 5.2-2.7" fill="none" stroke="#123052" stroke-width="1.5" stroke-linecap="round"/>' +
+        '</svg>'
+      );
+    }
+    if (key === 'vscode') {
+      return (
+        '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
+        '<path d="M17.6 2.3 21.8 4.4v15.2l-4.2 2.1-9.7-9.7 9.7-9.7Z" fill="#0065A9"/>' +
+        '<path d="M17.6 2.3 3.6 15.2a1 1 0 0 0 0 1.5l1.5 1.3a1 1 0 0 0 1.3 0L21.8 6.3V4.4l-4.2-2.1Z" fill="#007ACC"/>' +
+        '<path d="M17.6 21.7 3.6 8.8a1 1 0 0 1 0-1.5L5.1 6a1 1 0 0 1 1.3 0l15.4 11.7v1.9l-4.2 2.1Z" fill="#1F9CF0"/>' +
+        '<path d="M17.6 2.3v19.4l4.2-2.1V4.4l-4.2-2.1Z" fill="#3CC3FF" fill-opacity="0.32"/>' +
+        '</svg>'
+      );
+    }
+    if (key === 'cursor') {
+      return (
+        '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
+        '<rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#141518"/>' +
+        '<path d="M12 4.2 19 8.2v7.6L12 19.8 5 15.8V8.2L12 4.2Z" fill="#2A2D34"/>' +
+        '<path d="M12 4.2 19 8.2 12 12.2 5 8.2 12 4.2Z" fill="#D4D8E0"/>' +
+        '<path d="M19 8.2v7.6L12 19.8v-7.6L19 8.2Z" fill="#8E96A4"/>' +
+        '<path d="M12 12.2v7.6L5 15.8V8.2l7 4Z" fill="#525866"/>' +
+        '<path d="M18.6 8.4 12 12.2v7.2l6.6-11Z" fill="#FFFFFF"/>' +
+        '</svg>'
+      );
+    }
+    if (key === 'zed') {
+      return (
+        '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
+        '<rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#084CCF"/>' +
+        '<path d="M6.2 6.4h11.6v2.1l-7.2 7h7.2v2.1H6.2v-2.1l7.2-7H6.2V6.4Z" fill="#FFFFFF"/>' +
+        '<path d="M4.6 4.6h6.2v1.3H5.9v4.9H4.6V4.6Zm14.8 14.8h-6.2v-1.3h4.9v-4.9h1.3v6.2Z" fill="#89B8FF"/>' +
+        '</svg>'
+      );
+    }
+    if (key === 'copy') {
+      return (
+        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<rect x="9" y="9" width="11" height="11" rx="2.2"/>' +
+        '<path d="M5 15H4.2A2.2 2.2 0 0 1 2 12.8V4.2A2.2 2.2 0 0 1 4.2 2h8.6A2.2 2.2 0 0 1 15 4.2V5"/>' +
+        '</svg>'
+      );
+    }
+    return (
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<rect x="2.5" y="4" width="19" height="16" rx="3"/>' +
+      '<path d="m7 9.5 3 2.5-3 2.5M12.5 14.5H17"/>' +
+      '</svg>'
+    );
+  }
+  window.__ag_open_in_icon_svg = getOpenInIconSvg;
+
   function cleanupOpenInDom() {
     try {
       const menu = document.getElementById('ag-open-in-menu');
@@ -485,6 +560,17 @@
         );
       }
 
+      function appendMenuItemContent(btn, iconKey, label, isMuted) {
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'ag-open-in-icon' + (isMuted ? ' is-muted' : '');
+        iconSpan.innerHTML = getOpenInIconSvg(iconKey);
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'ag-open-in-label';
+        labelSpan.textContent = label;
+        btn.appendChild(iconSpan);
+        btn.appendChild(labelSpan);
+      }
+
       function showMenu(clientX, clientY, target) {
         closeMenu();
 
@@ -515,7 +601,9 @@
           if ((item.type === 'idea' || item.type === 'preset' || item.type === 'command') && target.line) {
             label += zh ? '（第 ' + target.line + ' 行）' : ' (Line ' + target.line + ')';
           }
-          btn.textContent = label;
+          const isKnownApp =
+            item.id === 'idea' || item.id === 'finder' || item.id === 'vscode' || item.id === 'cursor' || item.id === 'zed';
+          appendMenuItemContent(btn, isKnownApp ? item.id : 'command', label, !isKnownApp);
           btn.addEventListener('click', (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
@@ -535,13 +623,14 @@
           copyBtn.type = 'button';
           copyBtn.className = 'ag-open-in-item';
           copyBtn.setAttribute('role', 'menuitem');
-          copyBtn.textContent = target.line
+          const copyLabel = target.line
             ? zh
               ? '复制路径:行号'
               : 'Copy path:line'
             : zh
             ? '复制路径'
             : 'Copy path';
+          appendMenuItemContent(copyBtn, 'copy', copyLabel, true);
           copyBtn.addEventListener('click', (ev) => {
             ev.preventDefault();
             ev.stopPropagation();

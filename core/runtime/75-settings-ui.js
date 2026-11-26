@@ -1009,12 +1009,17 @@
         const chipsHtml = visibleTargets
           .map((item) => {
             const on = enabledSet.has(item.id);
+            const iconHtml =
+              typeof window.__ag_open_in_icon_svg === 'function'
+                ? '<span class="ag-s-target-ico">' + window.__ag_open_in_icon_svg(item.id) + '</span>'
+                : '';
             return (
               '<button type="button" class="ag-s-target-chip" data-openin-target="' +
               escHtml(item.id) +
               '" aria-pressed="' +
               (on ? 'true' : 'false') +
               '">' +
+              iconHtml +
               '<span>' +
               escHtml(item.name) +
               '</span>' +

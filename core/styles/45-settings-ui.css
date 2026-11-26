@@ -638,6 +638,21 @@
   outline-offset: 2px;
 }
 
+#ag-settings-pane .ag-s-target-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+#ag-settings-pane .ag-s-target-ico svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
 #ag-settings-pane .ag-s-btn-secondary,
 #ag-settings-pane .ag-s-btn-primary {
   display: inline-flex;

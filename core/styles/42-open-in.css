@@ -54,6 +54,7 @@
 #ag-open-in-menu .ag-open-in-item {
   display: flex;
   align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 6px 10px;
   border: none;
@@ -64,6 +65,30 @@
   text-align: left;
   cursor: pointer;
   box-sizing: border-box;
+}
+
+#ag-open-in-menu .ag-open-in-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+#ag-open-in-menu .ag-open-in-icon svg {
+  display: block;
+}
+
+#ag-open-in-menu .ag-open-in-icon.is-muted {
+  color: var(--ag-menu-muted);
+}
+
+#ag-open-in-menu .ag-open-in-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #ag-open-in-menu .ag-open-in-item:hover {
