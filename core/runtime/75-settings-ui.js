@@ -226,7 +226,12 @@
             cacheStep: '单步',
             secContextMenu: '右键菜单',
             modOpenIn: '右键打开文件引用',
-            modOpenInDesc: '右键回复中的文件路径，直接用本机编辑器或 Finder 打开',
+            modOpenInDesc:
+              detectedOs === 'win32'
+                ? '右键回复中的文件路径，直接用本机编辑器或资源管理器打开'
+                : detectedOs === 'darwin'
+                ? '右键回复中的文件路径，直接用本机编辑器或 Finder 打开'
+                : '右键回复中的文件路径，直接用本机编辑器或文件管理器打开',
             openInTargetsLbl: '右键菜单目标',
             openInCustomNote: (n) => '另有 ' + n + ' 个自定义目标（来自配置文件）',
             secNextPrompt: '下一步预测',
@@ -272,7 +277,12 @@
           cacheStep: 'Step',
           secContextMenu: 'Context Menu',
           modOpenIn: 'Right-Click Open In',
-          modOpenInDesc: 'Right-click file paths in replies to open in local editors or Finder',
+          modOpenInDesc:
+            detectedOs === 'win32'
+              ? 'Right-click file paths in replies to open in local editors or Explorer'
+              : detectedOs === 'darwin'
+              ? 'Right-click file paths in replies to open in local editors or Finder'
+              : 'Right-click file paths in replies to open in local editors or File Manager',
           openInTargetsLbl: 'Context Menu Targets',
           openInCustomNote: (n) => '+' + n + ' custom target(s) from config file',
           secNextPrompt: 'Next Prompt',
@@ -1009,6 +1019,18 @@
         const chipsHtml = visibleTargets
           .map((item) => {
             const on = enabledSet.has(item.id);
+            const chipName =
+              item.id === 'finder'
+                ? detectedOs === 'win32'
+                  ? isZhUi()
+                    ? '资源管理器'
+                    : 'Explorer'
+                  : detectedOs === 'darwin'
+                  ? 'Finder'
+                  : isZhUi()
+                  ? '文件管理器'
+                  : 'Files'
+                : item.name;
             const iconHtml =
               typeof window.__ag_open_in_icon_svg === 'function'
                 ? '<span class="ag-s-target-ico">' + window.__ag_open_in_icon_svg(item.id) + '</span>'
@@ -1021,7 +1043,7 @@
               '">' +
               iconHtml +
               '<span>' +
-              escHtml(item.name) +
+              escHtml(chipName) +
               '</span>' +
               '</button>'
             );

@@ -21,8 +21,8 @@
       "bytes": 2123
     },
     "daemon/open-in.mjs": {
-      "sha256": "5ff1dad00b9f40239510933b1b85b100c2e208f370ef1371748c5d4615f1d6ab",
-      "bytes": 25282
+      "sha256": "f117717a2390737b8e86b4a3c4dafad39d7a1288c0973a2713e61f3690f11a81",
+      "bytes": 36151
     },
     "daemon/paths.mjs": {
       "sha256": "07734e703fe4332470ba3ad300202488f2fb7c115d1639c5e3a0b85904f5e63b",
@@ -93,16 +93,16 @@
       "bytes": 58788
     },
     "runtime/65-open-in.js": {
-      "sha256": "4d46994dfc7e5254fcdcc330e90a917493b95bd0000084b1057dd388032f4495",
-      "bytes": 28265
+      "sha256": "c2b4ba731866ee9384cc0d28f94ed6893461451c564cdf633e454e58a7dbba1c",
+      "bytes": 31324
     },
     "runtime/70-prompt-suggestions.js": {
       "sha256": "ec3967100ca7f28c1e59073e8294f80bc432dc45414469946197a6a3e344e545",
       "bytes": 13183
     },
     "runtime/75-settings-ui.js": {
-      "sha256": "cce8ec565332d38c59c324c9f5bef4561f48c265f26b32765434dd49456dd139",
-      "bytes": 67630
+      "sha256": "66a94dfdb3bcd089af38b24218f102f13e458e26a89f36502f579fffc7a7e3f9",
+      "bytes": 68607
     },
     "runtime/90-tail.js": {
       "sha256": "c825f807429146d9cc7cbb5033135d9f4cb0208b69a4a3e290b2ba2f23f122e8",

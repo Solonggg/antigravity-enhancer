@@ -9,6 +9,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import {
   OPEN_IN_TARGET_IDS,
+  isWindowsAbsolutePath,
   normalizeOpenInConfig,
   sanitizeOpenInPatch,
   getOpenInMenuDescriptors,
@@ -355,4 +356,362 @@ test('65-open-in.js runtime extracts file targets from attributes, React props, 
   });
 
   assert.equal(helpers.isDarkThemeActive(fakeDoc, sandbox), true);
+});
+
+test('Windows Open-In path parsing, validation, editor detection, and safe command execution', async () => {
+  // 1. Path parsing (Windows drive paths, file:///C:/... URIs, UNC/relative rejection)
+  assert.equal(isWindowsAbsolutePath('C:\\Users\\dev\\App.tsx'), true);
+  assert.equal(isWindowsAbsolutePath('D:/work/proj/main.rs'), true);
+  assert.equal(isWindowsAbsolutePath('\\\\server\\share\\a.txt'), false);
+  assert.equal(isWindowsAbsolutePath('C:relative.txt'), false);
+
+  assert.deepEqual(parseFileTarget('C:\\Users\\dev\\src\\App.tsx:42:5'), {
+    path: 'C:\\Users\\dev\\src\\App.tsx',
+    line: 42,
+    endLine: null,
+    column: 5
+  });
+  assert.deepEqual(parseFileTarget('D:/work/README.md#L10-L20'), {
+    path: 'D:/work/README.md',
+    line: 10,
+    endLine: 20,
+    column: null
+  });
+  assert.deepEqual(parseFileTarget('file:///C:/Users/dev/My%20File.ts#L7C3'), {
+    path: 'C:\\Users\\dev\\My File.ts',
+    line: 7,
+    endLine: null,
+    column: 3
+  });
+  assert.deepEqual(parseFileTarget('file://localhost/c%3A/Users/dev/%E4%B8%AD%E6%96%87.java#L12'), {
+    path: 'c:\\Users\\dev\\中文.java',
+    line: 12,
+    endLine: null,
+    column: null
+  });
+  assert.deepEqual(parseFileTarget('C:\\123'), {
+    path: 'C:\\123',
+    line: null,
+    endLine: null,
+    column: null
+  });
+
+  for (const invalid of [
+    '\\\\server\\share\\file.txt',
+    'file://remote/C:/Users/dev/a.txt',
+    'file:///C:/',
+    'C:\\',
+    'C:relative\\file.ts',
+    'src\\relative\\file.ts:10'
+  ]) {
+    assert.equal(parseFileTarget(invalid), null, `Expected null for Windows invalid path: ${invalid}`);
+  }
+
+  assert.equal(formatDisplayTarget({ path: 'C:\\Users\\dev\\App.tsx', line: 42, endLine: null }), 'App.tsx:42');
+  assert.equal(formatCopyPath({ path: 'C:\\Users\\dev\\App.tsx', line: 42 }), 'C:\\Users\\dev\\App.tsx:42');
+
+  // 2. validateTargetPath normalizes Windows paths & rejects UNC / relative
+  const winChecked = validateTargetPath('C:/Users/dev/src/../App.tsx', {
+    statSyncFn: () => ({ isDirectory: () => false })
+  });
+  assert.deepEqual(winChecked, { ok: true, path: 'C:\\Users\\dev\\App.tsx', isDirectory: false });
+  assert.equal(validateTargetPath('\\\\server\\share\\a.txt').ok, false);
+  assert.equal(validateTargetPath('C:relative.txt').ok, false);
+
+  // 3. ideaPath config & menu descriptors on win32
+  const winCfg = normalizeOpenInConfig({
+    targets: ['idea', 'finder', 'vscode', 'cursor', 'zed'],
+    ideaPath: 'C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1\\bin\\idea64.exe'
+  });
+  assert.equal(winCfg.ideaPath, 'C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1\\bin\\idea64.exe');
+  const winDesc = getOpenInMenuDescriptors(winCfg, { platform: 'win32' });
+  const explorerDesc = winDesc.targets.find((t) => t.id === 'finder');
+  assert.equal(explorerDesc.labelZh, '在资源管理器中显示');
+  assert.equal(explorerDesc.labelEn, 'Reveal in Explorer');
+
+  // 4. Windows editor detection (Toolbox idea.cmd, Program Files idea64.exe, VS Code sibling Code.exe, Cursor, Zed)
+  const homeDir = 'C:\\Users\\tester';
+  const env = {
+    LOCALAPPDATA: 'C:\\Users\\tester\\AppData\\Local',
+    ProgramFiles: 'C:\\Program Files',
+    'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+    ComSpec: 'C:\\Windows\\System32\\cmd.exe'
+  };
+  const ideaPfExe = 'C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.2\\bin\\idea64.exe';
+  const toolboxIdeaCmd = 'C:\\Users\\tester\\AppData\\Local\\JetBrains\\Toolbox\\scripts\\idea.cmd';
+  const codeCmd = 'C:\\Users\\tester\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd';
+  const codeExe = 'C:\\Users\\tester\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe';
+  const cursorExe = 'C:\\Users\\tester\\AppData\\Local\\Programs\\cursor\\Cursor.exe';
+  const zedExe = 'C:\\Users\\tester\\AppData\\Local\\Programs\\Zed\\bin\\zed.exe';
+
+  const readdirSyncFn = (dir) =>
+    dir === 'C:\\Program Files\\JetBrains' ? ['IntelliJ IDEA 2024.3', 'IntelliJ IDEA 2025.2'] : [];
+
+  assert.equal(
+    resolveIdeaLauncher({
+      platform: 'win32',
+      homeDir,
+      env,
+      envPath: '',
+      readdirSyncFn,
+      existsSyncFn: (p) => p === ideaPfExe
+    }),
+    ideaPfExe
+  );
+
+  // When code.cmd is on PATH and sibling Code.exe exists, prefer native Code.exe
+  assert.deepEqual(
+    resolvePresetLauncher('vscode', {
+      platform: 'win32',
+      homeDir,
+      env,
+      envPath: 'C:\\Users\\tester\\AppData\\Local\\Programs\\Microsoft VS Code\\bin',
+      existsSyncFn: (p) => p === codeCmd || p === codeExe
+    }),
+    { bin: codeExe, appBundle: null, isCliScript: false }
+  );
+
+  const detected = detectOpenInTargets(
+    {},
+    {
+      platform: 'win32',
+      homeDir,
+      env,
+      envPath: '',
+      readdirSyncFn,
+      existsSyncFn: (p) => p === toolboxIdeaCmd || p === codeExe || p === cursorExe || p === zedExe
+    }
+  );
+  assert.equal(detected.idea.available, true);
+  assert.equal(detected.idea.path, toolboxIdeaCmd);
+  assert.equal(detected.finder.available, true);
+  assert.equal(detected.finder.path, 'explorer.exe');
+  assert.equal(detected.vscode.available, true);
+  assert.equal(detected.vscode.path, codeExe);
+  assert.equal(detected.cursor.available, true);
+  assert.equal(detected.cursor.path, cursorExe);
+  assert.equal(detected.zed.available, true);
+  assert.equal(detected.zed.path, zedExe);
+
+  // 5. Safe Windows execution: explorer.exe (spaces + benign exit code 1), .exe direct, .cmd via ComSpec + metachar block
+  const calls = [];
+  const execFileFn = (cmd, args, opts, cb) => {
+    calls.push({ cmd, args, opts });
+    if (cmd === 'explorer.exe') {
+      const err = new Error('Command failed');
+      err.code = 1;
+      err.killed = false;
+      cb(err, '', '');
+      return;
+    }
+    cb(null, '', '');
+  };
+  const openInCfg = { targets: ['idea', 'finder', 'vscode', 'zed'], copyPath: true };
+
+  // Explorer with spaces uses /select,"..." + windowsVerbatimArguments and tolerates exit code 1
+  const okExplorer = await executeOpenAction(
+    { targetId: 'finder', path: 'C:/Users/tester/My Project/App.tsx' },
+    openInCfg,
+    {
+      platform: 'win32',
+      homeDir,
+      env,
+      execFileFn,
+      statSyncFn: () => ({ isDirectory: () => false })
+    }
+  );
+  assert.equal(okExplorer.ok, true);
+  assert.equal(calls[0].cmd, 'explorer.exe');
+  assert.deepEqual(calls[0].args, ['/select,"C:\\Users\\tester\\My Project\\App.tsx"']);
+  assert.equal(calls[0].opts.windowsHide, true);
+  assert.equal(calls[0].opts.windowsVerbatimArguments, true);
+
+  // Native .exe (VS Code) runs directly without cmd.exe even with special chars
+  const okCode = await executeOpenAction(
+    { targetId: 'vscode', path: 'C:\\Users\\tester\\R&D\\App.tsx', line: 15, column: 2 },
+    openInCfg,
+    {
+      platform: 'win32',
+      homeDir,
+      env,
+      envPath: '',
+      execFileFn,
+      existsSyncFn: (p) => p === codeExe,
+      statSyncFn: () => ({ isDirectory: () => false })
+    }
+  );
+  assert.equal(okCode.ok, true);
+  assert.equal(calls[1].cmd, codeExe);
+  assert.deepEqual(calls[1].args, ['--goto', 'C:\\Users\\tester\\R&D\\App.tsx:15:2']);
+  assert.equal(calls[1].opts.windowsHide, true);
+
+  // Batch .cmd (Toolbox idea.cmd) invokes ComSpec /d /s /c safely for normal paths
+  const okCmd = await executeOpenAction(
+    { targetId: 'idea', path: 'C:\\Users\\tester\\My Project\\Main.java', line: 9, column: 4 },
+    openInCfg,
+    {
+      platform: 'win32',
+      homeDir,
+      env,
+      envPath: '',
+      execFileFn,
+      existsSyncFn: (p) => p === toolboxIdeaCmd,
+      statSyncFn: () => ({ isDirectory: () => false })
+    }
+  );
+  assert.equal(okCmd.ok, true);
+  assert.equal(calls[2].cmd, env.ComSpec);
+  assert.equal(calls[2].args[0], '/d');
+  assert.equal(calls[2].args[1], '/s');
+  assert.equal(calls[2].args[2], '/c');
+  assert.ok(calls[2].args[3].includes(toolboxIdeaCmd));
+  assert.ok(calls[2].args[3].includes('C:\\Users\\tester\\My Project\\Main.java'));
+  assert.equal(calls[2].opts.windowsHide, true);
+  assert.equal(calls[2].opts.windowsVerbatimArguments, true);
+
+  // Batch .cmd MUST reject cmd.exe shell metacharacters (&, |, %, etc.)
+  const blockedCmd = await executeOpenAction(
+    { targetId: 'idea', path: 'C:\\Users\\tester\\a&calc.exe\\Main.java', line: 9 },
+    openInCfg,
+    {
+      platform: 'win32',
+      homeDir,
+      env,
+      envPath: '',
+      execFileFn,
+      existsSyncFn: (p) => p === toolboxIdeaCmd,
+      statSyncFn: () => ({ isDirectory: () => false })
+    }
+  );
+  assert.equal(blockedCmd.ok, false);
+  assert.equal(calls.length, 3, 'unsafe metacharacters must never invoke cmd.exe');
+});
+
+test('65-open-in.js runtime extracts Windows paths and renders Windows Explorer icon on win32', () => {
+  const code = ['00-head.js', '65-open-in.js', '90-tail.js']
+    .map((f) => fs.readFileSync(path.join(ROOT_DIR, 'core', 'runtime', f), 'utf8'))
+    .join('\n');
+
+  const headChildren = [];
+  const headEl = { appendChild(el) { el.parentNode = headEl; headChildren.push(el); } };
+  const fakeDoc = {
+    head: headEl,
+    body: {
+      nodeType: 1,
+      tagName: 'BODY',
+      classList: { contains: () => false },
+      getAttribute: () => null,
+      appendChild() {}
+    },
+    documentElement: {
+      classList: { contains: () => false },
+      setAttribute() {},
+      removeAttribute() {}
+    },
+    getElementById: (id) => headChildren.find((e) => e.id === id) || null,
+    createElement: (tag) => ({
+      tagName: tag.toUpperCase(),
+      id: '',
+      textContent: '',
+      style: {},
+      setAttribute() {},
+      removeAttribute() {},
+      remove() {}
+    }),
+    getElementsByTagName: (t) => (t === 'head' ? [headEl] : []),
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    addEventListener() {},
+    removeEventListener() {}
+  };
+
+  const sandbox = {
+    URL,
+    location: { pathname: '/', href: 'http://127.0.0.1/', search: '' },
+    navigator: { platform: 'Win32' },
+    addEventListener() {},
+    removeEventListener() {},
+    document: fakeDoc,
+    __AG_BOOT_PAYLOAD__: {
+      version: '0.1.1-test',
+      platform: 'win32',
+      enabled: true,
+      cssText: '',
+      customCss: '',
+      i18nDict: {},
+      modules: { i18n: false, metrics: false, openIn: true, promptSuggestions: false, deadlockHealer: false, zoomShortcuts: false },
+      openIn: { targets: [{ id: 'finder', labelZh: '在资源管理器中显示', labelEn: 'Reveal in Explorer', type: 'finder' }], copyPath: true },
+      selectors: {},
+      userConfig: {},
+      customJs: ''
+    }
+  };
+  sandbox.window = sandbox;
+  sandbox.top = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(`const __AG_BOOT_PAYLOAD__ = globalThis.__AG_BOOT_PAYLOAD__;\n${code}`, sandbox);
+
+  const helpers = sandbox.__agOpenInHelpers;
+  assert.ok(helpers);
+
+  // Windows Explorer yellow folder SVG (distinct from macOS Finder blue face)
+  const explorerSvg = sandbox.__ag_open_in_icon_svg('finder');
+  assert.ok(explorerSvg.startsWith('<svg ') && explorerSvg.endsWith('</svg>'));
+  assert.ok(explorerSvg.includes('#F9CA4B'), 'win32 finder icon should render Windows Explorer folder');
+  assert.ok(!explorerSvg.includes('<defs'));
+
+  // 1. file:///C:/... anchor with line enrichment
+  const anchorEl = {
+    tagName: 'A',
+    textContent: 'App.tsx:28',
+    getAttribute: (k) => (k === 'href' ? 'file:///C:/Users/dev/My%20Proj/App.tsx' : null),
+    parentElement: null
+  };
+  assert.deepEqual({ ...helpers.extractFileTargetFromElement(anchorEl, '') }, {
+    path: 'C:\\Users\\dev\\My Proj\\App.tsx',
+    line: 28,
+    endLine: null,
+    column: null
+  });
+
+  // 2. React props with Windows backslash path
+  const reactChip = {
+    tagName: 'SPAN',
+    textContent: 'Main.java',
+    getAttribute: () => null,
+    __reactProps$win: { fsPath: 'D:\\workspace\\demo\\Main.java', line: 77 },
+    parentElement: null
+  };
+  assert.deepEqual({ ...helpers.extractFileTargetFromElement(reactChip, '') }, {
+    path: 'D:\\workspace\\demo\\Main.java',
+    line: 77,
+    endLine: null,
+    column: null
+  });
+
+  // 3. Free text & selection extraction for Windows paths
+  const codeEl = {
+    tagName: 'CODE',
+    textContent: 'C:\\Program Files\\My App\\index.js:12:4',
+    getAttribute: () => null,
+    parentElement: null
+  };
+  assert.deepEqual({ ...helpers.extractFileTargetFromElement(codeEl, '') }, {
+    path: 'C:\\Program Files\\My App\\index.js',
+    line: 12,
+    endLine: null,
+    column: 4
+  });
+
+  const plainSpan = { tagName: 'SPAN', textContent: 'hello', getAttribute: () => null, parentElement: null };
+  assert.deepEqual(
+    { ...helpers.extractFileTargetFromElement(plainSpan, 'Look at `D:\\repo\\src\\app.ts:99` please') },
+    {
+      path: 'D:\\repo\\src\\app.ts',
+      line: 99,
+      endLine: null,
+      column: null
+    }
+  );
+  assert.equal(helpers.formatDisplayTarget({ path: 'D:\\repo\\src\\app.ts', line: 99, endLine: null }), 'app.ts:99');
 });

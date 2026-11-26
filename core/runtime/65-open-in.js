@@ -19,6 +19,24 @@
       );
     }
     if (key === 'finder') {
+      if (detectedOs === 'win32') {
+        return (
+          '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
+          '<path d="M2.5 6.4A2.4 2.4 0 0 1 4.9 4h4.7l2 2.2h7.5a2.4 2.4 0 0 1 2.4 2.4v9.2a2.4 2.4 0 0 1-2.4 2.4H4.9a2.4 2.4 0 0 1-2.4-2.4V6.4Z" fill="#E5A21B"/>' +
+          '<path d="M2.5 9.2h19v8.6a2.4 2.4 0 0 1-2.4 2.4H4.9a2.4 2.4 0 0 1-2.4-2.4V9.2Z" fill="#F9CA4B"/>' +
+          '<rect x="7.5" y="14.4" width="9" height="5.8" rx="1.2" fill="#298CE8"/>' +
+          '<rect x="9.6" y="16.3" width="4.8" height="1.4" rx="0.7" fill="#E8F4FF"/>' +
+          '</svg>'
+        );
+      }
+      if (detectedOs !== 'darwin') {
+        return (
+          '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
+          '<path d="M2.5 6.4A2.4 2.4 0 0 1 4.9 4h4.7l2 2.2h7.5a2.4 2.4 0 0 1 2.4 2.4v9.2a2.4 2.4 0 0 1-2.4 2.4H4.9a2.4 2.4 0 0 1-2.4-2.4V6.4Z" fill="#3B82F6"/>' +
+          '<path d="M2.5 9.2h19v8.6a2.4 2.4 0 0 1-2.4 2.4H4.9a2.4 2.4 0 0 1-2.4-2.4V9.2Z" fill="#60A5FA"/>' +
+          '</svg>'
+        );
+      }
       return (
         '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
         '<rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#3BA4FF"/>' +
@@ -111,7 +129,22 @@
               debug: false,
               targets: [
                 { id: 'idea', labelZh: '在 IDEA 中打开', labelEn: 'Open in IDEA', type: 'idea' },
-                { id: 'finder', labelZh: '在 Finder 中显示', labelEn: 'Reveal in Finder', type: 'finder' }
+                {
+                  id: 'finder',
+                  labelZh:
+                    detectedOs === 'win32'
+                      ? '在资源管理器中显示'
+                      : detectedOs === 'darwin'
+                      ? '在 Finder 中显示'
+                      : '在文件管理器中显示',
+                  labelEn:
+                    detectedOs === 'win32'
+                      ? 'Reveal in Explorer'
+                      : detectedOs === 'darwin'
+                      ? 'Reveal in Finder'
+                      : 'Reveal in File Manager',
+                  type: 'finder'
+                }
               ]
             };
 
@@ -162,6 +195,16 @@
         return { line: null, endLine: null, column: null, matched: false };
       }
 
+      const WIN_DRIVE_ABS_RE = /^[a-zA-Z]:[\\/]/;
+      const WIN_FILE_URI_PATH_RE = /^\/([a-zA-Z]:[\\/])/;
+
+      function isWindowsAbsolutePath(p) {
+        if (!p || typeof p !== 'string') return false;
+        if (!WIN_DRIVE_ABS_RE.test(p)) return false;
+        if (p.includes('\0') || p.includes('\r') || p.includes('\n')) return false;
+        return true;
+      }
+
       function splitPathTrailingLocation(rawPath) {
         const cleanPath = rawPath;
         const hashIdx = cleanPath.indexOf('#');
@@ -177,14 +220,14 @@
           }
         }
 
-        let m = cleanPath.match(/^(\/.+?):(\d+):(\d+)$/);
+        let m = cleanPath.match(/^((?:\/|[a-zA-Z]:[\\/]).+?):(\d+):(\d+)$/);
         if (m) {
           const line = toPositiveInt(m[2]);
           const col = line ? toPositiveInt(m[3]) : null;
           return { path: m[1], line, endLine: null, column: col };
         }
 
-        m = cleanPath.match(/^(\/.+?):(\d+)$/);
+        m = cleanPath.match(/^((?:\/|[a-zA-Z]:[\\/]).+?):(\d+)$/);
         if (m) {
           return { path: m[1], line: toPositiveInt(m[2]), endLine: null, column: null };
         }
@@ -200,50 +243,64 @@
         return true;
       }
 
+      function isValidLocalWindowsPath(p) {
+        return isWindowsAbsolutePath(p) && p.length > 3;
+      }
+
+      function isValidLocalPath(p) {
+        return isValidLocalPosixPath(p) || isValidLocalWindowsPath(p);
+      }
+
       function parseFileTarget(rawInput) {
         if (typeof rawInput !== 'string') return null;
         const trimmed = rawInput.trim();
         if (!trimmed) return null;
 
-        const schemeMatch = trimmed.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
-        if (schemeMatch) {
-          if (schemeMatch[1].toLowerCase() !== 'file') return null;
-          let urlObj;
-          try {
-            urlObj = new URL(trimmed);
-          } catch {
-            return null;
-          }
-          if (urlObj.protocol !== 'file:') return null;
-          if (urlObj.hostname && urlObj.hostname.toLowerCase() !== 'localhost') return null;
+        if (!isWindowsAbsolutePath(trimmed)) {
+          const schemeMatch = trimmed.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+          if (schemeMatch) {
+            if (schemeMatch[1].toLowerCase() !== 'file') return null;
+            let urlObj;
+            try {
+              urlObj = new URL(trimmed);
+            } catch {
+              return null;
+            }
+            if (urlObj.protocol !== 'file:') return null;
+            if (urlObj.hostname && urlObj.hostname.toLowerCase() !== 'localhost') return null;
 
-          const decoded = decodePathSafe(urlObj.pathname);
-          if (!decoded) return null;
+            let decoded = decodePathSafe(urlObj.pathname);
+            if (!decoded) return null;
+            if (WIN_FILE_URI_PATH_RE.test(decoded)) {
+              decoded = decoded.slice(1).replace(/\//g, '\\');
+            }
 
-          const hashLoc = parseLocationHash(urlObj.hash);
-          if (hashLoc.matched) {
-            if (!isValidLocalPosixPath(decoded)) return null;
+            const hashLoc = parseLocationHash(urlObj.hash);
+            if (hashLoc.matched) {
+              if (!isValidLocalPath(decoded)) return null;
+              return {
+                path: decoded,
+                line: hashLoc.line,
+                endLine: hashLoc.endLine,
+                column: hashLoc.column
+              };
+            }
+
+            const splitUrl = splitPathTrailingLocation(decoded);
+            if (!isValidLocalPath(splitUrl.path)) return null;
             return {
-              path: decoded,
-              line: hashLoc.line,
-              endLine: hashLoc.endLine,
-              column: hashLoc.column
+              path: splitUrl.path,
+              line: splitUrl.line,
+              endLine: splitUrl.endLine,
+              column: splitUrl.column
             };
           }
-
-          const splitUrl = splitPathTrailingLocation(decoded);
-          if (!isValidLocalPosixPath(splitUrl.path)) return null;
-          return {
-            path: splitUrl.path,
-            line: splitUrl.line,
-            endLine: splitUrl.endLine,
-            column: splitUrl.column
-          };
         }
 
-        if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return null;
+        const isWin = isWindowsAbsolutePath(trimmed);
+        if (!isWin && (!trimmed.startsWith('/') || trimmed.startsWith('//'))) return null;
         const split = splitPathTrailingLocation(trimmed);
-        if (!isValidLocalPosixPath(split.path)) return null;
+        if (!isValidLocalPath(split.path)) return null;
         return {
           path: split.path,
           line: split.line,
@@ -254,7 +311,7 @@
 
       function formatDisplayTarget(target) {
         if (!target || typeof target.path !== 'string' || !target.path) return '';
-        const segments = target.path.split('/').filter(Boolean);
+        const segments = target.path.split(/[\\/]/).filter(Boolean);
         const name = segments.length > 0 ? segments[segments.length - 1] : target.path;
         if (target.line && target.endLine && target.endLine > target.line) {
           return name + ':' + target.line + '-' + target.endLine;
@@ -277,6 +334,9 @@
       }
 
       function hasMultipleSegments(p) {
+        if (isWindowsAbsolutePath(p)) {
+          return p.slice(2).split(/[\\/]/).filter(Boolean).length >= 2;
+        }
         return /^\/[^/\s]+\/[^/\s]+/.test(p);
       }
 
@@ -291,10 +351,19 @@
           return direct;
         }
 
-        const fileUriMatch = trimmed.match(/file:\/\/\/[^\s"'<>()]+/i);
+        const fileUriMatch = trimmed.match(/file:\/\/(?:localhost)?\/[^\s"'<>()]+/i);
         if (fileUriMatch) {
           const fromUri = parseFileTarget(stripWrappingPunctuation(fileUriMatch[0]));
           if (fromUri) return fromUri;
+        }
+
+        const winMatch = trimmed.match(/(?:^|[\s"'`(\[<{])([a-zA-Z]:(?:\\|\/)[^\s"'<>()\]}`]+)/);
+        if (winMatch && winMatch[1]) {
+          const candidate = stripWrappingPunctuation(winMatch[1]);
+          const parsed = parseFileTarget(candidate);
+          if (parsed && (!requireMultiSegment || hasMultipleSegments(parsed.path))) {
+            return parsed;
+          }
         }
 
         const posixMatch = trimmed.match(
