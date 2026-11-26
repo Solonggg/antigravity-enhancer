@@ -93,8 +93,8 @@
       "bytes": 58788
     },
     "runtime/65-open-in.js": {
-      "sha256": "01d4e7b7663f7df6a4189845861da386ef3c4d856f5c3d5141f8e8bfd872c2e5",
-      "bytes": 27573
+      "sha256": "4d46994dfc7e5254fcdcc330e90a917493b95bd0000084b1057dd388032f4495",
+      "bytes": 28265
     },
     "runtime/70-prompt-suggestions.js": {
       "sha256": "ec3967100ca7f28c1e59073e8294f80bc432dc45414469946197a6a3e344e545",

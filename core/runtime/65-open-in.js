@@ -54,10 +54,14 @@
     }
     if (key === 'zed') {
       return (
-        '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' +
-        '<rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="#084CCF"/>' +
-        '<path d="M6.2 6.4h11.6v2.1l-7.2 7h7.2v2.1H6.2v-2.1l7.2-7H6.2V6.4Z" fill="#FFFFFF"/>' +
-        '<path d="M4.6 4.6h6.2v1.3H5.9v4.9H4.6V4.6Zm14.8 14.8h-6.2v-1.3h4.9v-4.9h1.3v6.2Z" fill="#89B8FF"/>' +
+        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">' +
+        '<rect x="1.5" y="1.5" width="21" height="21" rx="5.2" fill="#18191C" stroke="#34373D" stroke-width="0.9"/>' +
+        '<path d="M5.8 14.8V5.8h12.4L5.8 18.2h12.4" stroke="#FFFFFF" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M18.2 18.2V10.2" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="1.4" stroke-linecap="round"/>' +
+        '<path d="M8.6 13V8.6H15" stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M9 15.4h6.4v-4.2" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M11.1 11.9v-.8h1.5" stroke="#FFFFFF" stroke-opacity="0.85" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M11.4 12.9h1.5v-.7" stroke="#FFFFFF" stroke-opacity="0.55" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>' +
         '</svg>'
       );
     }
