@@ -382,7 +382,6 @@
 
   function renderOfficialQuotaSectionHtml(state, isZh) {
     const title = isZh ? '模型配额' : 'Model Quota';
-    const modeLbl = isZh ? '已用比例' : 'Used %';
     const refreshLbl = isZh ? '刷新配额' : 'Refresh quota';
     const loading = Boolean(state && state.loading);
     const groups = state && Array.isArray(state.groups) ? state.groups : [];
@@ -458,9 +457,6 @@
       escapeStatusHtml(title) +
       '</span></span>' +
       '<span class="ag-tt-quota-actions">' +
-      '<span class="ag-tt-quota-mode">' +
-      escapeStatusHtml(modeLbl) +
-      '</span>' +
       '<button type="button" class="ag-tt-quota-btn ag-tt-quota-refresh' +
       (loading ? ' is-loading' : '') +
       '" aria-label="' +

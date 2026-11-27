@@ -985,4 +985,5 @@ test('Official quota tooltip renders horizontal used-% bars without plan/credits
   assert.ok(slot.innerHTML.includes('width:15%'), 'bar fill width should reflect used-%');
   assert.ok(!slot.innerHTML.includes('点数'), 'must omit credits label');
   assert.ok(!slot.innerHTML.includes('Google AI Pro'), 'must omit plan label');
+  assert.ok(!slot.innerHTML.includes('已用比例'), 'must omit redundant mode label');
 });

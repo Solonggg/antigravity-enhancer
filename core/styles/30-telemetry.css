@@ -780,12 +780,6 @@
   flex-shrink: 0;
 }
 
-#ag-live-metrics-tooltip .ag-tt-quota-mode {
-  font-size: 9.5px !important;
-  color: var(--ag-tt-ink-3) !important;
-  white-space: nowrap;
-}
-
 #ag-live-metrics-tooltip .ag-tt-quota-btn {
   appearance: none;
   border: 0 !important;
