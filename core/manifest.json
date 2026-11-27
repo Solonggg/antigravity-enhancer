@@ -33,16 +33,16 @@
       "bytes": 28860
     },
     "daemon/protobuf.mjs": {
-      "sha256": "b8424744ae867c6265c649d731572e9334e8d053840f0c99a94167a29019baa1",
-      "bytes": 7683
+      "sha256": "fdfb35e1accb6e7f628e2595c4417933c5c1040899023707524a7903345e2813",
+      "bytes": 14141
     },
     "daemon/sqlite-metrics.mjs": {
-      "sha256": "f6008dda7ce1c70d7c828a2db08a49f7e4f91a0e39223437185240c3194954fd",
-      "bytes": 28736
+      "sha256": "a9437d14232e0e530a5feea2f4d38ecedb966c7a824b9c92166fa9abb2debd2f",
+      "bytes": 30518
     },
     "daemon/telemetry-renderer.mjs": {
-      "sha256": "5638a7fc45fb1737526c5c261695ccd9cd3224130114024f3decec4253298e2b",
-      "bytes": 19061
+      "sha256": "673f6d5e876146dfeabbf90bd9937416d13b359c25d115e583a3ae74292d953f",
+      "bytes": 19472
     },
     "i18n.json": {
       "sha256": "10ebd8c2a0f72060f3c1fcb80246d4f8cb9f66779dd130a461816dbc2d084b45",
@@ -85,8 +85,8 @@
       "bytes": 13135
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "28f7a9556f1b8d1f257cfafde9a4da7bcb8da36d71b46011c726552dda2deb93",
-      "bytes": 87021
+      "sha256": "312ffadcbbb28a9009cb266e9cb8a5e0f38b2858c9cd9aa73721916d9a48aff8",
+      "bytes": 87882
     },
     "runtime/60-i18n-engine.js": {
       "sha256": "8cbce4516cf6bcad7946120db4d0b500697078c1b51c1032a12f35d0ad093d44",
@@ -113,8 +113,8 @@
       "bytes": 17625
     },
     "styles/30-telemetry.css": {
-      "sha256": "5dfaa36c1875f3d7e875a361779a14eb1b226b2e2f92cf3a1faa1655d1f07bd0",
-      "bytes": 36601
+      "sha256": "7719dc98ffd6ee0e5b138f2461c95a1cc74acb6b75323e334be5cd411a6f09b3",
+      "bytes": 37923
     },
     "styles/40-prompt-suggestions.css": {
       "sha256": "2a0e794db63c292358cc4df6e48737c88e07ca47da233a7c7e376f068a924d61",

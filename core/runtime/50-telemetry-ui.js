@@ -372,39 +372,20 @@
     );
   }
 
-  function renderQuotaRingSvg(pct, level) {
-    const r = 12;
-    const c = 2 * Math.PI * r;
-    const val = typeof pct === 'number' && Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
-    const offset = c - (val / 100) * c;
-    const cls = level === 'crit' ? 'ag-q-crit' : level === 'warn' ? 'ag-q-warn' : 'ag-q-ok';
-    return (
-      '<svg class="ag-tt-qring ' +
-      cls +
-      '" width="16" height="16" viewBox="0 0 32 32" aria-hidden="true">' +
-      '<circle class="ag-tt-qring-bg" cx="16" cy="16" r="' +
-      r +
-      '" fill="none" stroke="currentColor" stroke-width="3.4"/>' +
-      '<circle class="ag-tt-qring-fg" cx="16" cy="16" r="' +
-      r +
-      '" fill="none" stroke-width="3.4" stroke-linecap="round" stroke-dasharray="' +
-      c.toFixed(1) +
-      '" stroke-dashoffset="' +
-      offset.toFixed(1) +
-      '"/>' +
-      '</svg>'
-    );
+  function formatShortQuotaGroupName(rawName) {
+    const s = String(rawName || '').trim();
+    if (!s) return '';
+    if (/^gemini\s+models?$/i.test(s)) return 'Gemini';
+    if (/^claude\s+(?:and|&)\s+gpt(?:\s+models?)?$/i.test(s)) return 'Claude & GPT';
+    return s.replace(/\s+models?$/i, '').trim();
   }
 
   function renderOfficialQuotaSectionHtml(state, isZh) {
     const title = isZh ? '模型配额' : 'Model Quota';
+    const modeLbl = isZh ? '已用比例' : 'Used %';
     const refreshLbl = isZh ? '刷新配额' : 'Refresh quota';
     const loading = Boolean(state && state.loading);
     const groups = state && Array.isArray(state.groups) ? state.groups : [];
-    const credits =
-      state && typeof state.availableCredits === 'number' && state.availableCredits > 0
-        ? (isZh ? '点数 ' : 'Credits ') + Math.round(state.availableCredits).toLocaleString('en-US')
-        : '';
 
     let bodyHtml = '';
     if (loading && groups.length === 0) {
@@ -415,67 +396,71 @@
         escapeStatusHtml(isZh ? '暂无配额信息' : 'No quota info') +
         '</div>';
     } else {
-      bodyHtml =
-        '<div class="ag-tt-qcards">' +
-        groups
-          .map((g) => {
-            const rawBuckets = Array.isArray(g.buckets) ? g.buckets.slice() : [];
-            rawBuckets.sort((a, b) => (a.windowOrder || 9) - (b.windowOrder || 9));
-            const cardTitle = g.displayName || (rawBuckets[0] && (rawBuckets[0].displayName || rawBuckets[0].windowLabel)) || '';
-            const rowsHtml = rawBuckets
-              .map((b) => {
-                const winTxt = b.shortWindowLabel || b.windowLabel || b.displayName || '';
-                const resetTxt = b.shortResetText || (b.remainingPct === 100 && !b.disabled ? (isZh ? '满额' : 'Full') : '');
-                const pctText = b.disabled
-                  ? isZh ? '未启用' : 'Off'
-                  : b.remainingPct !== null
-                  ? b.remainingPct + '%'
-                  : '—';
-                const rowTitleAttr = b.resetText ? ' title="' + escapeStatusHtml(b.resetText) + '"' : '';
-                return (
-                  '<div class="ag-tt-qcard-row"' +
-                  rowTitleAttr +
-                  '>' +
-                  '<div class="ag-tt-qcard-left">' +
-                  '<span class="ag-tt-qcard-win">' +
-                  escapeStatusHtml(winTxt) +
-                  '</span>' +
-                  (resetTxt ? '<span class="ag-tt-qcard-reset">' + escapeStatusHtml(resetTxt) + '</span>' : '') +
-                  '</div>' +
-                  '<div class="ag-tt-qcard-right">' +
-                  '<span class="ag-tt-quota-pct ag-q-' +
-                  escapeStatusHtml(b.level || 'ok') +
-                  '">' +
-                  escapeStatusHtml(pctText) +
-                  '</span>' +
-                  (!b.disabled && b.remainingPct !== null ? renderQuotaRingSvg(b.remainingPct, b.level) : '') +
-                  '</div>' +
-                  '</div>'
-                );
-              })
-              .join('');
+      const itemsHtml = [];
+      for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
+        const rawBuckets = Array.isArray(g.buckets) ? g.buckets.slice() : [];
+        rawBuckets.sort((a, b) => (a.windowOrder || 9) - (b.windowOrder || 9));
+        const shortGroup = formatShortQuotaGroupName(g.displayName || '');
+        for (let bi = 0; bi < rawBuckets.length; bi++) {
+          const b = rawBuckets[bi];
+          const winRaw = b.shortWindowLabel || b.windowLabel || b.displayName || '';
+          const winPrefix = isZh && winRaw === '每周' ? '周限' : winRaw;
+          const rowLabel =
+            winPrefix && shortGroup
+              ? winPrefix + ' · ' + shortGroup
+              : shortGroup || winPrefix || (isZh ? '配额' : 'Quota');
 
-            return (
-              '<div class="ag-tt-qcard">' +
-              (cardTitle ? '<div class="ag-tt-qcard-title">' + escapeStatusHtml(cardTitle) + '</div>' : '') +
-              '<div class="ag-tt-qcard-rows">' +
-              rowsHtml +
+          const hasPct = !b.disabled && typeof b.remainingPct === 'number' && Number.isFinite(b.remainingPct);
+          const usedPct = hasPct ? Math.max(0, Math.min(100, 100 - b.remainingPct)) : null;
+          const level = b.disabled ? 'unknown' : b.level || 'ok';
+          const resetTxt = b.resetText || b.shortResetText || (hasPct && usedPct === 0 ? (isZh ? '满额可用' : 'Full') : '');
+          const usedText = b.disabled
+            ? isZh ? '未启用' : 'Off'
+            : usedPct !== null
+            ? (isZh ? '已用 ' : 'Used ') + usedPct + '%'
+            : '—';
+          const metaParts = [];
+          if (resetTxt) metaParts.push('<span class="ag-tt-qbar-reset">' + escapeStatusHtml(resetTxt) + '</span>');
+          metaParts.push('<span class="ag-tt-quota-pct ag-q-' + escapeStatusHtml(level) + '">' + escapeStatusHtml(usedText) + '</span>');
+          const fillWidth = usedPct !== null && usedPct > 0 ? Math.max(3, usedPct) : 0;
+          const rowTitleAttr = b.resetText ? ' title="' + escapeStatusHtml(b.resetText) + '"' : '';
+
+          itemsHtml.push(
+            '<div class="ag-tt-qbar-item"' +
+              rowTitleAttr +
+              '>' +
+              '<div class="ag-tt-qbar-head">' +
+              '<span class="ag-tt-qbar-lbl">' +
+              escapeStatusHtml(rowLabel) +
+              '</span>' +
+              '<span class="ag-tt-qbar-meta">' +
+              metaParts.join('<span class="ag-tt-qbar-dot">·</span>') +
+              '</span>' +
+              '</div>' +
+              '<div class="ag-tt-qbar-track">' +
+              '<div class="ag-tt-qbar-fill ag-q-' +
+              escapeStatusHtml(level) +
+              '" style="width:' +
+              fillWidth +
+              '%"></div>' +
               '</div>' +
               '</div>'
-            );
-          })
-          .join('') +
-        '</div>';
+          );
+        }
+      }
+      bodyHtml = '<div class="ag-tt-qbar-list">' + itemsHtml.join('') + '</div>';
     }
 
     return (
       '<div class="ag-tt-hdr ag-tt-quota-hdr">' +
       '<span class="ag-tt-quota-title-wrap"><span class="ag-tt-hdr-left">' +
       escapeStatusHtml(title) +
-      '</span>' +
-      (credits ? '<span class="ag-tt-gen-chip">' + escapeStatusHtml(credits) + '</span>' : '') +
-      '</span>' +
+      '</span></span>' +
       '<span class="ag-tt-quota-actions">' +
+      '<span class="ag-tt-quota-mode">' +
+      escapeStatusHtml(modeLbl) +
+      '</span>' +
       '<button type="button" class="ag-tt-quota-btn ag-tt-quota-refresh' +
       (loading ? ' is-loading' : '') +
       '" aria-label="' +
@@ -649,11 +634,25 @@
 
   function syncTooltipLiveOverlay(tt, snap, ownerPill, ownerBox) {
     if (!tt || !snap || !SHOW_SESSION_STATUS) return;
+    const dotEl = tt.querySelector('.ag-tt-hdr-dot');
+    if (dotEl) {
+      const dotMod =
+        snap.visualState === 'error'
+          ? ' is-error'
+          : snap.visualState === 'slow'
+          ? ' is-slow'
+          : snap.visualState === 'running'
+          ? ' is-running'
+          : ' is-idle';
+      const targetDotClass = 'ag-tt-hdr-dot' + dotMod;
+      if (dotEl.className !== targetDotClass) dotEl.className = targetDotClass;
+    }
     const chipEl = tt.querySelector('.ag-tt-live-chip');
     if (chipEl) {
-      const chipDisplay = !SHOW_USAGE_STATS && !snap.chipText ? '就绪' : snap.chipText;
+      const chipDisplay = snap.chipText || '就绪';
       if (chipEl.textContent !== chipDisplay) chipEl.textContent = chipDisplay;
-      const targetChipClass = 'ag-tt-live-chip' + (snap.chipClass ? ' ' + snap.chipClass : '');
+      const runMod = !snap.chipClass && snap.visualState === 'running' ? ' is-running' : '';
+      const targetChipClass = 'ag-tt-live-chip' + (snap.chipClass ? ' ' + snap.chipClass : runMod);
       if (chipEl.className !== targetChipClass) chipEl.className = targetChipClass;
     }
     const noteEl = tt.querySelector('.ag-tt-wait-note');
@@ -707,6 +706,22 @@
         if (window.__ag_tt_hide_timer) {
           clearTimeout(window.__ag_tt_hide_timer);
           window.__ag_tt_hide_timer = null;
+        }
+        const refreshAllBtn = e.target && e.target.closest ? e.target.closest('.ag-tt-hdr-refresh') : null;
+        if (refreshAllBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (refreshAllBtn.classList) {
+            refreshAllBtn.classList.add('is-loading');
+            setTimeout(() => {
+              if (refreshAllBtn && refreshAllBtn.classList) refreshAllBtn.classList.remove('is-loading');
+            }, 650);
+          }
+          requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'manual', minIntervalMs: 0 });
+          if (SHOW_USAGE_STATS) {
+            syncOfficialQuotaIntoTooltip(tt, { forceRefresh: true });
+          }
+          return;
         }
         const refreshQuotaBtn = e.target && e.target.closest ? e.target.closest('.ag-tt-quota-refresh') : null;
         if (refreshQuotaBtn) {

@@ -922,3 +922,67 @@ test('Post-turn executing -> idle edge marks quota dirty and triggers 300ms + 12
   assert.equal(requests[1].reason, 'turn_done_followup');
   assert.equal(requests[1].bypassCache, true);
 });
+
+test('Official quota tooltip renders horizontal used-% bars without plan/credits chips', async () => {
+  const cid = 'dddddddd-0000-4000-8000-000000000004';
+  const body = new MiniElement('BODY');
+  body._isRoot = true;
+  const view = makeConversationView(cid);
+  const nowSec = Math.floor(Date.now() / 1000);
+  view.box.__reactFiber$test = {
+    memoizedProps: {
+      value: {
+        core: {
+          cloudCodeService: {
+            retrieveUserQuotaSummary: async () => ({
+              groups: [
+                {
+                  displayName: 'Gemini Models',
+                  buckets: [
+                    {
+                      bucketId: 'g5h',
+                      displayName: '5h',
+                      window: '5h',
+                      remaining: { case: 'remainingFraction', value: 0.85 },
+                      resetTime: { seconds: nowSec + 7200, nanos: 0 }
+                    }
+                  ]
+                }
+              ]
+            })
+          }
+        },
+        store: {
+          getState: () => ({
+            credits: { availableCredits: 1200, useAICredits: false },
+            userStatus: { userTier: { description: 'Google AI Pro' } }
+          }),
+          subscribe: () => () => {}
+        }
+      }
+    },
+    return: null
+  };
+  body.appendChild(view.view);
+
+  const env = mountRuntimeWithTimers(body, { pathname: '/c/' + cid });
+  env.win.__ag_on_route_change();
+  env.win.__ag_render_metrics({
+    cid,
+    hasData: true,
+    dataSig: 'q-1',
+    inlineHtml: '<span>120 tok/s</span>',
+    tooltipHtml:
+      '<div class="ag-tt-wrap ag-tt-dash"><div class="ag-tt-col-usage"><span>Usage</span></div><div class="ag-tt-col-quota" data-ag-quota-slot="1"></div></div>'
+  });
+
+  await new Promise((r) => setTimeout(r, 20));
+  const tt = env.doc.getElementById('ag-live-metrics-tooltip');
+  const slot = tt.querySelector('[data-ag-quota-slot="1"]');
+  assert.ok(slot.innerHTML.includes('ag-tt-qbar-list'), 'should render horizontal bar list');
+  assert.ok(slot.innerHTML.includes('5h · Gemini'), 'should shorten Gemini Models to Gemini');
+  assert.ok(slot.innerHTML.includes('已用 15%'), 'should display used-% (100 - 85 = 15%)');
+  assert.ok(slot.innerHTML.includes('width:15%'), 'bar fill width should reflect used-%');
+  assert.ok(!slot.innerHTML.includes('点数'), 'must omit credits label');
+  assert.ok(!slot.innerHTML.includes('Google AI Pro'), 'must omit plan label');
+});

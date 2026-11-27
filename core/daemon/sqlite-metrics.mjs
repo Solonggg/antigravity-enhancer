@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   parseGenMetadataRow,
+  extractContextBreakdownFromGenData,
   parseCheckpointStepInfo,
   extractStepStartMs,
   extractUserStepSig,
@@ -390,6 +391,20 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
           };
         }
 
+        const lastValidItem = inc.validItems.length > 0 ? inc.validItems[inc.validItems.length - 1] : null;
+        if (lastValidItem && (inc.breakdownIdx !== lastValidItem.idx || inc.breakdownSig !== lastGenSig)) {
+          try {
+            const rawLastRow = db.prepare('SELECT data FROM gen_metadata WHERE idx = ?').get(lastValidItem.idx);
+            inc.lastContextBreakdown = rawLastRow && rawLastRow.data
+              ? extractContextBreakdownFromGenData(Buffer.from(rawLastRow.data))
+              : null;
+          } catch {
+            inc.lastContextBreakdown = null;
+          }
+          inc.breakdownIdx = lastValidItem.idx;
+          inc.breakdownSig = lastGenSig;
+        }
+
         db.close();
         db = null;
         setIncrementalMetrics(dbPath, inc);
@@ -453,10 +468,31 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
         const streamTps = last.stream >= MIN_STREAM_DUR_SEC ? last.outTok / last.stream : 0;
         const e2eTps = last.totDur > 0 ? last.outTok / last.totDur : 0;
         const displayTps = streamTps > 0 && streamTps <= MAX_SANITY_STREAM_TPS ? streamTps : e2eTps;
+        let sessStreamTok = 0;
+        let sessStreamDur = 0;
+        let sessTtftSum = 0;
+        let sessTtftCnt = 0;
+        for (let i = 0; i < valid.length; i++) {
+          const vi = valid[i];
+          if (vi.stream >= MIN_STREAM_DUR_SEC && vi.outTok > 0) {
+            const stepTps = vi.outTok / vi.stream;
+            if (stepTps > 0 && stepTps <= MAX_SANITY_STREAM_TPS) {
+              sessStreamTok += vi.outTok;
+              sessStreamDur += vi.stream;
+            }
+          }
+          if (vi.ttft > 0) {
+            sessTtftSum += vi.ttft;
+            sessTtftCnt++;
+          }
+        }
+        const avgTps = sessStreamDur >= MIN_STREAM_DUR_SEC ? sessStreamTok / sessStreamDur : displayTps;
+        const avgTtft = sessTtftCnt > 0 ? sessTtftSum / sessTtftCnt : last.ttft;
         const ctxPct = Math.round((last.ctx / contextLimitTokens) * 100);
         const ctxClass = ctxPct >= 90 ? 'ag-ctx-crit' : ctxPct >= 75 ? 'ag-ctx-warn' : 'ag-ctx-ok';
         const lastCacheRate = last.ctx > 0 ? ((last.cacheRead / last.ctx) * 100).toFixed(1) : '0.0';
         const totalPrompt = totalIn + totalCacheWrite + totalCache;
+        const totalAllTokens = totalPrompt + totalOut;
         const sessionCacheRate = totalPrompt > 0 ? ((totalCache / totalPrompt) * 100).toFixed(1) : '0.0';
         const remainCtx = Math.max(0, contextLimitTokens - last.ctx);
         const limitKStr = formatContextLimitLabel(contextLimitTokens);
@@ -599,19 +635,24 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
         });
 
         const streamTpsValid = streamTps > 0 && streamTps <= MAX_SANITY_STREAM_TPS;
+        const contextBreakdown = inc.lastContextBreakdown || null;
         const tooltipHtml = buildMetricsTooltipHtml({
           showSessionStatus,
           showUsageStats,
           genIdx: last.idx + 1,
+          modelName: last.modelName || '',
           streamTps,
+          avgTps,
           e2eTps,
           streamTpsValid,
+          avgTtft,
           last,
           lastCacheRate,
           ctxPct,
           contextLimitTokens,
           limitKStr,
           remainCtx,
+          contextBreakdown,
           compactedPending,
           compactSummaryKb,
           compactingNow,
@@ -629,6 +670,7 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
           totalCacheWrite,
           totalCache,
           totalPrompt,
+          totalAllTokens,
           sessionCacheRate,
           totalOut,
           totalThink,

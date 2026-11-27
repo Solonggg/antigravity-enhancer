@@ -27,6 +27,11 @@ const {
   buildTurnSummaries
 } = await import('../core/daemon/telemetry-renderer.mjs');
 
+const {
+  parseContextBreakdown,
+  extractContextBreakdownFromGenData
+} = await import('../core/daemon/protobuf.mjs');
+
 function encodeVarint(num) {
   const bytes = [];
   let n = BigInt(num);
@@ -299,9 +304,86 @@ test('telemetry renderer splits sessionStatus and usageStats independently and e
   assert.ok(!usageOnlyTt.includes('ag-tt-live-chip'));
   assert.ok(!usageOnlyTt.includes('ag-tt-wait-note'));
 
-  const bothTt = buildMetricsTooltipHtml({ ...baseTooltip, showSessionStatus: true, showUsageStats: true });
+  const bothTt = buildMetricsTooltipHtml({
+    ...baseTooltip,
+    modelName: 'Gemini 4 Neon (Extra High)',
+    avgTps: 150.5,
+    avgTtft: 1.35,
+    contextBreakdown: {
+      totalTokens: 50000,
+      items: [
+        { key: 'tool_results', label: '工具结果', tokens: 28000 },
+        { key: 'assistant', label: '模型回复', tokens: 12000 },
+        { key: 'system_prompt', label: '系统提示词', tokens: 6000 },
+        { key: 'skills', label: 'Skill', tokens: 4000 }
+      ]
+    },
+    showSessionStatus: true,
+    showUsageStats: true
+  });
   assert.ok(bothTt.includes('ag-tt-dash'));
   assert.ok(bothTt.includes('ag-tt-live-chip'));
   assert.ok(bothTt.includes('ag-tt-wait-note'));
+  assert.ok(bothTt.includes('Gemini 4 Neon (Extra High)'));
+  assert.ok(bothTt.includes('ag-tt-ctx-grid'));
+  assert.ok(bothTt.includes('工具结果'));
+  assert.ok(bothTt.includes('ag-tt-sess-grid'));
+  assert.ok(bothTt.includes('ag-tt-hdr-refresh'));
   assert.ok(bothTt.includes('data-ag-quota-slot="1"'));
+});
+
+test('extractContextBreakdownFromGenData decodes exact native ctxMeta breakdown groups and tool splits', () => {
+  const mkChild = (name, tok) => Buffer.concat([fieldBytes(1, name), fieldVarint(3, tok)]);
+  const mkGroup = (name, cat, tok, kids = []) =>
+    Buffer.concat([
+      fieldBytes(1, name),
+      fieldVarint(2, cat),
+      fieldVarint(4, tok),
+      ...kids.map((k) => fieldBytes(5, k))
+    ]);
+
+  const breakdownMsg = Buffer.concat([
+    fieldBytes(1, mkGroup('System Prompt', 1, 5000)),
+    fieldBytes(1, mkGroup('Plugins', 9, 1500)),
+    fieldBytes(
+      1,
+      mkGroup('Tools', 2, 3000, [mkChild('read_file', 2200), mkChild('mcp_gemini_search', 800)])
+    ),
+    fieldBytes(1, mkGroup('Mcp Tools', 4, 400)),
+    fieldBytes(1, mkGroup('Skills', 5, 4200)),
+    fieldBytes(1, mkGroup('Rules', 3, 900)),
+    fieldBytes(1, mkGroup('Subagents', 6, 1800)),
+    fieldBytes(
+      1,
+      mkGroup('Chat Messages', 7, 45000, [
+        mkChild('10: GENERIC', 25000),
+        mkChild('11: PLANNER_RESPONSE', 13000),
+        mkChild('12: CHECKPOINT', 5000),
+        mkChild('13: SYSTEM_MESSAGE', 1200),
+        mkChild('14: USER_INPUT', 800)
+      ])
+    )
+  ]);
+  const ctxMeta = Buffer.concat([fieldVarint(1, 61800), fieldBytes(3, breakdownMsg), fieldVarint(4, 512000)]);
+  const genData = fieldBytes(1, fieldBytes(9, fieldBytes(10, ctxMeta)));
+
+  const parsed = extractContextBreakdownFromGenData(genData);
+  assert.ok(parsed);
+  assert.equal(parsed.totalTokens, 61800);
+  const byKey = Object.fromEntries(parsed.items.map((it) => [it.key, it.tokens]));
+  assert.equal(byKey.tool_results, 25000);
+  assert.equal(byKey.assistant, 13000);
+  assert.equal(byKey.system_prompt, 6500);
+  assert.equal(byKey.checkpoint, 5000);
+  assert.equal(byKey.skills, 4200);
+  assert.equal(byKey.system_tools, 2200);
+  assert.equal(byKey.subagent, 1800);
+  assert.equal(byKey.mcp_tools, 1200);
+  assert.equal(byKey.system_msg, 1200);
+  assert.equal(byKey.rules, 900);
+  assert.equal(byKey.user_msg, 800);
+  assert.equal(parsed.items[0].key, 'tool_results', 'items must be sorted descending by token count');
+
+  // Empty/missing ctxMeta.3 returns null cleanly
+  assert.equal(parseContextBreakdown(fieldVarint(4, 512000)), null);
 });

@@ -53,6 +53,209 @@ export function parseProto(buf) {
   return out;
 }
 
+function parseProtoEntries(buf) {
+  let i = 0;
+  const out = [];
+  if (!buf || !buf.length) return out;
+  while (i < buf.length) {
+    let tag = 0;
+    let shift = 0;
+    while (i < buf.length) {
+      const b = buf[i++];
+      tag |= (b & 0x7f) << shift;
+      if (!(b & 0x80)) break;
+      shift += 7;
+    }
+    const fn = tag >>> 3;
+    const wt = tag & 7;
+    if (fn <= 0 || fn > 10000) break;
+    if (wt === 0) {
+      let val = 0;
+      let s = 0;
+      while (i < buf.length) {
+        const b = buf[i++];
+        val += (b & 0x7f) * Math.pow(2, s);
+        if (!(b & 0x80)) break;
+        s += 7;
+      }
+      out.push({ fn, wt, val });
+    } else if (wt === 2) {
+      let len = 0;
+      let s = 0;
+      while (i < buf.length) {
+        const b = buf[i++];
+        len |= (b & 0x7f) << s;
+        if (!(b & 0x80)) break;
+        s += 7;
+      }
+      if (len < 0 || i + len > buf.length) break;
+      out.push({ fn, wt, val: buf.subarray(i, i + len) });
+      i += len;
+    } else if (wt === 1) {
+      if (i + 8 > buf.length) break;
+      out.push({ fn, wt, val: buf.subarray(i, i + 8) });
+      i += 8;
+    } else if (wt === 5) {
+      if (i + 4 > buf.length) break;
+      out.push({ fn, wt, val: buf.subarray(i, i + 4) });
+      i += 4;
+    } else {
+      break;
+    }
+  }
+  return out;
+}
+
+const CONTEXT_BUCKET_LABELS = Object.freeze({
+  tool_results: '工具结果',
+  assistant: '模型回复',
+  system_tools: '系统工具',
+  system_prompt: '系统提示词',
+  checkpoint: '压缩摘要',
+  skills: 'Skill',
+  subagent: '子代理',
+  system_msg: '系统消息',
+  rules: '用户规则',
+  mcp_tools: 'MCP 工具',
+  user_msg: '用户消息'
+});
+
+/**
+ * Decodes Antigravity's native exact context token breakdown tree from
+ * `gen_metadata.data` -> `chat (1)` -> `chatStart (9)` -> `ctxMeta (10)` -> `field 3`.
+ */
+export function parseContextBreakdown(ctxMetaBuf) {
+  if (!ctxMetaBuf || !ctxMetaBuf.length) return null;
+  const ctxEntries = parseProtoEntries(ctxMetaBuf);
+  const f3 = ctxEntries.find((e) => e.fn === 3 && e.wt === 2);
+  if (!f3 || !f3.val || !f3.val.length) return null;
+
+  const breakdownEntries = parseProtoEntries(f3.val);
+  const buckets = new Map();
+  const addTok = (key, amount) => {
+    const n = Number(amount) || 0;
+    if (n <= 0) return;
+    buckets.set(key, (buckets.get(key) || 0) + n);
+  };
+
+  let groupCount = 0;
+  for (let i = 0; i < breakdownEntries.length; i++) {
+    const ge = breakdownEntries[i];
+    if (ge.fn !== 1 || ge.wt !== 2 || !ge.val || !ge.val.length) continue;
+    groupCount++;
+    const gFields = parseProtoEntries(ge.val);
+    let gName = '';
+    let gCat = 0;
+    let gTok = 0;
+    const kids = [];
+    for (let j = 0; j < gFields.length; j++) {
+      const f = gFields[j];
+      if (f.fn === 1 && f.wt === 2) {
+        gName = Buffer.from(f.val).toString('utf8').trim();
+      } else if (f.fn === 2 && f.wt === 0) {
+        gCat = f.val;
+      } else if (f.fn === 4 && f.wt === 0) {
+        gTok = f.val;
+      } else if (f.fn === 5 && f.wt === 2) {
+        const kf = parseProtoEntries(f.val);
+        let kName = '';
+        let kTok = 0;
+        for (let k = 0; k < kf.length; k++) {
+          if (kf[k].fn === 1 && kf[k].wt === 2) kName = Buffer.from(kf[k].val).toString('utf8').trim();
+          else if (kf[k].fn === 3 && kf[k].wt === 0) kTok = kf[k].val;
+        }
+        if (kTok > 0) kids.push({ name: kName, tokens: kTok });
+      }
+    }
+
+    const nameLower = gName.toLowerCase();
+    if (gCat === 7 || nameLower === 'chat messages') {
+      if (kids.length > 0) {
+        let sumKids = 0;
+        for (let k = 0; k < kids.length; k++) {
+          const { name, tokens } = kids[k];
+          sumKids += tokens;
+          const colonIdx = name.indexOf(': ');
+          const typ = (colonIdx >= 0 ? name.slice(colonIdx + 2) : name).trim().toUpperCase();
+          if (typ === 'PLANNER_RESPONSE') {
+            addTok('assistant', tokens);
+          } else if (typ === 'USER_INPUT') {
+            addTok('user_msg', tokens);
+          } else if (typ === 'CHECKPOINT') {
+            addTok('checkpoint', tokens);
+          } else if (typ.includes('SUBAGENT')) {
+            addTok('subagent', tokens);
+          } else if (typ === 'SYSTEM_MESSAGE') {
+            addTok('system_msg', tokens);
+          } else {
+            addTok('tool_results', tokens);
+          }
+        }
+        if (gTok > sumKids) addTok('tool_results', gTok - sumKids);
+      } else {
+        addTok('tool_results', gTok);
+      }
+    } else if (gCat === 2 || nameLower === 'tools') {
+      if (kids.length > 0) {
+        let sumKids = 0;
+        for (let k = 0; k < kids.length; k++) {
+          const { name, tokens } = kids[k];
+          sumKids += tokens;
+          if (/^mcp_/i.test(name)) {
+            addTok('mcp_tools', tokens);
+          } else {
+            addTok('system_tools', tokens);
+          }
+        }
+        if (gTok > sumKids) addTok('system_tools', gTok - sumKids);
+      } else {
+        addTok('system_tools', gTok);
+      }
+    } else if (gCat === 4 || nameLower === 'mcp tools') {
+      addTok('mcp_tools', gTok);
+    } else if (gCat === 5 || nameLower === 'skills') {
+      addTok('skills', gTok);
+    } else if (gCat === 3 || nameLower === 'rules') {
+      addTok('rules', gTok);
+    } else if (gCat === 6 || nameLower === 'subagents') {
+      addTok('subagent', gTok);
+    } else {
+      addTok('system_prompt', gTok);
+    }
+  }
+
+  if (groupCount === 0 || buckets.size === 0) return null;
+  const items = Array.from(buckets.entries())
+    .filter(([, tokens]) => tokens > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, tokens]) => ({
+      key,
+      label: CONTEXT_BUCKET_LABELS[key] || key,
+      tokens
+    }));
+  if (items.length === 0) return null;
+  const totalTokens = items.reduce((acc, it) => acc + it.tokens, 0);
+  return { totalTokens, items };
+}
+
+export function extractContextBreakdownFromGenData(dataBuf) {
+  if (!dataBuf || !dataBuf.length) return null;
+  try {
+    const top = parseProto(dataBuf);
+    const chatBuf = top.get(1);
+    if (!chatBuf || !chatBuf.length) return null;
+    const chat = parseProto(chatBuf);
+    const chatStartBuf = chat.get(9);
+    if (!chatStartBuf || !chatStartBuf.length) return null;
+    const chatStart = parseProto(chatStartBuf);
+    const ctxMetaBuf = chatStart.get(10);
+    if (!ctxMetaBuf || !ctxMetaBuf.length) return null;
+    return parseContextBreakdown(ctxMetaBuf);
+  } catch {
+    return null;
+  }
+}
+
 export function extractMaxStepIdx(raw) {
   if (typeof raw === 'number') return raw >= 0 ? raw : -1;
   if (!raw || typeof raw.length !== 'number' || raw.length === 0) return -1;

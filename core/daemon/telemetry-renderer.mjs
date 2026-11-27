@@ -126,15 +126,19 @@ export function buildMetricsTooltipHtml({
   showSessionStatus = true,
   showUsageStats = true,
   genIdx,
+  modelName = '',
   streamTps,
+  avgTps = 0,
   e2eTps,
   streamTpsValid,
+  avgTtft = 0,
   last,
   lastCacheRate,
   ctxPct,
   contextLimitTokens,
   limitKStr,
   remainCtx,
+  contextBreakdown = null,
   compactedPending,
   compactSummaryKb,
   compactingNow,
@@ -152,6 +156,7 @@ export function buildMetricsTooltipHtml({
   totalCacheWrite,
   totalCache,
   totalPrompt,
+  totalAllTokens = 0,
   sessionCacheRate,
   totalOut,
   totalThink,
@@ -165,13 +170,19 @@ export function buildMetricsTooltipHtml({
     ? 'ag-tt-warn'
     : 'ag-tt-ok';
   const mainTpsVal = streamTpsValid ? streamTps : e2eTps;
-  const speedSub = streamTpsValid ? `端到端 ${e2eTps.toFixed(1)}` : '端到端均值';
+  const effAvgTps = avgTps > 0 ? avgTps : e2eTps;
+  const speedSub = avgTps > 0 ? `均速 ${effAvgTps.toFixed(1)}` : streamTpsValid ? `端到端 ${e2eTps.toFixed(1)}` : '端到端均值';
+  const effAvgTtft = avgTtft > 0 ? avgTtft : Number(last.ttft || 0);
+  const ttftSub = avgTtft > 0 ? `均 ${effAvgTtft.toFixed(2)}s` : `流式 ${Number(last.stream || 0).toFixed(1)}s`;
   const hasSessionCache = parseFloat(sessionCacheRate) > 0;
+  const effTotalTokens = totalAllTokens > 0 ? totalAllTokens : totalPrompt + totalOut;
   const liveChipClass =
     lastErrorMsg && !compactingNow && !generatingPending && !pendingRetrying
       ? ' is-error'
       : pendingRetrying
       ? ' is-slow'
+      : compactingNow || generatingPending
+      ? ' is-running'
       : '';
   const liveChipText =
     lastErrorMsg && !compactingNow && !generatingPending && !pendingRetrying
@@ -181,91 +192,111 @@ export function buildMetricsTooltipHtml({
       : compactingNow
       ? '压缩中…'
       : generatingPending
-      ? '新步执行中…'
-      : '';
+      ? '生成中…'
+      : '就绪';
+  const liveDotClass =
+    lastErrorMsg && !compactingNow && !generatingPending && !pendingRetrying
+      ? ' is-error'
+      : pendingRetrying
+      ? ' is-slow'
+      : compactingNow || generatingPending
+      ? ' is-running'
+      : ' is-idle';
   const liveChipHtml = showSessionStatus
     ? `<span class="ag-tt-live-chip${liveChipClass}">${liveChipText}</span>`
     : '';
+  const liveDotHtml = showSessionStatus ? `<span class="ag-tt-hdr-dot${liveDotClass}"></span>` : '';
   const waitNoteHtml = showSessionStatus ? '<div class="ag-tt-wait-note" id="ag-tt-wait-note"></div>' : '';
 
   if (!showUsageStats) {
     if (!showSessionStatus) return '';
     return `<div class="ag-tt-wrap ag-tt-status-only">
     <div class="ag-tt-hdr">
-      <span class="ag-tt-hdr-left">实时会话状态</span>
+      <span class="ag-tt-hdr-left-wrap">${liveDotHtml}<span class="ag-tt-hdr-left">实时会话状态</span></span>
       <span class="ag-tt-hdr-right">${liveChipHtml}</span>
     </div>
     ${waitNoteHtml}
     <div class="ag-tt-status-desc" data-ag-status-desc="1">会话连接正常，随时可继续对话。</div>
   </div>`;
   }
-  const ctxBentoValHtml = compactedPending
-    ? '<span class="ag-tt-pill ag-tt-compacted-val">已压缩</span>'
-    : `<span class="ag-tt-pill">${ctxPct}%</span>`;
-  const ctxBentoSubText = compactedPending
-    ? generatingPending
-      ? '新步落盘后刷新'
-      : '下次调用后刷新'
-    : `余 ${fmtTok(remainCtx)} / ${limitKStr}`;
 
+  const headerTitle = String(modelName || (last && last.modelName) || '').trim() || '会话用量';
   const ctxUsedTargetPct = contextLimitTokens > 0 ? Math.min(100, (last.ctx / contextLimitTokens) * 100) : 0;
-  const hasStepWrite = last.cacheWrite > 0;
-  const ctxPcts = hasStepWrite
-    ? computeSegPcts([last.inTok, last.cacheWrite, last.cacheRead], ctxUsedTargetPct, 1.5)
-    : computeSegPcts([last.inTok, last.cacheRead], ctxUsedTargetPct, 1.6);
-  const ctxSegsHtml = compactedPending
-    ? '<div class="ag-tt-seg ag-tt-c-emerald" style="width:8%"></div>'
-    : hasStepWrite
-    ? `<div class="ag-tt-seg ag-tt-c-ctx-new" style="width:${ctxPcts[0]}%"></div><div class="ag-tt-seg ag-tt-c-slate" style="width:${ctxPcts[1]}%"></div><div class="ag-tt-seg ag-tt-c-ctx-cache" style="width:${ctxPcts[2]}%"></div>`
-    : `<div class="ag-tt-seg ag-tt-c-ctx-new" style="width:${ctxPcts[0]}%"></div><div class="ag-tt-seg ag-tt-c-ctx-cache" style="width:${ctxPcts[1]}%"></div>`;
-  const ctxWriteLeg = hasStepWrite
-    ? `<span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-slate"></span>写缓存 ${fmtNum(last.cacheWrite)}</span>`
-    : '';
+  const bdItems =
+    !compactedPending && contextBreakdown && Array.isArray(contextBreakdown.items) && contextBreakdown.items.length > 0
+      ? contextBreakdown.items
+      : null;
+
+  let ctxSegsHtml = '';
+  let ctxBreakdownGridHtml = '';
+  if (compactedPending) {
+    ctxSegsHtml = '<div class="ag-tt-seg ag-tt-c-compacted" style="width:10%"></div>';
+  } else if (bdItems) {
+    const segPcts = computeSegPcts(
+      bdItems.map((it) => it.tokens),
+      ctxUsedTargetPct,
+      1.1
+    );
+    ctxSegsHtml = bdItems
+      .map(
+        (it, idx) =>
+          `<div class="ag-tt-seg ag-tt-ctx-k-${escapeHtml(it.key)}" style="width:${segPcts[idx]}%"></div>`
+      )
+      .join('');
+    ctxBreakdownGridHtml = `<div class="ag-tt-ctx-grid">${bdItems
+      .map(
+        (it) =>
+          `<div class="ag-tt-ctx-row"><span class="ag-tt-ctx-lbl"><span class="ag-tt-dot ag-tt-ctx-k-${escapeHtml(it.key)}"></span><span class="ag-tt-ctx-name">${escapeHtml(it.label)}</span></span><span class="ag-tt-ctx-val">${fmtTok(it.tokens)}</span></div>`
+      )
+      .join('')}</div>`;
+  } else {
+    const hasStepWrite = last.cacheWrite > 0;
+    const ctxPcts = hasStepWrite
+      ? computeSegPcts([last.inTok, last.cacheWrite, last.cacheRead], ctxUsedTargetPct, 1.5)
+      : computeSegPcts([last.inTok, last.cacheRead], ctxUsedTargetPct, 1.6);
+    ctxSegsHtml = hasStepWrite
+      ? `<div class="ag-tt-seg ag-tt-c-ctx-new" style="width:${ctxPcts[0]}%"></div><div class="ag-tt-seg ag-tt-c-slate" style="width:${ctxPcts[1]}%"></div><div class="ag-tt-seg ag-tt-c-ctx-cache" style="width:${ctxPcts[2]}%"></div>`
+      : `<div class="ag-tt-seg ag-tt-c-ctx-new" style="width:${ctxPcts[0]}%"></div><div class="ag-tt-seg ag-tt-c-ctx-cache" style="width:${ctxPcts[1]}%"></div>`;
+  }
+
   const ctxBarTopMetaHtml = compactedPending
-    ? `<strong>已完成压缩</strong>${compactSummaryKb > 0 ? ` · 摘要 ${compactSummaryKb} KB` : ''}`
-    : `<strong>${fmtNum(last.ctx)}</strong> / ${limitKStr}`;
-  const ctxBarLegendHtml = compactedPending
-    ? `<span class="ag-tt-legend-left"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-emerald"></span>压缩前 ${fmtNum(last.ctx)} (${ctxPct}%) · 下轮刷新</span></span>`
-    : `<span class="ag-tt-legend-left">
-          <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-ctx-new"></span>新增 ${fmtNum(last.inTok)}</span>
-          ${ctxWriteLeg}
-          <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-ctx-cache"></span>缓存 ${fmtNum(last.cacheRead)}</span>
-        </span>
-        <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-dot-outline"></span>余 ${fmtTok(remainCtx)}</span>`;
+    ? `<strong class="ag-tt-compacted-val">已完成压缩</strong>${compactSummaryKb > 0 ? ` · 摘要 ${compactSummaryKb} KB` : ''}`
+    : `<strong>${fmtTok(last.ctx)}</strong> / ${limitKStr} <span class="ag-tt-pill">(${ctxPct}%)</span>`;
 
-  const durPcts = computeSegPcts([last.ttft, last.stream], 100, 3);
-  const stepOutPcts = computeSegPcts([last.thinkTok, last.respTok], 100, 3);
-  const hasTotalWrite = totalCacheWrite > 0;
-  const totalInPcts = hasTotalWrite
-    ? computeSegPcts([totalIn, totalCacheWrite, totalCache], 100, 2)
-    : computeSegPcts([totalIn, totalCache], 100, 2);
-  const totalOutPcts = computeSegPcts([totalThink, totalResp], 100, 2);
-
-  const turnStripHtml =
+  const turnRightFootHtml =
     turnSteps > 1
-      ? `<div class="ag-tt-turn-strip">
-          <span class="ag-tt-turn-left">本轮 ${turnSteps} 步 · ${turnDur.toFixed(1)}s</span>
-          <span class="ag-tt-turn-right">输出 <strong>${fmtTok(turnOut)}</strong> <span class="ag-tt-turn-sub">(思 ${fmtTok(turnThink)} / 正 ${fmtTok(turnResp)})</span></span>
-        </div>`
-      : '';
+      ? `<span class="ag-tt-ctx-foot-right">本轮 ${turnSteps} 步 · 输 <strong>${fmtTok(turnOut)}</strong></span>`
+      : `<span class="ag-tt-ctx-foot-right">余 <strong>${fmtTok(remainCtx)}</strong></span>`;
+  const ctxFootLeftHtml = compactedPending
+    ? `<span class="ag-tt-ctx-foot-left">压缩前 ${fmtTok(last.ctx)} (${ctxPct}%) · 下步刷新</span>`
+    : turnSteps > 1
+    ? `<span class="ag-tt-ctx-foot-left">新增 ${fmtTok(last.inTok)} · 缓存 ${fmtTok(last.cacheRead)} · 余 ${fmtTok(remainCtx)}</span>`
+    : `<span class="ag-tt-ctx-foot-left">新增 ${fmtTok(last.inTok)}${last.cacheWrite > 0 ? ` · 写 ${fmtTok(last.cacheWrite)}` : ''} · 缓存 ${fmtTok(last.cacheRead)}</span>`;
 
-  const totalInSegsHtml = hasTotalWrite
-    ? `<div class="ag-tt-seg ag-tt-c-mist" style="width:${totalInPcts[0]}%"></div><div class="ag-tt-seg ag-tt-c-slate" style="width:${totalInPcts[1]}%"></div><div class="ag-tt-seg ag-tt-c-emerald" style="width:${totalInPcts[2]}%"></div>`
-    : `<div class="ag-tt-seg ag-tt-c-mist" style="width:${totalInPcts[0]}%"></div><div class="ag-tt-seg ag-tt-c-emerald" style="width:${totalInPcts[1]}%"></div>`;
+  const totalNewWithWrite = totalIn + totalCacheWrite;
+  const totalInNewPct = effTotalTokens > 0 ? ((totalNewWithWrite / effTotalTokens) * 100).toFixed(1) : '0.0';
+  const totalInCachePct = effTotalTokens > 0 ? ((totalCache / effTotalTokens) * 100).toFixed(1) : '0.0';
+  const totalOutPct = effTotalTokens > 0 ? ((totalOut / effTotalTokens) * 100).toFixed(1) : '0.0';
+  const sessSegPcts = computeSegPcts([totalNewWithWrite, totalCache, totalOut], 100, 2.2);
 
   return `<div class="ag-tt-wrap ag-tt-dash ${ctxLevelClass}">
     <div class="ag-tt-col-usage">
       <div class="ag-tt-hdr">
         <span class="ag-tt-hdr-left-wrap">
-          <span class="ag-tt-hdr-left">会话用量</span>
-          <span class="ag-tt-gen-chip">${userStepsCount} 轮 · ${validCount} 次</span>
+          ${liveDotHtml}
+          <span class="ag-tt-hdr-left" title="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</span>
         </span>
-        <span class="ag-tt-hdr-right">${liveChipHtml}<span class="ag-tt-gen-chip">Gen #${genIdx}</span></span>
+        <span class="ag-tt-hdr-right">
+          ${liveChipHtml}
+          <button type="button" class="ag-tt-quota-btn ag-tt-hdr-refresh" aria-label="刷新用量与配额" title="刷新用量与配额">
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.67M13.5 2.5v2.8h-2.8"/></svg>
+          </button>
+        </span>
       </div>
       ${waitNoteHtml}
       <div class="ag-tt-bento">
         <div class="ag-tt-bento-cell">
-          <div class="ag-tt-bento-lbl">生成速度</div>
+          <div class="ag-tt-bento-lbl">输出速度</div>
           <div class="ag-tt-bento-val-row">
             <span class="ag-tt-bento-val">${mainTpsVal.toFixed(1)}</span>
             <span class="ag-tt-bento-unit">t/s</span>
@@ -273,82 +304,64 @@ export function buildMetricsTooltipHtml({
           <div class="ag-tt-bento-sub">${speedSub}</div>
         </div>
         <div class="ag-tt-bento-cell">
-          <div class="ag-tt-bento-lbl">上下文窗口</div>
-          <div class="ag-tt-bento-val-row">${ctxBentoValHtml}</div>
-          <div class="ag-tt-bento-sub">${ctxBentoSubText}</div>
+          <div class="ag-tt-bento-lbl">首字延迟</div>
+          <div class="ag-tt-bento-val-row">
+            <span class="ag-tt-bento-val">${Number(last.ttft || 0).toFixed(2)}</span>
+            <span class="ag-tt-bento-unit">s</span>
+          </div>
+          <div class="ag-tt-bento-sub">${ttftSub}</div>
         </div>
         <div class="ag-tt-bento-cell">
-          <div class="ag-tt-bento-lbl">累计缓存命中</div>
+          <div class="ag-tt-bento-lbl">缓存命中</div>
           <div class="ag-tt-bento-val-row">
-            <span class="ag-tt-bento-val${hasSessionCache ? ' ag-tt-val-good' : ''}">${sessionCacheRate}%</span>
+            <span class="ag-tt-bento-val${hasSessionCache ? ' ag-tt-val-accent' : ''}">${sessionCacheRate}%</span>
           </div>
           <div class="ag-tt-bento-sub">本步 ${lastCacheRate}%</div>
         </div>
+        <div class="ag-tt-bento-cell">
+          <div class="ag-tt-bento-lbl">会话总量</div>
+          <div class="ag-tt-bento-val-row">
+            <span class="ag-tt-bento-val">${fmtTok(effTotalTokens)}</span>
+          </div>
+          <div class="ag-tt-bento-sub">${userStepsCount} 轮 · ${validCount} 次</div>
+        </div>
       </div>
-      <div class="ag-tt-bar-blk ag-tt-none">
+      <div class="ag-tt-card ag-tt-ctx-card">
         <div class="ag-tt-bar-top">
-          <span class="ag-tt-bar-name">当前上下文</span>
+          <span class="ag-tt-bar-name">上下文窗口</span>
           <span class="ag-tt-bar-meta">${ctxBarTopMetaHtml}</span>
         </div>
         <div class="ag-tt-track">${ctxSegsHtml}</div>
-        <div class="ag-tt-legend">${ctxBarLegendHtml}</div>
-      </div>
-      <div class="ag-tt-grid-2 ag-tt-sec-top">
-        <div class="ag-tt-grid-2-col">
-          <div class="ag-tt-bar-top">
-            <span class="ag-tt-bar-name">响应耗时</span>
-            <span class="ag-tt-bar-meta"><strong>${last.totDur.toFixed(2)}s</strong></span>
-          </div>
-          <div class="ag-tt-track">
-            <div class="ag-tt-seg ag-tt-c-slate" style="width:${durPcts[0]}%"></div>
-            <div class="ag-tt-seg ag-tt-c-brand" style="width:${durPcts[1]}%"></div>
-          </div>
-          <div class="ag-tt-legend">
-            <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-slate"></span>TTFT ${last.ttft.toFixed(2)}s</span>
-            <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-brand"></span>流式 ${last.stream.toFixed(2)}s</span>
-          </div>
-        </div>
-        <div class="ag-tt-grid-2-col">
-          <div class="ag-tt-bar-top">
-            <span class="ag-tt-bar-name">本步输出</span>
-            <span class="ag-tt-bar-meta"><strong>${fmtNum(last.outTok)}</strong></span>
-          </div>
-          <div class="ag-tt-track">
-            <div class="ag-tt-seg ag-tt-c-indigo" style="width:${stepOutPcts[0]}%"></div>
-            <div class="ag-tt-seg ag-tt-c-brand" style="width:${stepOutPcts[1]}%"></div>
-          </div>
-          <div class="ag-tt-legend">
-            <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-indigo"></span>思考 ${fmtNum(last.thinkTok)}</span>
-            <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-brand"></span>正文 ${fmtNum(last.respTok)}</span>
-          </div>
+        ${ctxBreakdownGridHtml}
+        <div class="ag-tt-ctx-foot">
+          ${ctxFootLeftHtml}
+          ${turnRightFootHtml}
         </div>
       </div>
-      ${turnStripHtml}
-      <div class="ag-tt-grid-2 ag-tt-sec-top ag-tt-none">
-        <div class="ag-tt-grid-2-col">
-          <div class="ag-tt-bar-top">
-            <span class="ag-tt-bar-name">累计输入</span>
-            <span class="ag-tt-bar-meta"><strong>${fmtTok(totalPrompt)}</strong></span>
+      <div class="ag-tt-card ag-tt-sess-card">
+        <div class="ag-tt-bar-top">
+          <span class="ag-tt-bar-name">当前会话累计</span>
+          <span class="ag-tt-bar-meta">${userStepsCount} 轮 · ${validCount} 次 · <strong>${fmtTok(effTotalTokens)}</strong></span>
+        </div>
+        <div class="ag-tt-sess-grid">
+          <div class="ag-tt-sess-col">
+            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-in-new"></span>新输入</span><span class="ag-tt-sess-pct">${totalInNewPct}%</span></div>
+            <div class="ag-tt-sess-val">${fmtTok(totalNewWithWrite)}</div>
           </div>
-          <div class="ag-tt-track">${totalInSegsHtml}</div>
-          <div class="ag-tt-legend">
-            <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-mist"></span>新增 ${fmtTok(totalIn)}</span>
-            <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-emerald"></span>缓存 ${fmtTok(totalCache)}</span>
+          <div class="ag-tt-sess-col">
+            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-in-cache"></span>缓存读取</span><span class="ag-tt-sess-pct">${totalInCachePct}%</span></div>
+            <div class="ag-tt-sess-val">${fmtTok(totalCache)}</div>
+          </div>
+          <div class="ag-tt-sess-col">
+            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-out"></span>总输出</span><span class="ag-tt-sess-pct">${totalOutPct}%</span></div>
+            <div class="ag-tt-sess-val">${fmtTok(totalOut)}</div>
+            <div class="ag-tt-sess-sub">思 ${fmtTok(totalThink)} · 正 ${fmtTok(totalResp)}</div>
           </div>
         </div>
-        <div class="ag-tt-grid-2-col">
-          <div class="ag-tt-bar-top">
-            <span class="ag-tt-bar-name">累计输出</span>
-            <span class="ag-tt-bar-meta"><strong>${fmtTok(totalOut)}</strong></span>
-          </div>
-          <div class="ag-tt-track">
-            <div class="ag-tt-seg ag-tt-c-indigo" style="width:${totalOutPcts[0]}%"></div>
-            <div class="ag-tt-seg ag-tt-c-brand" style="width:${totalOutPcts[1]}%"></div>
-          </div>
-          <div class="ag-tt-legend">
-            <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-indigo"></span>思考 ${fmtTok(totalThink)}</span>
-            <span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-brand"></span>正文 ${fmtTok(totalResp)}</span>
-          </div>
+        <div class="ag-tt-track ag-tt-track-xs">
+          <div class="ag-tt-seg ag-tt-c-in-new" style="width:${sessSegPcts[0]}%"></div>
+          <div class="ag-tt-seg ag-tt-c-in-cache" style="width:${sessSegPcts[1]}%"></div>
+          <div class="ag-tt-seg ag-tt-c-out" style="width:${sessSegPcts[2]}%"></div>
         </div>
       </div>
     </div>
