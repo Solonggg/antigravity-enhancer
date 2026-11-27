@@ -416,19 +416,20 @@
               : shortGroup || winPrefix || (isZh ? '用量' : 'Usage');
 
           const hasPct = !b.disabled && typeof b.remainingPct === 'number' && Number.isFinite(b.remainingPct);
-          const usedPct = hasPct ? Math.max(0, Math.min(100, 100 - b.remainingPct)) : null;
+          const remPct = hasPct ? Math.max(0, Math.min(100, b.remainingPct)) : null;
+          const usedPct = hasPct ? Math.max(0, Math.min(100, 100 - remPct)) : null;
           const level = b.disabled ? 'unknown' : b.level || 'ok';
           const resetTxt = b.resetText || b.shortResetText || (hasPct && usedPct === 0 ? (isZh ? '满额可用' : 'Full') : '');
-          const usedText = b.disabled
+          const pctLabel = b.disabled
             ? isZh ? '未启用' : 'Off'
-            : usedPct !== null
+            : remPct !== null
             ? isZh
-              ? '已用 ' + usedPct + '%'
-              : usedPct + '% used'
+              ? remPct + '% 剩余'
+              : remPct + '% left'
             : '—';
           const metaParts = [];
           if (resetTxt) metaParts.push('<span class="ag-tt-qbar-reset">' + escapeStatusHtml(resetTxt) + '</span>');
-          metaParts.push('<span class="ag-tt-quota-pct ag-q-' + escapeStatusHtml(level) + '">' + escapeStatusHtml(usedText) + '</span>');
+          metaParts.push('<span class="ag-tt-quota-pct ag-q-' + escapeStatusHtml(level) + '">' + escapeStatusHtml(pctLabel) + '</span>');
           const fillWidth = usedPct !== null && usedPct > 0 ? Math.max(3, usedPct) : 0;
           const rowTitleAttr = b.resetText ? ' title="' + escapeStatusHtml(b.resetText) + '"' : '';
 

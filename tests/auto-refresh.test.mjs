@@ -982,13 +982,13 @@ test('Official quota tooltip renders horizontal used-% bars without plan/credits
   assert.ok(slot.innerHTML.includes('ag-tt-qbar-list'), 'should render horizontal bar list');
   assert.ok(slot.innerHTML.includes('>用量<'), 'should title quota card as 用量 in zh-CN');
   assert.ok(slot.innerHTML.includes('5h · Gemini'), 'should shorten Gemini Models to Gemini');
-  assert.ok(slot.innerHTML.includes('已用 15%'), 'should display used-% (100 - 85 = 15%)');
-  assert.ok(slot.innerHTML.includes('width:15%'), 'bar fill width should reflect used-%');
+  assert.ok(slot.innerHTML.includes('85% 剩余'), 'should display remaining-% label');
+  assert.ok(slot.innerHTML.includes('width:15%'), 'bar fill width should keep used-%');
   assert.ok(!slot.innerHTML.includes('点数'), 'must omit credits label');
   assert.ok(!slot.innerHTML.includes('Google AI Pro'), 'must omit plan label');
   assert.ok(!slot.innerHTML.includes('已用比例'), 'must omit redundant mode label');
 
-  // Verify pure English mode (i18n: false) renders Usage & "15% used" with zero Chinese text
+  // Verify pure English mode (i18n: false) renders Usage & "85% left" with zero Chinese text
   const enBody = new MiniElement('BODY');
   enBody._isRoot = true;
   const enView = makeConversationView(cid);
@@ -1010,6 +1010,7 @@ test('Official quota tooltip renders horizontal used-% bars without plan/credits
   await new Promise((r) => setTimeout(r, 20));
   const enSlot = enEnv.doc.getElementById('ag-live-metrics-tooltip').querySelector('[data-ag-quota-slot="1"]');
   assert.ok(enSlot.innerHTML.includes('>Usage<'), 'should title quota card as Usage in English');
-  assert.ok(enSlot.innerHTML.includes('15% used'), 'should display English used-% format');
+  assert.ok(enSlot.innerHTML.includes('85% left'), 'should display English remaining-% format');
+  assert.ok(enSlot.innerHTML.includes('width:15%'), 'English bar fill width should keep used-%');
   assert.ok(!/[\u4e00-\u9fff]/.test(enSlot.innerHTML), 'English usage card must contain zero Chinese characters');
 });
