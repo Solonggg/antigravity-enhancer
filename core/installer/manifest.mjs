@@ -33,11 +33,11 @@ function readPackageMeta(baseDir) {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
       return {
         name: pkg.name || 'antigravity-enhancer',
-        version: pkg.version || '0.2.0'
+        version: pkg.version || '0.2.1'
       };
     }
   } catch {}
-  return { name: 'antigravity-enhancer', version: '0.2.0' };
+  return { name: 'antigravity-enhancer', version: '0.2.1' };
 }
 
 export function buildManifest(baseDir) {

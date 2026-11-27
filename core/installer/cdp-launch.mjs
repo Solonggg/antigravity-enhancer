@@ -25,7 +25,7 @@ function readEnhancerPkgVersion() {
       }
     }
   } catch {}
-  return '0.2.0';
+  return '0.2.1';
 }
 
 export const CDP_RELAUNCH_GUARD_FILE = path.join(os.tmpdir(), 'ag-enhancer-cdp-relaunch-guard.json');

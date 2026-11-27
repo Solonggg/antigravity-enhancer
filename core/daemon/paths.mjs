@@ -15,7 +15,7 @@ export const CORE_DIR = path.join(ROOT_DIR, 'core');
 export const STYLES_DIR = path.join(CORE_DIR, 'styles');
 export const RUNTIME_DIR = path.join(CORE_DIR, 'runtime');
 export const USER_DIR = path.join(ROOT_DIR, 'user');
-const FALLBACK_BASE_VERSION = '0.2.0';
+const FALLBACK_BASE_VERSION = '0.2.1';
 
 export function readLocalBaseVersion(rootDir = ROOT_DIR) {
   for (const rel of ['package.json', path.join('core', 'manifest.json')]) {

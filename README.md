@@ -39,7 +39,7 @@
 
 > **为什么选择 `antigravity-enhancer`？**
 > - **保留原生外观**：完整移除主题配色覆写，完全跟随 Antigravity 原生浅色/深色主题。
-> - **默认零外联 + 手动在线热更新**：核心功能严格仅通过本地 `127.0.0.1` CDP 运行；仅在手动点击 **设置 → Antigravity增强 → 检查更新 / 立即热更新** 或执行 `node install.mjs update` 时直连 `Solonggg/antigravity-enhancer` 并逐文件校验 SHA-256，无需重启 Antigravity 即可热更新生效。
+> - **默认零外联 + 手动在线热更新**：核心功能严格仅通过本地 `127.0.0.1` CDP 运行；仅在手动点击 **设置 → Antigravity增强 → 插件更新** 或执行 `node install.mjs update` 时直连 `Solonggg/antigravity-enhancer` 并逐文件校验 SHA-256，无需重启 Antigravity 即可热更新生效。
 > - **单一后台守护进程**：将汉化、本地统计与右键外部打开统一整合在一个轻量常驻进程中，安装时自动清理旧版 `antigravity-codex-theme` 与独立 `antigravity-open-in` 后台服务。
 
 ## 快速安装

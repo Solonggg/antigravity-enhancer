@@ -1,6 +1,6 @@
 {
   "name": "antigravity-enhancer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minNodeVersion": "22.13.0",
   "fullMetricsNodeVersion": "22.13.0",
   "files": {
@@ -25,7 +25,7 @@
       "bytes": 36151
     },
     "daemon/paths.mjs": {
-      "sha256": "76c9dcba174bc297f50193e1f0fbe69701bc85d2ff4c066974bda42c145e3f4c",
+      "sha256": "3aea8d9681fdc090fc5facaf25d2e035bcd17a5974ba53183ac1a98dbec811a1",
       "bytes": 20897
     },
     "daemon/prompt-suggest.mjs": {
@@ -53,7 +53,7 @@
       "bytes": 463825
     },
     "installer/cdp-launch.mjs": {
-      "sha256": "69a13a7759c6ab47e979e8c1a1e5048355fa9a61e3f1fcd9363a864cd930f3ad",
+      "sha256": "72044c258a372db1f5d0c7b966b542fd71e51d9fba3b554395eb6c2ea1efaa99",
       "bytes": 29806
     },
     "installer/env.mjs": {
@@ -65,7 +65,7 @@
       "bytes": 6059
     },
     "installer/manifest.mjs": {
-      "sha256": "c87c0ca057a3d3527dd295fc77ac2d2410e2c0c70d2ac7626fb7887f5e76fcf8",
+      "sha256": "097b12991c7e4eafa327658096e253d37c69a3484af9ec9b60e35d8fd330f739",
       "bytes": 5739
     },
     "installer/service.mjs": {
@@ -73,7 +73,7 @@
       "bytes": 18461
     },
     "runtime/00-head.js": {
-      "sha256": "ab4249f52a5fbbdf4b4ee2f14e998abb407c8b84a7aad8f3e82c35475c38401a",
+      "sha256": "650b7c347745b8b9dd4c499c2841abe1856f07d7a3260d40ed9e174de06f5c53",
       "bytes": 10797
     },
     "runtime/10-guards.js": {
@@ -105,8 +105,8 @@
       "bytes": 13183
     },
     "runtime/75-settings-ui.js": {
-      "sha256": "a976380f31f19d682253d252dc2d37e453d40a7580f9815f438c4e5317b5bc52",
-      "bytes": 81301
+      "sha256": "e0b5630d9ec828f8adee5173ce50149a4f9fd9cb1c5e9c0e438d3a4cda4bb520",
+      "bytes": 82161
     },
     "runtime/90-tail.js": {
       "sha256": "c825f807429146d9cc7cbb5033135d9f4cb0208b69a4a3e290b2ba2f23f122e8",
@@ -129,8 +129,8 @@
       "bytes": 2654
     },
     "styles/45-settings-ui.css": {
-      "sha256": "b03e9c6473eca856ab99cb045562bbe38a8016494c007eb6256e47e5b1436f18",
-      "bytes": 23529
+      "sha256": "a9316a70a0089b3a105bbe1e8ddc1b9fd31ad9d4a0ea400bf40fecdffcd5f308",
+      "bytes": 25180
     }
   }
 }

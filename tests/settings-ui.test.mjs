@@ -507,8 +507,8 @@ test('75-settings-ui uses manual popovers inside settings dialog, updates worker
   assert.ok(src.includes('__ag_on_update_state'), 'settings UI must wire __ag_on_update_state');
   assert.ok(src.includes('ag-s-check-update'), 'settings UI must render Check Updates button');
   assert.ok(src.includes('ag-s-apply-update'), 'settings UI must render Hot Update button');
-  assert.ok(src.includes("secUpdates: '版本与更新'"), 'settings UI must include Chinese Updates section');
-  assert.ok(src.includes("secUpdates: 'Version & Updates'"), 'settings UI must include English Updates section');
+  assert.ok(src.includes("secUpdates: '插件更新'"), 'settings UI must include Chinese Updates section');
+  assert.ok(src.includes("secUpdates: 'Plugin Updates'"), 'settings UI must include English Updates section');
 
   // Removed IDEA launcher bar & custom path UI; undetected editors filtered out; quota popover has no settings jump
   assert.ok(!src.includes('ag-s-idea-bar'), 'IDEA launcher path bar must be removed from settings UI');

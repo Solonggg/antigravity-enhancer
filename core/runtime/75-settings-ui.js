@@ -184,7 +184,7 @@
         update: (() => {
           const curTag = (() => {
             const m = String(PATCH_VERSION || '').match(/^(\d+\.\d+(?:\.\d+)?)/);
-            return m ? 'v' + m[1] : 'v0.2.0';
+            return m ? 'v' + m[1] : 'v0.2.1';
           })();
           const saved =
             window.__ag_settings_update_state && typeof window.__ag_settings_update_state === 'object'
@@ -229,7 +229,7 @@
 
       function getShortVersionTag() {
         const m = String(PATCH_VERSION || '').match(/^(\d+\.\d+(?:\.\d+)?)/);
-        return m ? 'v' + m[1] : 'v0.2.0';
+        return m ? 'v' + m[1] : 'v0.2.1';
       }
 
       function getDictCountLabel() {
@@ -295,24 +295,26 @@
             refreshModelsTitle: '刷新模型列表',
             menuModelsHdr: '模型',
             recommendedBadge: '推荐',
-            secUpdates: '版本与更新',
-            updateRowTitle: '在线检查与热更新',
-            updateIdleDesc: (ver) => '当前版本 ' + ver + ' · 仅手动点击时从 GitHub 检查并拉取',
+            secUpdates: '插件更新',
+            updateRowTitle: '插件版本',
+            updateIdleDesc: '手动检查 GitHub 最新版本，支持一键更新并热重载生效，无需重启 Antigravity',
             updateCheckingDesc: '正在连接 GitHub 检查最新版本…',
             updateUpToDateBadge: '已是最新',
-            updateUpToDateDesc: (ver, sha) => '当前已是最新版本 ' + ver + (sha ? ' · ' + sha : ''),
-            updateAheadDesc: (localVer, remoteVer) => '本地版本 ' + localVer + ' 领先于远端 (' + remoteVer + ')',
+            updateUpToDateDesc: (sha) => '当前已是最新版本' + (sha ? '（' + sha + '）' : ''),
+            updateAheadBadge: '领先远端',
+            updateAheadDesc: (localVer, remoteVer) => '当前本地版本 ' + localVer + ' 领先于 GitHub 远端 (' + remoteVer + ')',
             updateAvailBadge: (ver) => '新版本 ' + ver,
             updateHotfixBadge: '有热修复',
-            updateAvailDesc: (count, msg) => '变更 ' + count + ' 个文件' + (msg ? ' · ' + msg : ''),
-            updateUpdatingDesc: '正在下载校验 SHA-256 并应用热更新…',
-            updateRestartingDesc: (ver) => '已应用 ' + ver + '，正在热重载（无需重启 Antigravity）…',
-            updateDoneBadge: '已热更新',
-            updateDoneDesc: (ver) => '已热更新至 ' + ver + '，无需重启 Antigravity',
+            updateAvailDesc: '发现新版本，点击直接更新并热重载生效，无需重启 Antigravity',
+            updateHotfixDesc: (count) => '发现可用热修复（变更 ' + count + ' 个文件），点击直接更新并热重载生效，无需重启 Antigravity',
+            updateUpdatingDesc: '正在下载校验 SHA-256 并热更新，请稍候…',
+            updateRestartingDesc: (ver) => '已应用 ' + ver + '，正在热重载生效，无需重启 Antigravity…',
+            updateDoneBadge: '已更新',
+            updateDoneDesc: (ver) => '已更新至 ' + ver + ' 并热重载生效，无需重启 Antigravity',
             updateErrPrefix: '失败：',
             updateCheckBtn: '检查更新',
             updateCheckingBtn: '检查中…',
-            updateApplyBtn: '立即热更新',
+            updateApplyBtn: '立即更新',
             updateApplyingBtn: '更新中…'
           };
         }
@@ -365,24 +367,27 @@
           refreshModelsTitle: 'Refresh models',
           menuModelsHdr: 'Models',
           recommendedBadge: 'Rec',
-          secUpdates: 'Version & Updates',
-          updateRowTitle: 'Online Hot Updates',
-          updateIdleDesc: (ver) => 'Current ' + ver + ' · Only contacts GitHub when you click',
+          secUpdates: 'Plugin Updates',
+          updateRowTitle: 'Plugin Version',
+          updateIdleDesc: 'Check GitHub for the latest version and hot-reload without restarting Antigravity',
           updateCheckingDesc: 'Checking GitHub for the latest version…',
           updateUpToDateBadge: 'Up to date',
-          updateUpToDateDesc: (ver, sha) => 'You are on the latest version ' + ver + (sha ? ' · ' + sha : ''),
-          updateAheadDesc: (localVer, remoteVer) => 'Local ' + localVer + ' is ahead of remote (' + remoteVer + ')',
-          updateAvailBadge: (ver) => ver + ' available',
+          updateUpToDateDesc: (sha) => 'Already on the latest version' + (sha ? ' (' + sha + ')' : ''),
+          updateAheadBadge: 'Ahead',
+          updateAheadDesc: (localVer, remoteVer) => 'Local ' + localVer + ' is ahead of GitHub (' + remoteVer + ')',
+          updateAvailBadge: (ver) => 'New ' + ver,
           updateHotfixBadge: 'Hotfix',
-          updateAvailDesc: (count, msg) => count + ' file(s) changed' + (msg ? ' · ' + msg : ''),
+          updateAvailDesc: 'New version available. Click to update and hot-reload without restarting Antigravity',
+          updateHotfixDesc: (count) =>
+            'Hotfix available (' + count + ' file(s)). Click to update and hot-reload without restarting Antigravity',
           updateUpdatingDesc: 'Downloading, verifying SHA-256 & applying hot update…',
-          updateRestartingDesc: (ver) => 'Applied ' + ver + ', hot-reloading UI (no restart needed)…',
+          updateRestartingDesc: (ver) => 'Applied ' + ver + ', hot-reloading without restarting Antigravity…',
           updateDoneBadge: 'Updated',
-          updateDoneDesc: (ver) => 'Hot-updated to ' + ver + ' — no Antigravity restart needed',
+          updateDoneDesc: (ver) => 'Updated to ' + ver + ' and hot-reloaded without restarting Antigravity',
           updateErrPrefix: 'Error: ',
           updateCheckBtn: 'Check Updates',
           updateCheckingBtn: 'Checking…',
-          updateApplyBtn: 'Hot Update',
+          updateApplyBtn: 'Update Now',
           updateApplyingBtn: 'Updating…'
         };
       }
@@ -558,19 +563,24 @@
         const busy = u.status === 'checking' || u.status === 'updating' || u.status === 'restarting';
 
         let pillHtml = '';
-        let descHtml = escHtml(s.updateIdleDesc(curVer));
+        let descHtml = escHtml(s.updateIdleDesc);
         if (u.status === 'checking') {
           descHtml = escHtml(s.updateCheckingDesc);
         } else if (u.status === 'up_to_date') {
           pillHtml = '<span class="ag-s-update-pill" data-tone="ok">' + escHtml(s.updateUpToDateBadge) + '</span>';
-          descHtml = escHtml(s.updateUpToDateDesc(curVer, u.commitSha || ''));
+          descHtml = escHtml(s.updateUpToDateDesc(u.commitSha || ''));
         } else if (u.status === 'ahead') {
+          pillHtml = '<span class="ag-s-update-pill" data-tone="ok">' + escHtml(s.updateAheadBadge) + '</span>';
           descHtml = escHtml(s.updateAheadDesc(curVer, remoteTag || curVer));
         } else if (u.status === 'available') {
           const badgeTxt = u.reason === 'hotfix' ? s.updateHotfixBadge : s.updateAvailBadge(remoteTag || curVer);
           pillHtml = '<span class="ag-s-update-pill" data-tone="accent">' + escHtml(badgeTxt) + '</span>';
-          descHtml = escHtml(s.updateAvailDesc(Math.max(1, Number(u.changedCount || 0)), u.commitMessage || ''));
+          descHtml = escHtml(
+            u.reason === 'hotfix' ? s.updateHotfixDesc(Math.max(1, Number(u.changedCount || 0))) : s.updateAvailDesc
+          );
         } else if (u.status === 'updating') {
+          const badgeTxt = u.reason === 'hotfix' ? s.updateHotfixBadge : s.updateAvailBadge(remoteTag || curVer);
+          pillHtml = '<span class="ag-s-update-pill" data-tone="accent">' + escHtml(badgeTxt) + '</span>';
           descHtml = escHtml(s.updateUpdatingDesc);
         } else if (u.status === 'restarting') {
           pillHtml = '<span class="ag-s-update-pill" data-tone="accent">' + escHtml(targetTag) + '</span>';
@@ -593,17 +603,18 @@
           escHtml(s.secUpdates) +
           '</span></div>' +
           '<div class="ag-s-card">' +
-          '<div class="ag-s-row"><div class="ag-s-row-main">' +
-          '<div class="ag-s-row-info">' +
-          '<div class="ag-s-row-label-wrap">' +
-          '<span class="ag-s-row-label">' +
+          '<div class="ag-s-row ag-s-update-row">' +
+          '<div class="ag-s-update-head">' +
+          '<span class="ag-s-update-title">' +
           escHtml(s.updateRowTitle) +
+          '</span>' +
+          '<span class="ag-s-update-ver-pill">' +
+          escHtml(curVer) +
           '</span>' +
           pillHtml +
           '</div>' +
-          '<div id="ag-s-update-desc" class="ag-s-row-desc">' +
+          '<div id="ag-s-update-desc" class="ag-s-update-desc">' +
           descHtml +
-          '</div>' +
           '</div>' +
           '<div class="ag-s-update-actions">' +
           '<button type="button" id="ag-s-check-update" class="ag-s-btn-secondary"' +
@@ -619,7 +630,7 @@
               '</button>'
             : '') +
           '</div>' +
-          '</div></div>' +
+          '</div>' +
           '</div>' +
           '</div>'
         );
