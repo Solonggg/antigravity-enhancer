@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  ROOT_DIR,
   parseDaemonCliArgs,
   createBundleController
 } from './daemon/paths.mjs';
@@ -34,6 +35,7 @@ const lsLogMod = await loadOptionalModule('daemon/ls-log.mjs');
 const sqliteMetricsMod = await loadOptionalModule('daemon/sqlite-metrics.mjs');
 const promptSuggestMod = await loadOptionalModule('daemon/prompt-suggest.mjs');
 const openInMod = await loadOptionalModule('daemon/open-in.mjs');
+const updaterMod = await loadOptionalModule('daemon/updater.mjs');
 
 const parseProto = protoMod?.parseProto || null;
 const parseGenMetadataRow = protoMod?.parseGenMetadataRow || null;
@@ -115,6 +117,7 @@ const cdpManager = createCdpManager({
   metricsReader,
   promptSuggester,
   openInMod,
+  updaterMod,
   hasSqlite: () => Boolean(DatabaseSync && sqliteMetricsMod),
   runOnce: cliOpts.runOnce,
   safeMode: cliOpts.safeMode,
@@ -125,6 +128,11 @@ const cdpManager = createCdpManager({
   },
   onFastWatch: (delayMs) => {
     if (syncTimer) scheduleNextSync(delayMs);
+  },
+  onScheduleRestart: () => {
+    if (updaterMod && typeof updaterMod.scheduleDaemonRestart === 'function') {
+      updaterMod.scheduleDaemonRestart(ROOT_DIR, { delayMs: 350 });
+    }
   }
 });
 

@@ -421,8 +421,8 @@ export function restartSystemService(targetDir, realDaemon, wrapperDaemon) {
   if (process.platform === 'darwin') {
     const uid = process.getuid ? process.getuid() : 501;
     const activePlist = path.join(os.homedir(), 'Library', 'LaunchAgents', `${SERVICE_IDS.macLabel}.plist`);
-    try {
-      if (fs.existsSync(activePlist)) {
+    if (fs.existsSync(activePlist)) {
+      try {
         for (let attempt = 0; attempt < 6; attempt += 1) {
           try {
             execSync(
@@ -433,13 +433,37 @@ export function restartSystemService(targetDir, realDaemon, wrapperDaemon) {
             Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
           }
         }
-      }
-      execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_IDS.macLabel} 2>/dev/null || true`);
-    } catch {}
+        execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_IDS.macLabel} 2>/dev/null || true`);
+      } catch {}
+    } else {
+      try {
+        const entry = fs.existsSync(wrapperDaemon) ? wrapperDaemon : realDaemon;
+        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', entry], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        child.unref();
+      } catch {}
+    }
   } else if (process.platform === 'linux') {
-    try {
-      execSync(`systemctl --user restart ${SERVICE_IDS.linuxUnit} 2>/dev/null || true`);
-    } catch {}
+    const unitFile = path.join(os.homedir(), '.config', 'systemd', 'user', SERVICE_IDS.linuxUnit);
+    let restartedViaSystemd = false;
+    if (fs.existsSync(unitFile)) {
+      try {
+        execSync(`systemctl --user restart ${SERVICE_IDS.linuxUnit} 2>/dev/null`);
+        restartedViaSystemd = true;
+      } catch {}
+    }
+    if (!restartedViaSystemd) {
+      try {
+        const entry = fs.existsSync(wrapperDaemon) ? wrapperDaemon : realDaemon;
+        const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', entry], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        child.unref();
+      } catch {}
+    }
   } else if (process.platform === 'win32') {
     let restartedViaTask = false;
     try {

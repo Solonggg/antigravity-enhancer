@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import {
   NON_HOST_CMD_RE,
   isPidAlive,
@@ -12,6 +13,20 @@ import {
   sleepSync,
   stripUtf8Bom
 } from '../shared.mjs';
+
+const __cdpLaunchDir = path.dirname(fileURLToPath(import.meta.url));
+function readEnhancerPkgVersion() {
+  try {
+    const pkgPath = path.resolve(__cdpLaunchDir, '../..', 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(stripUtf8Bom(fs.readFileSync(pkgPath, 'utf8')));
+      if (typeof pkg?.version === 'string' && /^\d+\.\d+\.\d+/.test(pkg.version.trim())) {
+        return pkg.version.trim();
+      }
+    }
+  } catch {}
+  return '0.2.0';
+}
 
 export const CDP_RELAUNCH_GUARD_FILE = path.join(os.tmpdir(), 'ag-enhancer-cdp-relaunch-guard.json');
 const MAC_LAUNCHER_BUNDLE_PREFIX = 'com.antigravity.enhancer.launcher';
@@ -257,6 +272,8 @@ export function ensureCdpLaunchers(channel = 'auto', options = {}) {
           }
         }
 
+        const pkgVer = readEnhancerPkgVersion();
+        const pkgVerCompact = pkgVer.replace(/[^0-9]/g, '') || '020';
         const plistXml = [
           '<?xml version="1.0" encoding="UTF-8"?>',
           '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
@@ -273,9 +290,9 @@ export function ensureCdpLaunchers(channel = 'auto', options = {}) {
           '  <key>CFBundlePackageType</key>',
           '  <string>APPL</string>',
           '  <key>CFBundleShortVersionString</key>',
-          '  <string>0.1.1</string>',
+          `  <string>${pkgVer}</string>`,
           '  <key>CFBundleVersion</key>',
-          '  <string>011</string>',
+          `  <string>${pkgVerCompact}</string>`,
           ...(iconBase ? ['  <key>CFBundleIconFile</key>', `  <string>${iconBase}</string>`] : []),
           '  <key>LSMinimumSystemVersion</key>',
           '  <string>12.0</string>',

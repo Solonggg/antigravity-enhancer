@@ -4,6 +4,8 @@
  *
  * Subcommands:
  *   node install.mjs install      [--channel auto|stable|insiders] [--only <features>] [--without <features>] [--minimal] [--with-launcher] [--target-dir <dir>] [--sync-user]
+ *   node install.mjs check-update [--target-dir <dir>]
+ *   node install.mjs update       [--force] [--target-dir <dir>]
  *   node install.mjs relaunch     [--channel auto|stable|insiders] [--force] [--target-dir <dir>]
  *   node install.mjs doctor       [--channel auto|stable|insiders] [--target-dir <dir>]
  *   node install.mjs verify       [--safe-mode] [--channel auto|stable|insiders] [--target-dir <dir>]
@@ -37,6 +39,11 @@ import {
   restartSystemService,
   uninstallSystemService
 } from './core/installer/service.mjs';
+import {
+  checkForUpdates,
+  applyHotUpdate,
+  stripInternalUpdatePayload
+} from './core/daemon/updater.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -421,6 +428,50 @@ async function runVerify() {
   }
 }
 
+async function runCheckUpdate() {
+  const targetDir = path.resolve(getArg('--target-dir', resolveDefaultTargetDir()));
+  const res = stripInternalUpdatePayload(await checkForUpdates({ rootDir: targetDir }));
+  console.log(JSON.stringify({ ...res, targetDir }, null, 2));
+  if (!res.ok) {
+    process.exitCode = 1;
+  }
+}
+
+async function runUpdate() {
+  const targetDir = path.resolve(getArg('--target-dir', resolveDefaultTargetDir()));
+  const force = hasFlag('--force');
+  const res = await applyHotUpdate({ rootDir: targetDir, force });
+  if (!res.ok) {
+    console.error(JSON.stringify({ ...res, targetDir }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+
+  let live = null;
+  if (res.updated) {
+    const realDaemon = path.join(targetDir, 'core', 'daemon.mjs');
+    const wrapperDaemon = path.join(os.homedir(), '.gemini', 'antigravity', 'scripts', SERVICE_IDS.wrapperFileName);
+    restartSystemService(targetDir, realDaemon, wrapperDaemon);
+    spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', realDaemon, '--once'], {
+      stdio: 'inherit'
+    });
+    const env = await detectEnvironment('auto');
+    live = await inspectLiveWindow(env);
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        ...res,
+        targetDir,
+        ...(live ? { liveWindow: live } : {})
+      },
+      null,
+      2
+    )
+  );
+}
+
 async function runRollback() {
   const targetDir = path.resolve(getArg('--target-dir', resolveDefaultTargetDir()));
   const targetCore = path.join(targetDir, 'core');
@@ -512,6 +563,12 @@ switch (subcommand) {
   case 'install':
     await runInstall();
     break;
+  case 'check-update':
+    await runCheckUpdate();
+    break;
+  case 'update':
+    await runUpdate();
+    break;
   case 'relaunch':
     await runRelaunch();
     break;
@@ -539,6 +596,8 @@ switch (subcommand) {
   default:
     console.log(`antigravity-enhancer CLI Usage:
   node install.mjs install        [--channel auto|stable|insiders] [--only i18n,metrics,openIn,fixes,suggest] [--without <list>] [--minimal] [--with-launcher] [--sync-user]
+  node install.mjs check-update   [--target-dir <dir>]
+  node install.mjs update         [--force] [--target-dir <dir>]
   node install.mjs relaunch       [--channel auto|stable|insiders] [--force]
   node install.mjs doctor         [--channel auto|stable|insiders]
   node install.mjs verify         [--safe-mode] [--channel auto|stable|insiders]

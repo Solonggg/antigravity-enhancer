@@ -332,13 +332,15 @@ export function createCdpManager({
   metricsReader,
   promptSuggester = null,
   openInMod = null,
+  updaterMod = null,
   hasSqlite,
   runOnce = false,
   safeMode = false,
   pidLock = null,
   getPidLock = null,
   onSuperseded = null,
-  onFastWatch = null
+  onFastWatch = null,
+  onScheduleRestart = null
 }) {
   const attachedTargets = new Map();
   const fallbackBackoffUntil = new Map();
@@ -763,6 +765,8 @@ export function createCdpManager({
             await send('Runtime.addBinding', { name: '__agGetSettingsState' });
             await send('Runtime.addBinding', { name: '__agUpdateSettings' });
             await send('Runtime.addBinding', { name: '__agOpenInAction' });
+            await send('Runtime.addBinding', { name: '__agCheckPluginUpdate' });
+            await send('Runtime.addBinding', { name: '__agApplyPluginUpdate' });
           }
           await updateNewDocScript();
           const ok = await inject();
@@ -994,6 +998,99 @@ export function createCdpManager({
                       returnByValue: false
                     });
                   } catch {}
+                }
+              })();
+              return;
+            }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agCheckPluginUpdate') {
+              if (isSwarmIframe || !hostConfirmed) return;
+              let req = {};
+              try {
+                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
+              } catch {}
+              const reqId = String(req?.reqId || '');
+              void (async () => {
+                let out;
+                if (!updaterMod || typeof updaterMod.checkForUpdates !== 'function') {
+                  out = { ok: false, error: 'Updater module unavailable' };
+                } else {
+                  try {
+                    const raw = await updaterMod.checkForUpdates({ rootDir: ROOT_DIR });
+                    out =
+                      typeof updaterMod.stripInternalUpdatePayload === 'function'
+                        ? updaterMod.stripInternalUpdatePayload(raw)
+                        : raw;
+                  } catch (err) {
+                    out = { ok: false, error: err?.message || String(err || 'Update check failed') };
+                  }
+                }
+                if (ws.readyState === WebSocket.OPEN) {
+                  const payloadJson = JSON.stringify(out)
+                    .replace(/\u2028/g, '\\u2028')
+                    .replace(/\u2029/g, '\\u2029');
+                  try {
+                    await send('Runtime.evaluate', {
+                      expression: `if (typeof window.__ag_on_update_state === 'function') { window.__ag_on_update_state(${JSON.stringify(reqId)}, ${payloadJson}); }`,
+                      returnByValue: false
+                    });
+                  } catch {}
+                }
+              })();
+              return;
+            }
+            if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agApplyPluginUpdate') {
+              if (isSwarmIframe || !hostConfirmed) return;
+              let req = {};
+              try {
+                req = msg.params.payload ? JSON.parse(String(msg.params.payload)) : {};
+              } catch {}
+              const reqId = String(req?.reqId || '');
+              const force = Boolean(req?.force);
+              void (async () => {
+                let out;
+                if (!updaterMod || typeof updaterMod.applyHotUpdate !== 'function') {
+                  out = { ok: false, updated: false, error: 'Updater module unavailable' };
+                } else {
+                  try {
+                    out = await updaterMod.applyHotUpdate({
+                      rootDir: ROOT_DIR,
+                      force
+                    });
+                  } catch (err) {
+                    out = { ok: false, updated: false, error: err?.message || String(err || 'Hot update failed') };
+                  }
+                }
+                const willRestart = Boolean(out && out.ok && out.updated && typeof onScheduleRestart === 'function');
+                if (out && out.ok && out.updated) {
+                  out.restarting = willRestart;
+                }
+                if (ws.readyState === WebSocket.OPEN) {
+                  const payloadJson = JSON.stringify(out)
+                    .replace(/\u2028/g, '\\u2028')
+                    .replace(/\u2029/g, '\\u2029');
+                  try {
+                    await send('Runtime.evaluate', {
+                      expression: `if (typeof window.__ag_on_update_state === 'function') { window.__ag_on_update_state(${JSON.stringify(reqId)}, ${payloadJson}); }`,
+                      returnByValue: false
+                    });
+                  } catch {}
+                }
+                if (out && out.ok && out.updated) {
+                  if (willRestart) {
+                    try {
+                      onScheduleRestart(out);
+                    } catch {}
+                  } else {
+                    try {
+                      bundleCtrl.rebuildBundleIfNeeded(true);
+                      for (const entry of attachedTargets.values()) {
+                        if (!entry.hostConfirmed) continue;
+                        if (entry.updateNewDocScript) await entry.updateNewDocScript();
+                        if (entry.inject) await entry.inject();
+                        if (entry.syncMetricsForSession) await entry.syncMetricsForSession(true);
+                      }
+                    } catch {}
+                  }
                 }
               })();
               return;

@@ -8,6 +8,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { verifyCoreIntegrity } from '../core/installer/manifest.mjs';
+import { BASE_VERSION } from '../core/daemon/paths.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -27,9 +28,12 @@ function walkAllFiles(dir, out = []) {
   return out;
 }
 
-test('core/manifest.json matches every file under core/ with zero drift', () => {
+test('core/manifest.json matches every file under core/ with zero drift and synced package version', () => {
   const res = verifyCoreIntegrity(ROOT_DIR);
   assert.equal(res.ok, true, `Core manifest drift detected: ${JSON.stringify(res.modified)}`);
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
+  assert.equal(res.manifest.version, pkg.version, 'core/manifest.json version must match package.json');
+  assert.equal(BASE_VERSION, pkg.version, 'core/daemon/paths.mjs BASE_VERSION must match package.json');
 });
 
 test('core/i18n.json is valid JSON with expanded localization coverage and protected brand/model labels', () => {
@@ -103,35 +107,46 @@ test('Assembled runtime JS and CSS parts pass syntax validation without theme ov
   });
 });
 
-test('Codebase enforces zero outbound network, zero SSH Remote, and zero updater/telemetry links', () => {
+test('Codebase enforces strict outbound allowlist (updater pinned to repo only), zero runtime fetch, and zero removed features', () => {
   assert.equal(fs.existsSync(path.join(ROOT_DIR, 'core', 'daemon', 'ssh-remote.mjs')), false);
-  assert.equal(fs.existsSync(path.join(ROOT_DIR, 'core', 'daemon', 'updater.mjs')), false);
+  const updaterPath = path.join(ROOT_DIR, 'core', 'daemon', 'updater.mjs');
+  assert.equal(fs.existsSync(updaterPath), true, 'core/daemon/updater.mjs must exist');
+
+  // Verify updater.mjs is strictly pinned to Solonggg/antigravity-enhancer
+  const updaterSrc = fs.readFileSync(updaterPath, 'utf8');
+  assert.ok(updaterSrc.includes("UPDATE_REPO = 'Solonggg/antigravity-enhancer'"));
+  const updaterUrls = updaterSrc.match(/https?:\/\/[^\s'"`)]+/g) || [];
+  for (const url of updaterUrls) {
+    assert.ok(
+      url.includes('Solonggg/antigravity-enhancer') || url.includes('${UPDATE_REPO}'),
+      `Updater URL must be strictly pinned to Solonggg/antigravity-enhancer: ${url}`
+    );
+  }
 
   const coreCodeFiles = walkAllFiles(path.join(ROOT_DIR, 'core')).filter(
     (f) => !f.endsWith('i18n.json') && !f.endsWith('manifest.json')
   );
   const allCodeFiles = [path.join(ROOT_DIR, 'install.mjs'), ...coreCodeFiles];
   const forbiddenEverywhere = [
-    /\bfetch\s*\(/,
     /ssh-remote/i,
-    /updater\.mjs/,
-    /api\.github\.com/i,
-    /raw\.githubusercontent\.com/i,
     /https?:\/\/x\.com/i,
     /__agOpenExternalUrl/,
-    /__agCheckPluginUpdate/,
-    /__agApplyPluginUpdate/,
     /ALLOWED_EXTERNAL_LINKS/,
     /codex-pure-white/,
     /codex-dark/
   ];
+  const forbiddenOutsideUpdater = [/\bfetch\s*\(/, /api\.github\.com/i, /raw\.githubusercontent\.com/i];
   const forbiddenInCore = [/sshHosts/, /themeVars/];
 
   const violations = [];
   for (const full of allCodeFiles) {
-    const rel = path.relative(ROOT_DIR, full);
+    const rel = path.relative(ROOT_DIR, full).split(path.sep).join('/');
     const text = fs.readFileSync(full, 'utf8');
-    const patterns = rel === 'install.mjs' ? forbiddenEverywhere : [...forbiddenEverywhere, ...forbiddenInCore];
+    const patterns = [
+      ...forbiddenEverywhere,
+      ...(rel === 'core/daemon/updater.mjs' ? [] : forbiddenOutsideUpdater),
+      ...(rel === 'install.mjs' ? [] : forbiddenInCore)
+    ];
     for (const pat of patterns) {
       if (pat.test(text)) {
         violations.push({ file: rel, pattern: String(pat) });

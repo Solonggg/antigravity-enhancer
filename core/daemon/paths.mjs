@@ -15,7 +15,24 @@ export const CORE_DIR = path.join(ROOT_DIR, 'core');
 export const STYLES_DIR = path.join(CORE_DIR, 'styles');
 export const RUNTIME_DIR = path.join(CORE_DIR, 'runtime');
 export const USER_DIR = path.join(ROOT_DIR, 'user');
-export const BASE_VERSION = '0.1.1';
+const FALLBACK_BASE_VERSION = '0.2.0';
+
+export function readLocalBaseVersion(rootDir = ROOT_DIR) {
+  for (const rel of ['package.json', path.join('core', 'manifest.json')]) {
+    try {
+      const p = path.join(rootDir, rel);
+      if (!fs.existsSync(p)) continue;
+      const data = JSON.parse(stripUtf8Bom(fs.readFileSync(p, 'utf8')));
+      const ver = typeof data?.version === 'string' ? data.version.trim() : '';
+      if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(ver)) {
+        return ver;
+      }
+    } catch {}
+  }
+  return FALLBACK_BASE_VERSION;
+}
+
+export const BASE_VERSION = readLocalBaseVersion(ROOT_DIR);
 
 let openInHelpers = {
   normalizeOpenInConfig: (raw) => ({
@@ -274,7 +291,13 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
   function rebuildBundleIfNeeded(force = false) {
     const styleFiles = listSortedFiles(STYLES_DIR, '.css');
     const runtimeFiles = listSortedFiles(RUNTIME_DIR, '.js');
-    const coreFiles = [...styleFiles, path.join(CORE_DIR, 'i18n.json'), ...runtimeFiles];
+    const coreFiles = [
+      ...styleFiles,
+      path.join(CORE_DIR, 'i18n.json'),
+      path.join(CORE_DIR, 'manifest.json'),
+      path.join(ROOT_DIR, 'package.json'),
+      ...runtimeFiles
+    ];
     const userFiles = safeMode
       ? []
       : [
@@ -454,7 +477,8 @@ export function createBundleController({ safeMode = false, cliChannel = null, ha
       .slice(0, 8);
 
     const channelTag = channel === 'insiders' ? 'insiders' : 'stable';
-    cachedPatchVersion = `${BASE_VERSION}-${channelTag}-${hash}`;
+    const currentBaseVersion = readLocalBaseVersion(ROOT_DIR);
+    cachedPatchVersion = `${currentBaseVersion}-${channelTag}-${hash}`;
 
     const bootPayload = {
       version: cachedPatchVersion,

@@ -180,12 +180,56 @@
         families:
           Array.isArray(window.__ag_settings_models_cache) && window.__ag_settings_models_cache.length > 0
             ? window.__ag_settings_models_cache
-            : AG_SETTINGS_FALLBACK_FAMILIES
+            : AG_SETTINGS_FALLBACK_FAMILIES,
+        update: (() => {
+          const curTag = (() => {
+            const m = String(PATCH_VERSION || '').match(/^(\d+\.\d+(?:\.\d+)?)/);
+            return m ? 'v' + m[1] : 'v0.2.0';
+          })();
+          const saved =
+            window.__ag_settings_update_state && typeof window.__ag_settings_update_state === 'object'
+              ? Object.assign({}, window.__ag_settings_update_state)
+              : null;
+          if (saved && saved.status === 'restarting') {
+            const targetTag = saved.toVersion ? 'v' + String(saved.toVersion).replace(/^v/i, '') : '';
+            if ((targetTag && targetTag === curTag) || Date.now() < Number(saved.restartedUntil || 0)) {
+              const promoted = {
+                status: 'updated',
+                localVersion: curTag.replace(/^v/, ''),
+                remoteVersion: saved.toVersion || curTag.replace(/^v/, ''),
+                toVersion: saved.toVersion || curTag.replace(/^v/, ''),
+                reason: 'up_to_date',
+                updateAvailable: false,
+                changedCount: 0,
+                commitSha: saved.commitSha || '',
+                commitMessage: saved.commitMessage || '',
+                error: ''
+              };
+              window.__ag_settings_update_state = promoted;
+              return promoted;
+            }
+          }
+          if (saved && saved.status && saved.status !== 'checking' && saved.status !== 'updating') {
+            return saved;
+          }
+          return {
+            status: 'idle',
+            localVersion: curTag.replace(/^v/, ''),
+            remoteVersion: '',
+            toVersion: '',
+            reason: '',
+            updateAvailable: false,
+            changedCount: 0,
+            commitSha: '',
+            commitMessage: '',
+            error: ''
+          };
+        })()
       };
 
       function getShortVersionTag() {
         const m = String(PATCH_VERSION || '').match(/^(\d+\.\d+(?:\.\d+)?)/);
-        return m ? 'v' + m[1] : 'v0.1.1';
+        return m ? 'v' + m[1] : 'v0.2.0';
       }
 
       function getDictCountLabel() {
@@ -208,7 +252,7 @@
             manualRefreshLabel: '刷新配置与界面',
             savedBadge: '已同步',
             refreshedBadge: '已刷新',
-            subtitle: '纯本地运行，修改即时生效。',
+            subtitle: '核心功能纯本地运行，修改即时生效。',
             modI18n: '中文界面汉化',
             modI18nDesc: '将界面切换为中文，关闭即恢复英文',
             secStatusBar: '状态栏',
@@ -250,7 +294,26 @@
             suggestModelDesc: '推荐 Gemini 3.8 Flash Low',
             refreshModelsTitle: '刷新模型列表',
             menuModelsHdr: '模型',
-            recommendedBadge: '推荐'
+            recommendedBadge: '推荐',
+            secUpdates: '版本与更新',
+            updateRowTitle: '在线检查与热更新',
+            updateIdleDesc: (ver) => '当前版本 ' + ver + ' · 仅手动点击时从 GitHub 检查并拉取',
+            updateCheckingDesc: '正在连接 GitHub 检查最新版本…',
+            updateUpToDateBadge: '已是最新',
+            updateUpToDateDesc: (ver, sha) => '当前已是最新版本 ' + ver + (sha ? ' · ' + sha : ''),
+            updateAheadDesc: (localVer, remoteVer) => '本地版本 ' + localVer + ' 领先于远端 (' + remoteVer + ')',
+            updateAvailBadge: (ver) => '新版本 ' + ver,
+            updateHotfixBadge: '有热修复',
+            updateAvailDesc: (count, msg) => '变更 ' + count + ' 个文件' + (msg ? ' · ' + msg : ''),
+            updateUpdatingDesc: '正在下载校验 SHA-256 并应用热更新…',
+            updateRestartingDesc: (ver) => '已应用 ' + ver + '，正在热重载（无需重启 Antigravity）…',
+            updateDoneBadge: '已热更新',
+            updateDoneDesc: (ver) => '已热更新至 ' + ver + '，无需重启 Antigravity',
+            updateErrPrefix: '失败：',
+            updateCheckBtn: '检查更新',
+            updateCheckingBtn: '检查中…',
+            updateApplyBtn: '立即热更新',
+            updateApplyingBtn: '更新中…'
           };
         }
         return {
@@ -259,7 +322,7 @@
           manualRefreshLabel: 'Reload config & UI',
           savedBadge: 'Synced',
           refreshedBadge: 'Refreshed',
-          subtitle: 'Runs locally; changes apply immediately.',
+          subtitle: 'Core features run locally; changes apply immediately.',
           modI18n: 'Chinese UI Localization',
           modI18nDesc: 'Translate the interface to Chinese; turn off to restore English',
           secStatusBar: 'Status Bar',
@@ -301,7 +364,26 @@
           suggestModelDesc: 'Gemini 3.8 Flash Low recommended',
           refreshModelsTitle: 'Refresh models',
           menuModelsHdr: 'Models',
-          recommendedBadge: 'Rec'
+          recommendedBadge: 'Rec',
+          secUpdates: 'Version & Updates',
+          updateRowTitle: 'Online Hot Updates',
+          updateIdleDesc: (ver) => 'Current ' + ver + ' · Only contacts GitHub when you click',
+          updateCheckingDesc: 'Checking GitHub for the latest version…',
+          updateUpToDateBadge: 'Up to date',
+          updateUpToDateDesc: (ver, sha) => 'You are on the latest version ' + ver + (sha ? ' · ' + sha : ''),
+          updateAheadDesc: (localVer, remoteVer) => 'Local ' + localVer + ' is ahead of remote (' + remoteVer + ')',
+          updateAvailBadge: (ver) => ver + ' available',
+          updateHotfixBadge: 'Hotfix',
+          updateAvailDesc: (count, msg) => count + ' file(s) changed' + (msg ? ' · ' + msg : ''),
+          updateUpdatingDesc: 'Downloading, verifying SHA-256 & applying hot update…',
+          updateRestartingDesc: (ver) => 'Applied ' + ver + ', hot-reloading UI (no restart needed)…',
+          updateDoneBadge: 'Updated',
+          updateDoneDesc: (ver) => 'Hot-updated to ' + ver + ' — no Antigravity restart needed',
+          updateErrPrefix: 'Error: ',
+          updateCheckBtn: 'Check Updates',
+          updateCheckingBtn: 'Checking…',
+          updateApplyBtn: 'Hot Update',
+          updateApplyingBtn: 'Updating…'
         };
       }
 
@@ -366,6 +448,182 @@
           cb(payload);
         }
       };
+
+      window.__ag_on_update_state = (reqId, payload) => {
+        if (disposed) return;
+        const cb = pendingReqs.get(reqId);
+        if (cb) {
+          pendingReqs.delete(reqId);
+          cb(payload);
+        }
+      };
+
+      function setUpdateState(nextPatch) {
+        uiState.update = Object.assign({}, uiState.update, nextPatch || {});
+        window.__ag_settings_update_state = Object.assign({}, uiState.update);
+        const menuOpen = isPopoverOpen(document.getElementById('ag-settings-model-menu'));
+        if (menuOpen) {
+          pendingPaneRender = true;
+        } else {
+          renderPane();
+        }
+      }
+
+      async function checkPluginUpdates() {
+        if (uiState.update.status === 'checking' || uiState.update.status === 'updating') return;
+        setUpdateState({ status: 'checking', error: '' });
+        const res = await callDaemonBinding('__agCheckPluginUpdate', {}, 20000);
+        if (disposed) return;
+        if (!res) {
+          setUpdateState({ status: 'error', error: isZhUi() ? '未收到守护进程响应' : 'No response from daemon' });
+          return;
+        }
+        if (!res.ok) {
+          setUpdateState({ status: 'error', error: String(res.error || 'Check failed').slice(0, 140) });
+          return;
+        }
+        if (res.updateAvailable) {
+          setUpdateState({
+            status: 'available',
+            localVersion: res.localVersion || getShortVersionTag().replace(/^v/, ''),
+            remoteVersion: res.remoteVersion || '',
+            toVersion: res.remoteVersion || '',
+            reason: res.reason || 'new_version',
+            updateAvailable: true,
+            changedCount: Number(res.changedCount || 0),
+            commitSha: res.commitSha || '',
+            commitMessage: res.commitMessage || '',
+            error: ''
+          });
+        } else {
+          setUpdateState({
+            status: res.reason === 'ahead' ? 'ahead' : 'up_to_date',
+            localVersion: res.localVersion || getShortVersionTag().replace(/^v/, ''),
+            remoteVersion: res.remoteVersion || '',
+            toVersion: '',
+            reason: res.reason || 'up_to_date',
+            updateAvailable: false,
+            changedCount: 0,
+            commitSha: res.commitSha || '',
+            commitMessage: res.commitMessage || '',
+            error: ''
+          });
+        }
+      }
+
+      async function applyPluginUpdate() {
+        if (uiState.update.status === 'updating' || uiState.update.status === 'checking') return;
+        setUpdateState({ status: 'updating', error: '' });
+        const res = await callDaemonBinding('__agApplyPluginUpdate', {}, 45000);
+        if (disposed) return;
+        if (!res) {
+          setUpdateState({ status: 'error', error: isZhUi() ? '更新超时或守护进程未响应' : 'Update timed out' });
+          return;
+        }
+        if (!res.ok) {
+          setUpdateState({ status: 'error', error: String(res.error || 'Update failed').slice(0, 160) });
+          return;
+        }
+        if (!res.updated) {
+          setUpdateState({
+            status: 'up_to_date',
+            localVersion: res.fromVersion || getShortVersionTag().replace(/^v/, ''),
+            remoteVersion: res.toVersion || '',
+            updateAvailable: false,
+            changedCount: 0,
+            commitSha: res.commitSha || '',
+            error: ''
+          });
+          return;
+        }
+        setUpdateState({
+          status: res.restarting ? 'restarting' : 'updated',
+          localVersion: res.fromVersion || '',
+          remoteVersion: res.toVersion || '',
+          toVersion: res.toVersion || '',
+          updateAvailable: false,
+          changedCount: Number(res.changedCount || 0),
+          commitSha: res.commitSha || '',
+          commitMessage: res.commitMessage || '',
+          restartedUntil: Date.now() + 15000,
+          error: ''
+        });
+      }
+
+      function renderUpdateSection(s) {
+        const u = uiState.update || { status: 'idle' };
+        const curVer = getShortVersionTag();
+        const remoteTag = u.remoteVersion ? 'v' + String(u.remoteVersion).replace(/^v/i, '') : '';
+        const targetTag = u.toVersion ? 'v' + String(u.toVersion).replace(/^v/i, '') : remoteTag || curVer;
+        const busy = u.status === 'checking' || u.status === 'updating' || u.status === 'restarting';
+
+        let pillHtml = '';
+        let descHtml = escHtml(s.updateIdleDesc(curVer));
+        if (u.status === 'checking') {
+          descHtml = escHtml(s.updateCheckingDesc);
+        } else if (u.status === 'up_to_date') {
+          pillHtml = '<span class="ag-s-update-pill" data-tone="ok">' + escHtml(s.updateUpToDateBadge) + '</span>';
+          descHtml = escHtml(s.updateUpToDateDesc(curVer, u.commitSha || ''));
+        } else if (u.status === 'ahead') {
+          descHtml = escHtml(s.updateAheadDesc(curVer, remoteTag || curVer));
+        } else if (u.status === 'available') {
+          const badgeTxt = u.reason === 'hotfix' ? s.updateHotfixBadge : s.updateAvailBadge(remoteTag || curVer);
+          pillHtml = '<span class="ag-s-update-pill" data-tone="accent">' + escHtml(badgeTxt) + '</span>';
+          descHtml = escHtml(s.updateAvailDesc(Math.max(1, Number(u.changedCount || 0)), u.commitMessage || ''));
+        } else if (u.status === 'updating') {
+          descHtml = escHtml(s.updateUpdatingDesc);
+        } else if (u.status === 'restarting') {
+          pillHtml = '<span class="ag-s-update-pill" data-tone="accent">' + escHtml(targetTag) + '</span>';
+          descHtml = escHtml(s.updateRestartingDesc(targetTag));
+        } else if (u.status === 'updated') {
+          pillHtml = '<span class="ag-s-update-pill" data-tone="ok">' + escHtml(s.updateDoneBadge) + '</span>';
+          descHtml = escHtml(s.updateDoneDesc(targetTag));
+        } else if (u.status === 'error') {
+          descHtml =
+            '<span class="ag-s-update-err">' + escHtml(s.updateErrPrefix + (u.error || 'Unknown error')) + '</span>';
+        }
+
+        const showApplyBtn = u.status === 'available' || u.status === 'updating';
+        const checkLabel = u.status === 'checking' ? s.updateCheckingBtn : s.updateCheckBtn;
+        const applyLabel = u.status === 'updating' ? s.updateApplyingBtn : s.updateApplyBtn;
+
+        return (
+          '<div>' +
+          '<div class="ag-s-section-head"><span class="ag-s-section-title">' +
+          escHtml(s.secUpdates) +
+          '</span></div>' +
+          '<div class="ag-s-card">' +
+          '<div class="ag-s-row"><div class="ag-s-row-main">' +
+          '<div class="ag-s-row-info">' +
+          '<div class="ag-s-row-label-wrap">' +
+          '<span class="ag-s-row-label">' +
+          escHtml(s.updateRowTitle) +
+          '</span>' +
+          pillHtml +
+          '</div>' +
+          '<div id="ag-s-update-desc" class="ag-s-row-desc">' +
+          descHtml +
+          '</div>' +
+          '</div>' +
+          '<div class="ag-s-update-actions">' +
+          '<button type="button" id="ag-s-check-update" class="ag-s-btn-secondary"' +
+          (busy ? ' disabled' : '') +
+          '>' +
+          escHtml(checkLabel) +
+          '</button>' +
+          (showApplyBtn
+            ? '<button type="button" id="ag-s-apply-update" class="ag-s-btn-primary"' +
+              (busy ? ' disabled' : '') +
+              '>' +
+              escHtml(applyLabel) +
+              '</button>'
+            : '') +
+          '</div>' +
+          '</div></div>' +
+          '</div>' +
+          '</div>'
+        );
+      }
 
       function getWorkerStatusView(s) {
         const psOn = Boolean(uiState.config.modules && uiState.config.modules.promptSuggestions);
@@ -1326,6 +1584,7 @@
           '</div>' +
           '</div>' +
           '</div>' +
+          renderUpdateSection(s) +
           '</div>';
 
         if (prevScroll > 0) pane.scrollTop = prevScroll;
@@ -1431,6 +1690,22 @@
             if (field && val && uiState.config[field] !== val) {
               commitPatch({ [field]: val });
             }
+            return;
+          }
+
+          const checkUpdateBtn = ev.target && ev.target.closest ? ev.target.closest('#ag-s-check-update') : null;
+          if (checkUpdateBtn) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            checkPluginUpdates();
+            return;
+          }
+
+          const applyUpdateBtn = ev.target && ev.target.closest ? ev.target.closest('#ag-s-apply-update') : null;
+          if (applyUpdateBtn) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            applyPluginUpdate();
           }
         });
 
@@ -1665,6 +1940,7 @@
           ].forEach((el) => { if (el) el.remove(); });
           cleanupEnhancerSettingsDom();
           try { delete window.__ag_on_settings_state; } catch { window.__ag_on_settings_state = null; }
+          try { delete window.__ag_on_update_state; } catch { window.__ag_on_update_state = null; }
         });
       }
     })();

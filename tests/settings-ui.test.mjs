@@ -500,7 +500,15 @@ test('75-settings-ui uses manual popovers inside settings dialog, updates worker
   assert.ok(src.includes("secNextPrompt: '下一步预测'"), 'suggestions section must be titled 下一步预测');
   assert.ok(src.includes('data-bind-mod="sessionStatus"'), 'must expose independent sessionStatus toggle');
   assert.ok(src.includes('data-bind-mod="usageStats"'), 'must expose independent usageStats toggle');
-  assert.ok(src.includes("'v0.1.1'"), 'version fallback must start at v0.1.1');
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf8'));
+  assert.ok(src.includes(`'v${pkg.version}'`), `version fallback must match package.json (v${pkg.version})`);
+  assert.ok(src.includes('__agCheckPluginUpdate'), 'settings UI must wire __agCheckPluginUpdate');
+  assert.ok(src.includes('__agApplyPluginUpdate'), 'settings UI must wire __agApplyPluginUpdate');
+  assert.ok(src.includes('__ag_on_update_state'), 'settings UI must wire __ag_on_update_state');
+  assert.ok(src.includes('ag-s-check-update'), 'settings UI must render Check Updates button');
+  assert.ok(src.includes('ag-s-apply-update'), 'settings UI must render Hot Update button');
+  assert.ok(src.includes("secUpdates: '版本与更新'"), 'settings UI must include Chinese Updates section');
+  assert.ok(src.includes("secUpdates: 'Version & Updates'"), 'settings UI must include English Updates section');
 
   // Removed IDEA launcher bar & custom path UI; undetected editors filtered out; quota popover has no settings jump
   assert.ok(!src.includes('ag-s-idea-bar'), 'IDEA launcher path bar must be removed from settings UI');

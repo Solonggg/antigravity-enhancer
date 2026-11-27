@@ -1,6 +1,6 @@
 {
   "name": "antigravity-enhancer",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Zero-patch local CDP enhancement suite for Google Antigravity: complete Chinese UI localization, local session status & token stats, right-click Open In (IDEA / Finder / Zed / VS Code / Cursor), prompt suggestions, and native Settings panel.",
   "type": "module",
   "license": "MIT",

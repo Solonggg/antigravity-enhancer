@@ -701,6 +701,47 @@
   outline-offset: 2px;
 }
 
+/* Online Update Row & Status Pill */
+#ag-settings-pane .ag-s-update-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+#ag-settings-pane .ag-s-update-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background-color: var(--ag-s-surface);
+  border: 1px solid var(--ag-s-border);
+  color: var(--ag-s-fg-2) !important;
+  font-family: var(--ag-s-mono) !important;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px !important;
+  line-height: 17px !important;
+}
+
+#ag-settings-pane .ag-s-update-pill[data-tone="ok"] {
+  border-color: rgba(16, 185, 129, 0.35);
+  color: var(--ag-s-ok) !important;
+}
+
+#ag-settings-pane .ag-s-update-pill[data-tone="accent"] {
+  border-color: rgba(47, 117, 195, 0.42);
+  color: var(--ag-s-primary) !important;
+}
+
+#ag-settings-pane .ag-s-update-pill[data-tone="err"] {
+  border-color: rgba(220, 38, 38, 0.38);
+  color: var(--ag-s-err) !important;
+}
+
+#ag-settings-pane .ag-s-update-err {
+  color: var(--ag-s-err) !important;
+}
+
 /* ============================================================================
  * Native Popover 2-Level Cascading Model Menu (Top-Layer, Viewport-Aware)
  * ============================================================================ */

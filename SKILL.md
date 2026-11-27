@@ -9,7 +9,7 @@ Follow this guide when a user asks you to install, selectively install specific 
 
 > **Design Guarantees**:
 > - **Zero theme overrides**: Leaves Antigravity's native light and dark themes completely untouched.
-> - **Zero outbound network**: No SSH Remote, no GitHub update checks, no external URL launchers; only local `127.0.0.1` CDP.
+> - **Local-first with on-demand GitHub hot updates**: Core features run strictly over local `127.0.0.1` CDP with zero background polling. Manual `check-update` / `update` (CLI or Settings UI) connects exclusively to `Solonggg/antigravity-enhancer` with full SHA-256 verification and hot-reloads without restarting Antigravity.
 > - **Minimum Node.js version**: **`>= 22.13.0`** (required for built-in `node:sqlite`).
 > - **Supported Antigravity versions**: **`2.30.x` – `2.35.1+`** (includes single-icon M1/M2 `--remote-debugging-port=0` opt-in relaunch for `2.33.0+`).
 
@@ -82,6 +82,15 @@ node --disable-warning=ExperimentalWarning install.mjs verify --safe-mode
 
 ### Configuration Tweaks (Embedded Settings UI or Hot-Reloaded `user/config.json`)
 Users can toggle modules, select right-click Open-In targets (`IDEA`, `Finder`, `Zed`, `VS Code`, `Cursor`), customize `ideaPath`, pick prompt-suggestion models, and change status bar preferences under **Settings → Antigravity Enhancer** (`设置 → Antigravity增强`), or edit `~/.gemini/antigravity/enhancer/user/config.json`.
+
+### Online Check & Hot Update (No Antigravity Restart Needed)
+```bash
+# Check latest version on GitHub (read-only)
+node ~/.gemini/antigravity/enhancer/install.mjs check-update
+
+# Download SHA-256-verified changes, back up core.prev, preserve user/*, and hot-reload
+node ~/.gemini/antigravity/enhancer/install.mjs update
+```
 
 ### Rollback / Uninstall
 ```bash

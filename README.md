@@ -14,7 +14,7 @@
 </p>
 
 <p>
-  不修改安装包、不覆盖原生配色、<strong>零外联请求</strong>。<br>
+  不修改安装包、不覆盖原生配色、<strong>默认零外联</strong>（仅手动点击在线更新时直连 GitHub 官方仓库并校验 SHA-256）。<br>
   通过本地 <code>127.0.0.1</code> CDP 实时注入 5,200+ 词条中文汉化、本地四态会话统计、简化版右键外部打开与原生设置面板。
 </p>
 
@@ -39,7 +39,7 @@
 
 > **为什么选择 `antigravity-enhancer`？**
 > - **保留原生外观**：完整移除主题配色覆写，完全跟随 Antigravity 原生浅色/深色主题。
-> - **彻底零外联**：移除 SSH Remote 远端连接、GitHub 在线更新检查与外部链接跳转；除本地 `127.0.0.1` CDP 通信外无任何网络请求。
+> - **默认零外联 + 手动在线热更新**：核心功能严格仅通过本地 `127.0.0.1` CDP 运行；仅在手动点击 **设置 → Antigravity增强 → 检查更新 / 立即热更新** 或执行 `node install.mjs update` 时直连 `Solonggg/antigravity-enhancer` 并逐文件校验 SHA-256，无需重启 Antigravity 即可热更新生效。
 > - **单一后台守护进程**：将汉化、本地统计与右键外部打开统一整合在一个轻量常驻进程中，安装时自动清理旧版 `antigravity-codex-theme` 与独立 `antigravity-open-in` 后台服务。
 
 ## 快速安装
@@ -81,6 +81,8 @@ node install.mjs install --without metrics
 | 命令 | 用途 |
 | :--- | :--- |
 | `node install.mjs install [--channel auto\|stable\|insiders] [--only <features>] [--without <features>] [--minimal] [--with-launcher] [--sync-user]` | 部署插件、清理旧版服务并注册后台自启服务 |
+| `node install.mjs check-update [--target-dir <dir>]` | 检查 GitHub `main` 最新版本与待变更文件清单（只读，不修改本地文件） |
+| `node install.mjs update [--force] [--target-dir <dir>]` | 从 GitHub 拉取变更文件、逐文件校验 SHA-256、自动备份 `core.prev` 并热重载生效（保留 `user/` 配置，无需重启 Antigravity） |
 | `node install.mjs relaunch [--channel auto\|stable\|insiders] [--force]` | 携带 `--remote-debugging-port=0` 重启 Antigravity 并校验注入（含 15s 活跃会话保护） |
 | `node --disable-warning=ExperimentalWarning install.mjs doctor` | 检查 Node 版本、CDP 状态、`core/manifest.json` 哈希及页面挂载状态 |
 | `node --disable-warning=ExperimentalWarning install.mjs verify [--safe-mode]` | 单次注入并校验；`--safe-mode` 跳过 `user/` 自定义脚本以便排障 |
@@ -194,7 +196,7 @@ node install.mjs build-manifest && npm run check && npm test && node install.mjs
 
 `antigravity-enhancer` is a 100% local, zero-outbound enhancement suite for Google Antigravity (`2.30.x` – `2.35.1+`) without modifying application bundles or overriding native themes (requires Node.js `>= 22.13.0`).
 
-- **Zero Outbound & Native Look**: No theme overrides, no SSH Remote connections, no GitHub auto-update checks, and no external feedback links—strictly local `127.0.0.1` CDP communication only.
+- **Local-First & On-Demand Hot Updates**: No theme overrides, no SSH Remote, and no background network polling—only local `127.0.0.1` CDP by default; manually click **Check Updates / Hot Update** in Settings or run `node install.mjs update` to pull SHA-256-verified updates directly from `Solonggg/antigravity-enhancer` without restarting Antigravity.
 - **Expanded Chinese UI Localization (`i18n`)**: `5,200+` curated entries with Shadow DOM penetration, smart-quote fallback, shortcut-suffixed labels, permission prompts, and Swarm frame support—reversible in place via `WeakMap`.
 - **Simplified Right-Click Open In (`openIn`)**: Passive `contextmenu` menu on file links/paths in replies to open in `IDEA`, `Finder`, `Zed`, `VS Code`, or `Cursor` with line/column jumping (discrete `execFile` args, zero shell interpolation, left-click untouched).
 - **Local Session Status & Usage Stats (`metrics`)**: Reads local SQLite & logs for the 4-state bottom status indicator, expandable L1/L2 panels, and per-turn hover cards.

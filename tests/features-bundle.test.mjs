@@ -73,7 +73,7 @@ test('getSparseCheckoutPaths and getExcludedCoreRelPaths partition modules accur
   assert.ok(paths.includes('/core/runtime/60-i18n-engine.js'));
   assert.ok(paths.includes('/core/styles/45-settings-ui.css'));
   assert.ok(paths.includes('/core/runtime/75-settings-ui.js'));
-  assert.ok(!paths.includes('/core/daemon/updater.mjs'));
+  assert.ok(paths.includes('/core/daemon/updater.mjs'));
   assert.ok(!paths.includes('/core/daemon/open-in.mjs'));
   assert.ok(!paths.includes('/core/runtime/50-telemetry-ui.js'));
 

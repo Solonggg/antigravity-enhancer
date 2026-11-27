@@ -17,6 +17,7 @@ export const BASE_SPARSE_PATHS = Object.freeze([
   '/core/daemon/paths.mjs',
   '/core/daemon/cdp-bridge.mjs',
   '/core/daemon/cdp-relaunch.mjs',
+  '/core/daemon/updater.mjs',
   '/core/styles/45-settings-ui.css',
   '/core/runtime/00-head.js',
   '/core/runtime/75-settings-ui.js',
