@@ -194,6 +194,10 @@
       try { clearInterval(window.__ag_live_probe_timer); } catch (e) {}
       window.__ag_live_probe_timer = null;
     }
+    if (window.__ag_quota_tick_timer) {
+      try { clearInterval(window.__ag_quota_tick_timer); } catch (e) {}
+      window.__ag_quota_tick_timer = null;
+    }
     window.__ag_zoom_keydown_fn = null;
     window.__ag_settings_click_fn = null;
     window.__ag_body_ready = false;

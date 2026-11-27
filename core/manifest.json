@@ -9,8 +9,8 @@
       "bytes": 5459
     },
     "daemon/cdp-bridge.mjs": {
-      "sha256": "23c01a57d3d5fd72dc57e608a17ed4bf71d3e38320f7ea6931cb8d37486a850b",
-      "bytes": 42327
+      "sha256": "794ccb35bb041159003b601adf6ae8ca611f2918b8521aa005110a86de0ddd7f",
+      "bytes": 49344
     },
     "daemon/cdp-relaunch.mjs": {
       "sha256": "cf575f243b46bf3ea9f70b285ee2d591013193f616b166da1dbf40b44f76bd26",
@@ -37,8 +37,8 @@
       "bytes": 7683
     },
     "daemon/sqlite-metrics.mjs": {
-      "sha256": "fc9d5bc578eec6077801da1eb4a03e6ca9dee8a20d311b7b9487a5259c61f822",
-      "bytes": 22475
+      "sha256": "f6008dda7ce1c70d7c828a2db08a49f7e4f91a0e39223437185240c3194954fd",
+      "bytes": 28736
     },
     "daemon/telemetry-renderer.mjs": {
       "sha256": "5638a7fc45fb1737526c5c261695ccd9cd3224130114024f3decec4253298e2b",
@@ -69,24 +69,24 @@
       "bytes": 17607
     },
     "runtime/00-head.js": {
-      "sha256": "4fb7de609664a6b51898c38bddd394447526a11b7fb7e5621486e4c4bdc8db88",
-      "bytes": 10636
+      "sha256": "6cab36b44690d9daea173ee2746b614d14360aa5c5038df45dac4cd81e53a3b2",
+      "bytes": 10797
     },
     "runtime/10-guards.js": {
       "sha256": "f4aedd3e4c615f638fe213c3c9304e51467dd6eceb4ae57b7085db47f6155087",
       "bytes": 2542
     },
     "runtime/30-antigravity-probe.js": {
-      "sha256": "bf0f464d9f2fb4036a23c8520bf689fd9cadc8f217a704c524c92fc93100117b",
-      "bytes": 21969
+      "sha256": "9d7a77d83f5fcddef8410e4ee12a3fab578098109f830e215295ea11787c3ea7",
+      "bytes": 28994
     },
     "runtime/40-status-machine.js": {
       "sha256": "a7e942771d6cc41982e44f5b9849dbd99b0f4d5153ede54710f5beece4fb12d6",
       "bytes": 13135
     },
     "runtime/50-telemetry-ui.js": {
-      "sha256": "97d476012693dc9a35e20e97198820c9bf6210d5bd5a3bd38d3454d19b0b3b54",
-      "bytes": 70287
+      "sha256": "28f7a9556f1b8d1f257cfafde9a4da7bcb8da36d71b46011c726552dda2deb93",
+      "bytes": 87021
     },
     "runtime/60-i18n-engine.js": {
       "sha256": "8cbce4516cf6bcad7946120db4d0b500697078c1b51c1032a12f35d0ad093d44",

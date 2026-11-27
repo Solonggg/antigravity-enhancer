@@ -88,6 +88,61 @@ export function isSkippedTargetCoolingDown(entry, currentOrigin, nowMs = Date.no
   return nowMs < Number(entry.nextRetryAtMs || 0);
 }
 
+const METRICS_UUID_RE = /^[0-9a-f-]{36}$/i;
+
+export function parseCascadeIdList(raw) {
+  const out = [];
+  const pushId = (val) => {
+    const s = String(val || '').trim();
+    if (METRICS_UUID_RE.test(s) && !out.includes(s)) out.push(s);
+  };
+  if (Array.isArray(raw)) {
+    for (const item of raw) pushId(item);
+    return out.slice(0, 6);
+  }
+  const str = String(raw || '').trim();
+  if (!str) return out;
+  if (str.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(str);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) pushId(item);
+        return out.slice(0, 6);
+      }
+    } catch {}
+  }
+  for (const part of str.split(/[,\s]+/)) pushId(part);
+  return out.slice(0, 6);
+}
+
+export function parseMetricsRequestPayload(rawPayload) {
+  const str = String(rawPayload ?? '').trim();
+  if (str.startsWith('{')) {
+    try {
+      const obj = JSON.parse(str);
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        const cids = parseCascadeIdList(obj.cids ?? obj.ids ?? obj.watched ?? '');
+        const force = obj.force !== false;
+        const bypassCache = Boolean(obj.bypassCache || force);
+        const reason = typeof obj.reason === 'string' ? obj.reason.trim().slice(0, 48) : '';
+        return { cids, force, bypassCache, reason };
+      }
+    } catch {}
+  }
+  return {
+    cids: parseCascadeIdList(str),
+    force: true,
+    bypassCache: true,
+    reason: 'route'
+  };
+}
+
+export function shouldAcceptMetricsDelivery(evalRes) {
+  if (!evalRes || evalRes.error || evalRes.result?.exceptionDetails) return false;
+  const val = evalRes?.result?.result?.value;
+  return Boolean(val && typeof val === 'object' && val.applied === true);
+}
+
 const DAEMON_EXTRA_PATTERNS = [
   'theme-patch',
   'antigravity-font-daemon.mjs',
@@ -298,6 +353,7 @@ export function createCdpManager({
   let fastWatchUntilMs = 0;
   const TARGET_DISCOVERY_INTERVAL_MS = 12500;
   const FAST_WATCH_INTERVAL_MS = 650;
+  const ACTIVE_METRICS_INTERVAL_MS = 1000;
   const NORMAL_SYNC_INTERVAL_MS = 2500;
 
   function triggerFastWatch(durationMs = 30000) {
@@ -376,30 +432,19 @@ export function createCdpManager({
         let hostConfirmed = isSwarmIframe;
         let currentTargetUrl = target.url || '';
         const pendingCallbacks = new Map();
+        let metricsSyncInFlight = false;
+        let metricsSyncPending = false;
+        let metricsSyncPendingForce = false;
+        let metricsSyncPendingBypass = false;
+        let metricsSyncPendingRefreshWatched = false;
 
-        const parseCascadeIdList = (raw) => {
-          const out = [];
-          const pushId = (val) => {
-            const s = String(val || '').trim();
-            if (/^[0-9a-f-]{36}$/i.test(s) && !out.includes(s)) out.push(s);
-          };
-          if (Array.isArray(raw)) {
-            for (const item of raw) pushId(item);
-            return out.slice(0, 6);
+        const hasPendingActiveSession = () => {
+          if (isSwarmIframe || !hostConfirmed || activeCascadeIds.length === 0) return false;
+          for (const cid of activeCascadeIds) {
+            const st = pushedSessions.get(cid);
+            if (!st || !st.hash || st.pendingActive) return true;
           }
-          const str = String(raw || '').trim();
-          if (!str) return out;
-          if (str.startsWith('[')) {
-            try {
-              const parsed = JSON.parse(str);
-              if (Array.isArray(parsed)) {
-                for (const item of parsed) pushId(item);
-                return out.slice(0, 6);
-              }
-            } catch {}
-          }
-          for (const part of str.split(/[,\s]+/)) pushId(part);
-          return out.slice(0, 6);
+          return false;
         };
 
         const send = (method, params = {}) =>
@@ -481,7 +526,7 @@ export function createCdpManager({
           return true;
         };
 
-        const syncMetricsForSession = async (force = false) => {
+        const runSyncMetricsOnce = async ({ force = false, bypassCache = false, refreshWatched = false } = {}) => {
           if (isSwarmIframe || !hostConfirmed) return;
           const { activeConfig } = bundleCtrl.getState();
           const needTelemetry = Boolean(
@@ -489,7 +534,7 @@ export function createCdpManager({
           );
           if (!hasSqlite() || !needTelemetry || !activeConfig.enabled) return;
 
-          if (activeCascadeIds.length === 0 || force) {
+          if (activeCascadeIds.length === 0 || force || refreshWatched) {
             const evalRes = await send('Runtime.evaluate', {
               expression: `(function(){
                 if (typeof window.__ag_get_watched_cascade_ids === 'function') {
@@ -518,48 +563,120 @@ export function createCdpManager({
               })()`,
               returnByValue: true
             });
-            const detected = parseCascadeIdList(evalRes?.result?.result?.value);
-            activeCascadeIds = detected;
-            for (const existingCid of [...pushedSessions.keys()]) {
-              if (!activeCascadeIds.includes(existingCid)) {
-                pushedSessions.delete(existingCid);
+            if (evalRes?.result?.result && evalRes.result.result.value !== undefined) {
+              const detected = parseCascadeIdList(evalRes.result.result.value);
+              activeCascadeIds = detected;
+              for (const existingCid of [...pushedSessions.keys()]) {
+                if (!activeCascadeIds.includes(existingCid)) {
+                  pushedSessions.delete(existingCid);
+                }
               }
             }
           }
           if (activeCascadeIds.length === 0) return;
 
           for (const cid of activeCascadeIds) {
-            const prev = pushedSessions.get(cid) || { hash: '', pendingActive: false };
+            const prev = pushedSessions.get(cid) || { hash: '', dataSig: '', pendingActive: false, pushedAtMs: 0 };
             const rawSig = getDbSignature(cid, endpoint.conversationsDir) || 'empty';
             const lsSig = prev.pendingActive ? getLsLogSig(endpoint.lsLogFile) : '';
             const ssFlag = activeConfig.modules.sessionStatus ? 1 : 0;
             const usFlag = activeConfig.modules.usageStats ? 1 : 0;
             const sessionKey = `${cid}@${rawSig}|lim:${activeConfig.manualContextLimit || 0}:${activeConfig.fallbackContextLimit || 256000}|ly:${activeConfig.telemetryLayout}:${activeConfig.telemetryCacheMode}|m:${ssFlag}:${usFlag}${lsSig ? `|ls:${lsSig}` : ''}`;
-            if (!force && sessionKey === prev.hash) continue;
+            const shouldBypass = Boolean(bypassCache || force || prev.pendingActive);
+            if (!shouldBypass && prev.hash && sessionKey === prev.hash) continue;
 
             const payload = metricsReader.parseConversationMetrics(cid, endpoint.conversationsDir, {
               lsLogFile: endpoint.lsLogFile,
-              lsSig
+              lsSig,
+              bypassCache: shouldBypass
             });
             if (!payload || payload.transientError) {
               if (force && payload?.cachedPayload) {
                 await send('Runtime.evaluate', {
-                  expression: `(window.__ag_last_daemon_hb = Date.now(), window.__ag_render_metrics && window.__ag_render_metrics(${JSON.stringify(payload.cachedPayload)}))`,
-                  returnByValue: false
+                  expression: `(window.__ag_last_daemon_hb = Date.now(), typeof window.__ag_render_metrics === 'function' ? window.__ag_render_metrics(${JSON.stringify(payload.cachedPayload)}) : { applied: false })`,
+                  returnByValue: true
                 });
               }
+              pushedSessions.set(cid, {
+                hash: '',
+                dataSig: prev.dataSig || '',
+                pendingActive: true,
+                pushedAtMs: prev.pushedAtMs || 0
+              });
               continue;
             }
 
+            const nextDataSig = String(payload.dataSig || payload.sig || sessionKey);
             const nextPendingActive = Boolean(
               payload.stats &&
                 (payload.stats.generatingPending || payload.stats.compactingNow || payload.stats.pendingRetrying)
             );
-            await send('Runtime.evaluate', {
-              expression: `(window.__ag_last_daemon_hb = Date.now(), window.__ag_render_metrics && window.__ag_render_metrics(${JSON.stringify(payload)}))`,
-              returnByValue: false
+            if (!force && prev.hash && nextDataSig === prev.dataSig && sessionKey === prev.hash) {
+              pushedSessions.set(cid, {
+                hash: sessionKey,
+                dataSig: nextDataSig,
+                pendingActive: nextPendingActive,
+                pushedAtMs: prev.pushedAtMs || Date.now()
+              });
+              continue;
+            }
+
+            const renderRes = await send('Runtime.evaluate', {
+              expression: `(window.__ag_last_daemon_hb = Date.now(), typeof window.__ag_render_metrics === 'function' ? window.__ag_render_metrics(${JSON.stringify(payload)}) : { applied: false, reason: 'missing_handler' })`,
+              returnByValue: true
             });
-            pushedSessions.set(cid, { hash: sessionKey, pendingActive: nextPendingActive });
+            if (shouldAcceptMetricsDelivery(renderRes)) {
+              pushedSessions.set(cid, {
+                hash: sessionKey,
+                dataSig: nextDataSig,
+                pendingActive: nextPendingActive,
+                pushedAtMs: Date.now()
+              });
+            } else {
+              pushedSessions.set(cid, {
+                hash: '',
+                dataSig: prev.dataSig || '',
+                pendingActive: nextPendingActive || prev.pendingActive,
+                pushedAtMs: prev.pushedAtMs || 0
+              });
+            }
+          }
+        };
+
+        const syncMetricsForSession = async (opts = false) => {
+          const normalized =
+            typeof opts === 'boolean'
+              ? { force: opts, bypassCache: opts, refreshWatched: opts }
+              : {
+                  force: Boolean(opts?.force),
+                  bypassCache: Boolean(opts?.bypassCache || opts?.force),
+                  refreshWatched: Boolean(opts?.refreshWatched || opts?.force)
+                };
+          if (metricsSyncInFlight) {
+            metricsSyncPending = true;
+            if (normalized.force) metricsSyncPendingForce = true;
+            if (normalized.bypassCache) metricsSyncPendingBypass = true;
+            if (normalized.refreshWatched) metricsSyncPendingRefreshWatched = true;
+            return;
+          }
+          metricsSyncInFlight = true;
+          let curOpts = normalized;
+          try {
+            while (true) {
+              await runSyncMetricsOnce(curOpts);
+              if (!metricsSyncPending) break;
+              curOpts = {
+                force: metricsSyncPendingForce,
+                bypassCache: metricsSyncPendingBypass,
+                refreshWatched: metricsSyncPendingRefreshWatched
+              };
+              metricsSyncPending = false;
+              metricsSyncPendingForce = false;
+              metricsSyncPendingBypass = false;
+              metricsSyncPendingRefreshWatched = false;
+            }
+          } finally {
+            metricsSyncInFlight = false;
           }
         };
 
@@ -569,16 +686,35 @@ export function createCdpManager({
             const { activeConfig, cachedPatchVersion } = bundleCtrl.getState();
             const checkRes = await send('Runtime.evaluate', {
               expression:
-                '((window.__ag_last_daemon_hb = Date.now()), window.__ag_refresh_wait_ui && window.__ag_refresh_wait_ui(), window.__ag_patch_version === ' +
+                '((window.__ag_last_daemon_hb = Date.now()), window.__ag_refresh_wait_ui && window.__ag_refresh_wait_ui(), ({ ok: window.__ag_patch_version === ' +
                 JSON.stringify(cachedPatchVersion) +
                 ' && (' +
                 JSON.stringify(!activeConfig.enabled) +
-                ' || (window.__ag_body_ready === true && !!document.getElementById("ag-enhancer-style"))))',
+                ' || (window.__ag_body_ready === true && !!document.getElementById("ag-enhancer-style"))), watched: typeof window.__ag_get_watched_cascade_ids === "function" ? window.__ag_get_watched_cascade_ids() : null }))',
               returnByValue: true
             });
-            if (checkRes?.result?.result?.value !== true) {
+            const val = checkRes?.result?.result?.value;
+            if (!val || val.ok !== true) {
               await inject();
-              await syncMetricsForSession(true);
+              await syncMetricsForSession({ force: true, bypassCache: true, refreshWatched: true });
+              return;
+            }
+            if (!isSwarmIframe && Array.isArray(val.watched)) {
+              const nextIds = parseCascadeIdList(val.watched);
+              const changed =
+                nextIds.length !== activeCascadeIds.length ||
+                nextIds.some((id, idx) => id !== activeCascadeIds[idx]);
+              if (changed) {
+                activeCascadeIds = nextIds;
+                for (const existingCid of [...pushedSessions.keys()]) {
+                  if (!activeCascadeIds.includes(existingCid)) {
+                    pushedSessions.delete(existingCid);
+                  }
+                }
+                if (activeCascadeIds.length > 0) {
+                  await syncMetricsForSession({ force: true, bypassCache: true, refreshWatched: false });
+                }
+              }
             }
           } catch {}
         };
@@ -646,19 +782,32 @@ export function createCdpManager({
               return;
             }
             if (msg.method === 'Runtime.bindingCalled' && msg.params?.name === '__agRequestMetrics') {
-              const nextIds = parseCascadeIdList(msg.params.payload);
-              activeCascadeIds = nextIds;
+              const req = parseMetricsRequestPayload(msg.params.payload);
+              activeCascadeIds = req.cids;
               for (const existingCid of [...pushedSessions.keys()]) {
                 if (!activeCascadeIds.includes(existingCid)) {
                   pushedSessions.delete(existingCid);
                 }
               }
               if (activeCascadeIds.length > 0) {
-                for (const cid of activeCascadeIds) {
-                  const prev = pushedSessions.get(cid);
-                  if (prev) pushedSessions.set(cid, { hash: '', pendingActive: prev.pendingActive });
+                if (req.force) {
+                  for (const cid of activeCascadeIds) {
+                    const prev = pushedSessions.get(cid);
+                    if (prev) {
+                      pushedSessions.set(cid, {
+                        hash: '',
+                        dataSig: prev.dataSig || '',
+                        pendingActive: prev.pendingActive,
+                        pushedAtMs: prev.pushedAtMs || 0
+                      });
+                    }
+                  }
                 }
-                syncMetricsForSession(true);
+                void syncMetricsForSession({
+                  force: req.force,
+                  bypassCache: req.bypassCache,
+                  refreshWatched: false
+                });
               }
               return;
             }
@@ -850,6 +999,16 @@ export function createCdpManager({
               return;
             }
             if (!initialAttachDone) return;
+            if (msg.method === 'Page.navigatedWithinDocument') {
+              if (!isSwarmIframe) {
+                if (navDebounceTimer) clearTimeout(navDebounceTimer);
+                navDebounceTimer = setTimeout(() => {
+                  navDebounceTimer = null;
+                  void syncMetricsForSession({ force: true, bypassCache: true, refreshWatched: true });
+                }, 120);
+              }
+              return;
+            }
             if (
               msg.method === 'Page.frameNavigated' ||
               msg.method === 'Page.loadEventFired' ||
@@ -890,6 +1049,7 @@ export function createCdpManager({
           inject,
           checkAndInject,
           syncMetricsForSession,
+          hasPendingActiveSession,
           endpoint,
           isSwarmIframe,
           parentId: target.parentId || null,
@@ -926,11 +1086,13 @@ export function createCdpManager({
         nowMs - lastTargetDiscoveryMs >= TARGET_DISCOVERY_INTERVAL_MS;
 
       if (!shouldDiscoverTargets) {
-        for (const entry of attachedTargets.values()) {
-          if (!entry.hostConfirmed) continue;
-          if (shouldHeartbeatCheck && entry.checkAndInject) await entry.checkAndInject();
-          if (entry.syncMetricsForSession) await entry.syncMetricsForSession(false);
-        }
+        await Promise.allSettled(
+          [...attachedTargets.values()].map(async (entry) => {
+            if (!entry.hostConfirmed) return;
+            if (shouldHeartbeatCheck && entry.checkAndInject) await entry.checkAndInject();
+            if (entry.syncMetricsForSession) await entry.syncMetricsForSession(false);
+          })
+        );
         return;
       }
 
@@ -1002,26 +1164,30 @@ export function createCdpManager({
       }
 
       const syncTargetBatch = async (items) => {
-        const attachPromises = [];
+        const tasks = [];
         for (const { page, endpoint } of items) {
           if (!attachedTargets.has(page.id)) {
-            attachPromises.push(attachTarget(page, endpoint));
+            tasks.push(attachTarget(page, endpoint));
           } else {
             const entry = attachedTargets.get(page.id);
             entry.endpoint = endpoint;
             entry.parentId = page.parentId || entry.parentId || null;
             entry.updateTargetUrl?.(page.url);
             if (entry.hostConfirmed) {
-              if (bundleChanged && entry.updateNewDocScript) {
-                await entry.updateNewDocScript();
-              }
-              if (shouldHeartbeatCheck && entry.checkAndInject) await entry.checkAndInject();
-              if (entry.syncMetricsForSession) await entry.syncMetricsForSession(bundleChanged);
+              tasks.push(
+                (async () => {
+                  if (bundleChanged && entry.updateNewDocScript) {
+                    await entry.updateNewDocScript();
+                  }
+                  if (shouldHeartbeatCheck && entry.checkAndInject) await entry.checkAndInject();
+                  if (entry.syncMetricsForSession) await entry.syncMetricsForSession(bundleChanged);
+                })()
+              );
             }
           }
         }
-        if (attachPromises.length > 0) {
-          await Promise.allSettled(attachPromises);
+        if (tasks.length > 0) {
+          await Promise.allSettled(tasks);
         }
       };
 
@@ -1077,9 +1243,21 @@ export function createCdpManager({
     attachedTargets.clear();
   }
 
+  function hasAnyActiveMetricsSession() {
+    for (const entry of attachedTargets.values()) {
+      if (entry.hostConfirmed && !entry.isSwarmIframe && entry.hasPendingActiveSession?.()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function getNextSyncDelayMs() {
     if (!runOnce && attachedTargets.size === 0 && Date.now() < fastWatchUntilMs) {
       return FAST_WATCH_INTERVAL_MS;
+    }
+    if (!runOnce && hasAnyActiveMetricsSession()) {
+      return ACTIVE_METRICS_INTERVAL_MS;
     }
     return NORMAL_SYNC_INTERVAL_MS;
   }

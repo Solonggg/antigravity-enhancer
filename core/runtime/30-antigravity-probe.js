@@ -207,6 +207,7 @@
         execRetryAtMs: retryAtMs,
         execInitText: execCase === 'initialization' && typeof execVal === 'string' ? execVal : '',
         lastStepType,
+        totalStepsLen: traj && typeof traj.totalStepsLength === 'number' ? traj.totalStepsLength : 0,
         lastStepErrorMsg,
         loadingText,
         stopBtnActive
@@ -447,22 +448,173 @@
     }
   }
 
-  function loadOfficialQuotaSummary({ forceRefresh = false, scopeEl = null, isZh = true } = {}) {
+  const QUOTA_CACHE_TTL_MS = 30000;
+  const QUOTA_RETRY_COOLDOWN_MS = 5000;
+
+  function getOfficialQuotaState() {
+    if (typeof window === 'undefined') {
+      return { cache: null, dirty: false, lastErrorAt: 0, lastError: '' };
+    }
+    if (!window.__ag_official_quota_state || typeof window.__ag_official_quota_state !== 'object') {
+      const legacy =
+        window.__ag_official_quota_cache && typeof window.__ag_official_quota_cache === 'object'
+          ? window.__ag_official_quota_cache
+          : null;
+      window.__ag_official_quota_state = {
+        cache: legacy,
+        dirty: false,
+        lastErrorAt: 0,
+        lastError: ''
+      };
+    }
+    return window.__ag_official_quota_state;
+  }
+
+  function markOfficialQuotaDirty() {
+    const st = getOfficialQuotaState();
+    st.dirty = true;
+  }
+
+  function hasExpiredQuotaResetWindow(rawGroups, nowMs = Date.now()) {
+    if (!Array.isArray(rawGroups)) return false;
+    for (let i = 0; i < rawGroups.length; i++) {
+      const g = rawGroups[i];
+      if (!g || !Array.isArray(g.buckets)) continue;
+      for (let j = 0; j < g.buckets.length; j++) {
+        const resetMs = resolveQuotaResetTimeMs(g.buckets[j]);
+        if (resetMs > 0 && resetMs <= nowMs) return true;
+      }
+    }
+    return false;
+  }
+
+  function subscribeOfficialQuotaStore(onStoreUpdate, scopeEl = null) {
+    if (typeof onStoreUpdate !== 'function') return null;
+    const { store } = findAntigravityServices(scopeEl);
+    if (!store || typeof store.subscribe !== 'function' || typeof store.getState !== 'function') {
+      return null;
+    }
+    let lastQueriesRef = null;
+    let lastCreditsRef = null;
+    let lastTierRef = null;
+    try {
+      const initState = store.getState();
+      if (initState && typeof initState === 'object') {
+        lastQueriesRef = initState.modelQuotaApi ? initState.modelQuotaApi.queries : null;
+        lastCreditsRef = initState.credits || null;
+        lastTierRef = initState.userStatus ? initState.userStatus.userTier : null;
+      }
+    } catch {}
+
+    try {
+      return store.subscribe(() => {
+        try {
+          const nextState = store.getState();
+          if (!nextState || typeof nextState !== 'object') return;
+          const nextQueries = nextState.modelQuotaApi ? nextState.modelQuotaApi.queries : null;
+          const nextCredits = nextState.credits || null;
+          const nextTier = nextState.userStatus ? nextState.userStatus.userTier : null;
+          if (nextQueries === lastQueriesRef && nextCredits === lastCreditsRef && nextTier === lastTierRef) {
+            return;
+          }
+          const queriesChanged = nextQueries !== lastQueriesRef;
+          lastQueriesRef = nextQueries;
+          lastCreditsRef = nextCredits;
+          lastTierRef = nextTier;
+
+          const snap = readCachedOfficialQuotaFromStore(store);
+          if (!snap) return;
+          const st = getOfficialQuotaState();
+          const prevCache = st.cache;
+          const nextGroups = Array.isArray(snap.rawGroups) && snap.rawGroups.length > 0
+            ? snap.rawGroups
+            : prevCache && Array.isArray(prevCache.rawGroups)
+            ? prevCache.rawGroups
+            : null;
+          if (!nextGroups) return;
+          const now = Date.now();
+          const entry = {
+            ok: true,
+            cached: false,
+            isStale: false,
+            refreshFailed: false,
+            fetchedAt: queriesChanged ? now : (prevCache && prevCache.fetchedAt) || now,
+            forceFetchedAt: queriesChanged ? now : (prevCache && prevCache.forceFetchedAt) || 0,
+            rawGroups: nextGroups,
+            availableCredits: snap.availableCredits,
+            useAICredits: snap.useAICredits,
+            planName: snap.planName || (prevCache && prevCache.planName) || ''
+          };
+          st.cache = entry;
+          window.__ag_official_quota_cache = entry;
+          if (queriesChanged) {
+            st.dirty = false;
+            st.lastErrorAt = 0;
+            st.lastError = '';
+          }
+          onStoreUpdate(entry);
+        } catch {}
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  function loadOfficialQuotaSummary({
+    forceRefresh = false,
+    allowBackgroundForce = true,
+    staleTtlMs = QUOTA_CACHE_TTL_MS,
+    scopeEl = null,
+    isZh = true
+  } = {}) {
     if (typeof window === 'undefined') {
       return Promise.resolve({ ok: false, unavailable: true, groups: [] });
     }
     const now = Date.now();
+    const ttlMs = Math.max(5000, Number(staleTtlMs) || QUOTA_CACHE_TTL_MS);
     const { cloudCodeService, store } = findAntigravityServices(scopeEl);
     const storeSnap = readCachedOfficialQuotaFromStore(store);
+    const st = getOfficialQuotaState();
+    const cache = st.cache || window.__ag_official_quota_cache || null;
+    if (cache && !st.cache) st.cache = cache;
 
-    const cache = window.__ag_official_quota_cache;
-    if (!forceRefresh && cache && now - cache.fetchedAt < 30000 && Array.isArray(cache.rawGroups)) {
+    const hasCachedGroups = Boolean(cache && Array.isArray(cache.rawGroups) && cache.rawGroups.length > 0);
+    const isDirty = Boolean(st.dirty);
+    const resetPassed = hasCachedGroups && hasExpiredQuotaResetWindow(cache.rawGroups, now);
+    const cacheAge = cache && cache.fetchedAt ? now - cache.fetchedAt : Infinity;
+    const forceAge = cache && cache.forceFetchedAt ? now - cache.forceFetchedAt : Infinity;
+
+    if (!forceRefresh && !isDirty && !resetPassed && hasCachedGroups && cacheAge < ttlMs) {
       return Promise.resolve({
         ok: true,
         cached: true,
+        isStale: false,
+        refreshFailed: false,
         fetchedAt: cache.fetchedAt,
+        forceFetchedAt: cache.forceFetchedAt || 0,
         groups: normalizeOfficialQuotaGroups(cache.rawGroups, { nowMs: now, isZh }),
-        availableCredits: storeSnap ? storeSnap.availableCredits : cache.availableCredits,
+        availableCredits:
+          storeSnap && typeof storeSnap.availableCredits === 'number'
+            ? storeSnap.availableCredits
+            : cache.availableCredits,
+        useAICredits: storeSnap ? storeSnap.useAICredits : cache.useAICredits,
+        planName: (storeSnap && storeSnap.planName) || cache.planName || ''
+      });
+    }
+
+    if (!forceRefresh && st.lastErrorAt > 0 && now - st.lastErrorAt < QUOTA_RETRY_COOLDOWN_MS && hasCachedGroups) {
+      return Promise.resolve({
+        ok: true,
+        cached: true,
+        isStale: true,
+        refreshFailed: true,
+        fetchedAt: cache.fetchedAt,
+        forceFetchedAt: cache.forceFetchedAt || 0,
+        groups: normalizeOfficialQuotaGroups(cache.rawGroups, { nowMs: now, isZh }),
+        availableCredits:
+          storeSnap && typeof storeSnap.availableCredits === 'number'
+            ? storeSnap.availableCredits
+            : cache.availableCredits,
         useAICredits: storeSnap ? storeSnap.useAICredits : cache.useAICredits,
         planName: (storeSnap && storeSnap.planName) || cache.planName || ''
       });
@@ -473,7 +625,10 @@
         return Promise.resolve({
           ok: true,
           cached: true,
+          isStale: false,
+          refreshFailed: false,
           fetchedAt: now,
+          forceFetchedAt: 0,
           groups: normalizeOfficialQuotaGroups(storeSnap.rawGroups, { nowMs: now, isZh }),
           availableCredits: storeSnap.availableCredits,
           useAICredits: storeSnap.useAICredits,
@@ -483,7 +638,12 @@
       return Promise.resolve({ ok: false, unavailable: true, groups: [] });
     }
 
-    if (window.__ag_official_quota_inflight && (!forceRefresh || window.__ag_official_quota_inflight_force)) {
+    const upstreamForce = Boolean(
+      forceRefresh ||
+        (allowBackgroundForce && (isDirty || resetPassed || forceAge >= ttlMs || !hasCachedGroups || !cache.forceFetchedAt))
+    );
+
+    if (window.__ag_official_quota_inflight && (!upstreamForce || window.__ag_official_quota_inflight_force)) {
       return window.__ag_official_quota_inflight.then((res) =>
         Object.assign({}, res, {
           groups: normalizeOfficialQuotaGroups(res.rawGroups || [], { nowMs: Date.now(), isZh })
@@ -491,36 +651,55 @@
       );
     }
 
-    window.__ag_official_quota_inflight_force = Boolean(forceRefresh);
+    window.__ag_official_quota_inflight_force = upstreamForce;
     const req = Promise.resolve()
-      .then(() => cloudCodeService.retrieveUserQuotaSummary(Boolean(forceRefresh)))
+      .then(() => cloudCodeService.retrieveUserQuotaSummary(upstreamForce))
       .then((res) => {
-        const rawGroups = (res && res.response && Array.isArray(res.response.groups) && res.response.groups) ||
-          (res && Array.isArray(res.groups) && res.groups) || [];
+        const rawGroups =
+          (res && res.response && Array.isArray(res.response.groups) && res.response.groups) ||
+          (res && Array.isArray(res.groups) && res.groups) ||
+          [];
         const fetchedAt = Date.now();
         const latestStore = readCachedOfficialQuotaFromStore(store) || storeSnap;
+        const effectiveGroups = rawGroups.length > 0 ? rawGroups : hasCachedGroups ? cache.rawGroups : [];
         const entry = {
           ok: true,
           cached: false,
+          isStale: rawGroups.length === 0 && hasCachedGroups,
+          refreshFailed: false,
           fetchedAt,
-          rawGroups,
-          availableCredits: latestStore ? latestStore.availableCredits : null,
-          useAICredits: Boolean(latestStore && latestStore.useAICredits),
-          planName: (latestStore && latestStore.planName) || ''
+          forceFetchedAt: upstreamForce ? fetchedAt : (cache && cache.forceFetchedAt) || 0,
+          rawGroups: effectiveGroups,
+          availableCredits:
+            latestStore && typeof latestStore.availableCredits === 'number'
+              ? latestStore.availableCredits
+              : cache
+              ? cache.availableCredits
+              : null,
+          useAICredits: Boolean(latestStore ? latestStore.useAICredits : cache && cache.useAICredits),
+          planName: (latestStore && latestStore.planName) || (cache && cache.planName) || ''
         };
+        st.cache = entry;
+        st.dirty = false;
+        st.lastErrorAt = 0;
+        st.lastError = '';
         window.__ag_official_quota_cache = entry;
         return Object.assign({}, entry, {
-          groups: normalizeOfficialQuotaGroups(rawGroups, { nowMs: fetchedAt, isZh })
+          groups: normalizeOfficialQuotaGroups(effectiveGroups, { nowMs: fetchedAt, isZh })
         });
       })
-      .catch(() => {
-        const prev = window.__ag_official_quota_cache;
-        if (prev && Array.isArray(prev.rawGroups)) {
+      .catch((err) => {
+        st.lastErrorAt = Date.now();
+        st.lastError = String((err && err.message) || err || 'quota fetch failed');
+        const prev = st.cache || window.__ag_official_quota_cache;
+        if (prev && Array.isArray(prev.rawGroups) && prev.rawGroups.length > 0) {
           return Object.assign({}, prev, {
+            isStale: true,
+            refreshFailed: true,
             groups: normalizeOfficialQuotaGroups(prev.rawGroups, { nowMs: Date.now(), isZh })
           });
         }
-        return { ok: false, unavailable: false, groups: [], rawGroups: [] };
+        return { ok: false, unavailable: false, isStale: false, refreshFailed: true, groups: [], rawGroups: [] };
       })
       .finally(() => {
         if (window.__ag_official_quota_inflight === req) {

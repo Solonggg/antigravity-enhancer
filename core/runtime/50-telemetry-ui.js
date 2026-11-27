@@ -45,6 +45,12 @@
         lastSteps: 0,
         lastGens: 0,
         lastStreamLen: 0,
+        wasExecuting: false,
+        lastLiveStepsLen: 0,
+        lastRefreshReqAt: 0,
+        postTurnTimer1: null,
+        postTurnTimer2: null,
+        postTurnQuotaTimer: null,
         rowMode: '',
         layoutSig: '',
         ro: null,
@@ -54,6 +60,22 @@
       };
     }
     return paneStates[key];
+  }
+
+  function clearPanePostTurnTimers(ps) {
+    if (!ps) return;
+    if (ps.postTurnTimer1) {
+      clearTimeout(ps.postTurnTimer1);
+      ps.postTurnTimer1 = null;
+    }
+    if (ps.postTurnTimer2) {
+      clearTimeout(ps.postTurnTimer2);
+      ps.postTurnTimer2 = null;
+    }
+    if (ps.postTurnQuotaTimer) {
+      clearTimeout(ps.postTurnQuotaTimer);
+      ps.postTurnQuotaTimer = null;
+    }
   }
 
   function storeMetricsPayload(cid, payload) {
@@ -73,14 +95,53 @@
       const pathStr = String(window.location && window.location.pathname ? window.location.pathname : '');
       const mRoute = pathStr.match(/\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-zA-Z_-]{8,})/i);
       if (mRoute && mRoute[1]) return mRoute[1];
+
+      const onHomeSplash = Boolean(
+        document.querySelector('[data-testid="home-greeting"], [data-testid="home-splash-content"]')
+      );
+      const selRow = !onHomeSplash
+        ? document.querySelector('[data-testid="conversation-row-sidebar"][data-selected="true"]')
+        : null;
+      const selCid = selRow ? String(selRow.getAttribute('data-cascade-id') || '').trim() : '';
+
+      if (typeof document.querySelectorAll === 'function') {
+        const views = document.querySelectorAll('[data-testid="conversation-view"][data-cascade-id]');
+        const visibleIds = [];
+        let focusedId = '';
+        const activeEl = document.activeElement || null;
+        for (let i = 0; i < views.length; i++) {
+          const viewEl = views[i];
+          const cid = String(viewEl.getAttribute('data-cascade-id') || '').trim();
+          if (!AG_UUID_RE.test(cid)) continue;
+          if (viewEl.hasAttribute && viewEl.hasAttribute('hidden')) continue;
+          if (viewEl.getBoundingClientRect) {
+            const r = viewEl.getBoundingClientRect();
+            if (r && r.width <= 0 && r.height <= 0) continue;
+          }
+          visibleIds.push(cid);
+          if (activeEl && viewEl.contains && viewEl.contains(activeEl)) {
+            focusedId = cid;
+          }
+        }
+        if (focusedId) return focusedId;
+        if (selCid && AG_UUID_RE.test(selCid) && visibleIds.some((id) => id.toLowerCase() === selCid.toLowerCase())) {
+          return selCid;
+        }
+        if (visibleIds.length > 0) return visibleIds[0];
+      }
+
       const mainView = document.querySelector('[data-testid="conversation-view"][data-cascade-id]');
       const viewCid = mainView ? String(mainView.getAttribute('data-cascade-id') || '').trim() : '';
       if (AG_UUID_RE.test(viewCid)) return viewCid;
-      if (!document.querySelector('[data-testid="home-greeting"], [data-testid="home-splash-content"]')) {
-        const selRow = document.querySelector('[data-testid="conversation-row-sidebar"][data-selected="true"]');
-        const selCid = selRow ? selRow.getAttribute('data-cascade-id') || '' : '';
-        if (selCid) return selCid;
+
+      if (!onHomeSplash && typeof readLiveCascadeRuntimeState === 'function') {
+        const live = readLiveCascadeRuntimeState('', null, document);
+        if (live && live.hasProvider && live.cid && AG_UUID_RE.test(live.cid)) {
+          return live.cid;
+        }
       }
+
+      if (selCid) return selCid;
     } catch (e) {}
     return '';
   }
@@ -95,11 +156,25 @@
     return '';
   }
 
+  function isElementHiddenOrCollapsed(el) {
+    if (!el) return true;
+    if (el.hasAttribute && el.hasAttribute('hidden')) return true;
+    if (el.closest && el.closest('[hidden]')) return true;
+    if (el.getBoundingClientRect) {
+      const r = el.getBoundingClientRect();
+      if (r && r.width <= 0 && r.height <= 0) return true;
+    }
+    return false;
+  }
+
   function discoverConversationPanes() {
     const panes = [];
     try {
       const boxes = document.querySelectorAll('[id="' + SELECTORS.inputBoxId + '"]');
-      let mainFound = false;
+      const mainCid = extractCascadeId();
+      const activeEl = document.activeElement || null;
+      const mainVisible = [];
+      let fallbackMainBox = null;
       let sideFound = false;
       for (let i = 0; i < boxes.length; i++) {
         const box = boxes[i];
@@ -118,16 +193,43 @@
             cid: extractSideCascadeId(sideContent)
           });
         } else {
-          if (mainFound) continue;
-          mainFound = true;
-          panes.push({
-            key: 'main',
-            pillId: 'ag-live-metrics-pill',
-            inputBox: box,
-            container: (box.closest && box.closest('[data-testid="conversation-view"]')) || document,
-            cid: extractCascadeId()
-          });
+          if (isElementHiddenOrCollapsed(box)) {
+            if (!fallbackMainBox) fallbackMainBox = box;
+            continue;
+          }
+          mainVisible.push(box);
         }
+      }
+
+      let chosenMainBox = null;
+      if (mainVisible.length > 0) {
+        if (activeEl) {
+          chosenMainBox =
+            mainVisible.find((b) => {
+              const v = b.closest && b.closest('[data-testid="conversation-view"]');
+              return Boolean((b.contains && b.contains(activeEl)) || (v && v.contains && v.contains(activeEl)));
+            }) || null;
+        }
+        if (!chosenMainBox && mainCid) {
+          chosenMainBox =
+            mainVisible.find((b) => {
+              const v = b.closest && b.closest('[data-testid="conversation-view"]');
+              return Boolean(v && String(v.getAttribute('data-cascade-id') || '').trim() === mainCid);
+            }) || null;
+        }
+        if (!chosenMainBox) chosenMainBox = mainVisible[0];
+      } else {
+        chosenMainBox = fallbackMainBox;
+      }
+
+      if (chosenMainBox) {
+        panes.unshift({
+          key: 'main',
+          pillId: 'ag-live-metrics-pill',
+          inputBox: chosenMainBox,
+          container: (chosenMainBox.closest && chosenMainBox.closest('[data-testid="conversation-view"]')) || document,
+          cid: mainCid
+        });
       }
     } catch (e) {}
     return panes;
@@ -157,6 +259,72 @@
   }
 
   window.__ag_get_watched_cascade_ids = getWatchedCascadeIds;
+
+  function requestMetricsFromDaemon({ force = false, bypassCache = false, reason = '', minIntervalMs = 600 } = {}) {
+    if (!HAS_TELEMETRY_UI) return false;
+    if (typeof window.__agRequestMetrics !== 'function') return false;
+    const watchedIds = getWatchedCascadeIds();
+    const watchedSig = watchedIds.join(',');
+    const routeChanged = window.__ag_last_watched_sig !== watchedSig;
+    const now = Date.now();
+    if (!routeChanged && !force && !bypassCache) return false;
+    if (
+      !routeChanged &&
+      reason !== 'manual' &&
+      minIntervalMs > 0 &&
+      now - (window.__ag_last_metrics_req_at || 0) < minIntervalMs
+    ) {
+      return false;
+    }
+    try {
+      const payload =
+        force || bypassCache
+          ? JSON.stringify({
+              cids: watchedIds,
+              force: Boolean(force),
+              bypassCache: Boolean(bypassCache || force),
+              reason: reason || (routeChanged ? 'route' : 'refresh')
+            })
+          : watchedSig;
+      window.__agRequestMetrics(payload);
+      window.__ag_last_watched_sig = watchedSig;
+      window.__ag_last_metrics_req_at = now;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  let quotaStoreUnsub = null;
+  function ensureQuotaStoreSubscription(scopeEl = null) {
+    if (!SHOW_USAGE_STATS || quotaStoreUnsub || typeof subscribeOfficialQuotaStore !== 'function') return;
+    const unsub = subscribeOfficialQuotaStore((entry) => {
+      const tt = document.getElementById('ag-live-metrics-tooltip');
+      if (!tt || !entry || !Array.isArray(entry.rawGroups)) return;
+      const isZh = MODULES.i18n !== false;
+      const ownerKey = window.__ag_tt_owner_pane || 'main';
+      const ownerPane = getPaneByKey(ownerKey);
+      const ownerPill = document.getElementById(ownerKey === 'side' ? 'ag-side-metrics-pill' : 'ag-live-metrics-pill');
+      const groups =
+        typeof normalizeOfficialQuotaGroups === 'function'
+          ? normalizeOfficialQuotaGroups(entry.rawGroups, { nowMs: Date.now(), isZh })
+          : [];
+      applyOfficialQuotaToTooltipDom(
+        tt,
+        {
+          loading: false,
+          groups,
+          availableCredits: entry.availableCredits,
+          useAICredits: entry.useAICredits
+        },
+        ownerPill,
+        ownerPane ? ownerPane.inputBox : null
+      );
+    }, scopeEl);
+    if (typeof unsub === 'function') {
+      quotaStoreUnsub = unsub;
+    }
+  }
 
   function isMetricsRouteActive(pane) {
     if (!HAS_TELEMETRY_UI) return false;
@@ -338,7 +506,10 @@
     }
   }
 
-  function syncOfficialQuotaIntoTooltip(tt, { forceRefresh = false, scopeEl = null } = {}) {
+  function syncOfficialQuotaIntoTooltip(
+    tt,
+    { forceRefresh = false, allowBackgroundForce = true, staleTtlMs = 30000, scopeEl = null } = {}
+  ) {
     if (!tt || !SHOW_USAGE_STATS) return;
     const slot = tt.querySelector('[data-ag-quota-slot="1"]');
     if (!slot || typeof loadOfficialQuotaSummary !== 'function') return;
@@ -348,17 +519,31 @@
     const ownerPane = getPaneByKey(ownerKey);
     const ownerPill = document.getElementById(ownerKey === 'side' ? 'ag-side-metrics-pill' : 'ag-live-metrics-pill');
     const ownerBox = scopeEl || (ownerPane ? ownerPane.inputBox : null);
+    ensureQuotaStoreSubscription(ownerBox);
 
-    const existingCache = window.__ag_official_quota_cache;
-    if (existingCache && Array.isArray(existingCache.rawGroups)) {
+    const quotaState = typeof getOfficialQuotaState === 'function' ? getOfficialQuotaState() : null;
+    const existingCache = (quotaState && quotaState.cache) || window.__ag_official_quota_cache;
+    const hasCachedGroups = Boolean(
+      existingCache && Array.isArray(existingCache.rawGroups) && existingCache.rawGroups.length > 0
+    );
+    const now = Date.now();
+    const isDirty = Boolean(quotaState && quotaState.dirty);
+    const resetPassed =
+      hasCachedGroups &&
+      typeof hasExpiredQuotaResetWindow === 'function' &&
+      hasExpiredQuotaResetWindow(existingCache.rawGroups, now);
+    const cacheStale = !existingCache || !existingCache.fetchedAt || now - existingCache.fetchedAt >= staleTtlMs;
+    const shouldFetch = Boolean(forceRefresh || !hasCachedGroups || isDirty || resetPassed || cacheStale);
+
+    if (hasCachedGroups) {
       const cachedGroups =
         typeof normalizeOfficialQuotaGroups === 'function'
-          ? normalizeOfficialQuotaGroups(existingCache.rawGroups, { nowMs: Date.now(), isZh })
+          ? normalizeOfficialQuotaGroups(existingCache.rawGroups, { nowMs: now, isZh })
           : [];
       applyOfficialQuotaToTooltipDom(
         tt,
         {
-          loading: forceRefresh,
+          loading: shouldFetch,
           groups: cachedGroups,
           availableCredits: existingCache.availableCredits,
           useAICredits: existingCache.useAICredits
@@ -366,14 +551,14 @@
         ownerPill,
         ownerBox
       );
-      if (!forceRefresh && Date.now() - existingCache.fetchedAt < 30000) {
+      if (!shouldFetch) {
         return;
       }
     } else {
       applyOfficialQuotaToTooltipDom(tt, { loading: true, groups: [] }, ownerPill, ownerBox);
     }
 
-    loadOfficialQuotaSummary({ forceRefresh, scopeEl: ownerBox, isZh }).then((res) => {
+    loadOfficialQuotaSummary({ forceRefresh, allowBackgroundForce, staleTtlMs, scopeEl: ownerBox, isZh }).then((res) => {
       const curTt = document.getElementById('ag-live-metrics-tooltip');
       if (!curTt) return;
       const curKey = window.__ag_tt_owner_pane || 'main';
@@ -391,6 +576,42 @@
         curPane ? curPane.inputBox : ownerBox
       );
     });
+  }
+
+  function applyUsageTooltipHtml(tt, rawHtml) {
+    if (!tt || !rawHtml) return false;
+    if (tt.getAttribute('data-ag-raw-tt') === rawHtml) return false;
+    tt.setAttribute('data-ag-raw-tt', rawHtml);
+
+    // Patch only the left usage column in-place when dashboard layout is already mounted,
+    // preserving the right-hand official quota DOM and scroll position with zero flicker.
+    if (rawHtml.includes('ag-tt-col-usage')) {
+      try {
+        const curWrap = tt.querySelector('.ag-tt-wrap');
+        const curUsageCol = tt.querySelector('.ag-tt-col-usage');
+        const curQuotaSlot = tt.querySelector('[data-ag-quota-slot="1"]');
+        if (curUsageCol && curQuotaSlot) {
+          const tmp = document.createElement('div');
+          tmp.innerHTML = rawHtml;
+          const nextWrap = tmp.querySelector('.ag-tt-wrap');
+          const nextUsageCol = tmp.querySelector('.ag-tt-col-usage');
+          if (nextUsageCol && nextUsageCol.innerHTML) {
+            const prevWrapScroll = curWrap ? curWrap.scrollTop || 0 : 0;
+            const prevUsageScroll = curUsageCol.scrollTop || 0;
+            if (curWrap && nextWrap && curWrap.className !== nextWrap.className) {
+              curWrap.className = nextWrap.className;
+            }
+            curUsageCol.innerHTML = nextUsageCol.innerHTML;
+            if (curWrap && prevWrapScroll > 0) curWrap.scrollTop = prevWrapScroll;
+            if (prevUsageScroll > 0) curUsageCol.scrollTop = prevUsageScroll;
+            return 'partial';
+          }
+        }
+      } catch (e) {}
+    }
+
+    tt.innerHTML = rawHtml;
+    return 'full';
   }
 
   function positionMetricsTooltip(pill, tt, inputBox) {
@@ -506,6 +727,10 @@
     const m = cid ? metricsByCid[cid] : null;
     const ps = paneStates[paneKey];
 
+    if (SHOW_USAGE_STATS && cid && (!m || Date.now() - (m.__agAppliedAt || 0) > 2000)) {
+      requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'tooltip_open', minIntervalMs: 1200 });
+    }
+
     let rawHtml = m && m.tooltipHtml ? m.tooltipHtml : '';
     if (!SHOW_USAGE_STATS && SHOW_SESSION_STATUS) {
       rawHtml = buildStatusOnlyTooltipHtml(ps ? ps.lastSnap : null);
@@ -517,16 +742,17 @@
     if (tt.classList) {
       tt.classList.toggle('ag-tt-is-status-only', Boolean(!SHOW_USAGE_STATS && SHOW_SESSION_STATUS));
     }
-    if (tt.getAttribute('data-ag-raw-tt') !== rawHtml) {
-      tt.setAttribute('data-ag-raw-tt', rawHtml);
-      tt.innerHTML = rawHtml;
-    }
+    applyUsageTooltipHtml(tt, rawHtml);
     if (SHOW_SESSION_STATUS && ps && ps.lastSnap) {
       const pill = document.getElementById(pane ? pane.pillId : 'ag-live-metrics-pill');
       syncTooltipLiveOverlay(tt, ps.lastSnap, pill, pane ? pane.inputBox : null);
     }
     if (SHOW_USAGE_STATS) {
-      syncOfficialQuotaIntoTooltip(tt, { forceRefresh: false, scopeEl: pane ? pane.inputBox : null });
+      syncOfficialQuotaIntoTooltip(tt, {
+        forceRefresh: false,
+        allowBackgroundForce: true,
+        scopeEl: pane ? pane.inputBox : null
+      });
     }
     return { tt, pane };
   }
@@ -728,6 +954,20 @@
           positionMetricsTooltip(pill, tt, res.pane ? res.pane.inputBox : inputBox);
         }
       });
+
+      pill.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'manual', minIntervalMs: 0 });
+        if (SHOW_USAGE_STATS) {
+          const curTt = document.getElementById('ag-live-metrics-tooltip');
+          if (curTt && curTt.querySelector('[data-ag-quota-slot="1"]')) {
+            syncOfficialQuotaIntoTooltip(curTt, { forceRefresh: true, scopeEl: inputBox });
+          } else if (typeof loadOfficialQuotaSummary === 'function') {
+            loadOfficialQuotaSummary({ forceRefresh: true, scopeEl: inputBox, isZh: MODULES.i18n !== false });
+          }
+        }
+      });
     }
 
     const boxRect = inputBox.getBoundingClientRect();
@@ -859,18 +1099,84 @@
     return mainPill;
   }
 
+  function schedulePostTurnRefresh(ps, pane) {
+    if (!ps || !pane || !pane.cid) return;
+    clearPanePostTurnTimers(ps);
+    const targetCid = pane.cid;
+    if (typeof markOfficialQuotaDirty === 'function') {
+      markOfficialQuotaDirty();
+    }
+    ps.postTurnTimer1 = setTimeout(() => {
+      ps.postTurnTimer1 = null;
+      if (ps.cid !== targetCid) return;
+      requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'turn_done', minIntervalMs: 250 });
+    }, 300);
+    ps.postTurnTimer2 = setTimeout(() => {
+      ps.postTurnTimer2 = null;
+      if (ps.cid !== targetCid) return;
+      requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'turn_done_followup', minIntervalMs: 600 });
+    }, 1200);
+    if (SHOW_USAGE_STATS) {
+      ps.postTurnQuotaTimer = setTimeout(() => {
+        ps.postTurnQuotaTimer = null;
+        if (ps.cid !== targetCid) return;
+        const curTt = document.getElementById('ag-live-metrics-tooltip');
+        if (curTt && curTt.getAttribute('data-visible') === '1' && !document.hidden) {
+          syncOfficialQuotaIntoTooltip(curTt, {
+            forceRefresh: false,
+            allowBackgroundForce: true,
+            staleTtlMs: 30000,
+            scopeEl: pane.inputBox
+          });
+        }
+      }, 1500);
+    }
+  }
+
+  function trackPaneRefreshEdges(ps, pane, now, nowExecuting, liveStepsLen, m) {
+    if (!ps || !pane) return;
+    const curCid = pane.cid;
+    if (ps.wasExecuting && !nowExecuting && curCid) {
+      schedulePostTurnRefresh(ps, pane);
+    } else if (nowExecuting && curCid && liveStepsLen > 0 && ps.lastLiveStepsLen > 0 && liveStepsLen > ps.lastLiveStepsLen) {
+      if (now - (ps.lastRefreshReqAt || 0) >= 1500) {
+        ps.lastRefreshReqAt = now;
+        requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'step_progress', minIntervalMs: 1200 });
+      }
+    } else if (SHOW_USAGE_STATS && curCid && (!m || !m.hasData)) {
+      if (now - (ps.lastRefreshReqAt || 0) >= 4000) {
+        ps.lastRefreshReqAt = now;
+        requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'missing_data', minIntervalMs: 3000 });
+      }
+    }
+    ps.wasExecuting = Boolean(nowExecuting);
+    if (liveStepsLen > 0) {
+      ps.lastLiveStepsLen = Math.max(ps.lastLiveStepsLen || 0, liveStepsLen);
+    }
+  }
+
   function applyPendingWaitVisualsForPane(pane, now) {
     const { key: paneKey, pillId, inputBox, container, cid: curCid } = pane;
     const ps = getOrCreatePaneState(paneKey);
     const m = curCid && metricsByCid[curCid] ? metricsByCid[curCid] : null;
+    const live =
+      typeof readLiveCascadeRuntimeState === 'function'
+        ? readLiveCascadeRuntimeState(curCid, inputBox, container)
+        : null;
 
     if (!SHOW_SESSION_STATUS) {
-      ps.cid = curCid;
+      if (ps.cid !== curCid) {
+        clearPanePostTurnTimers(ps);
+        ps.cid = curCid;
+        ps.wasExecuting = false;
+        ps.lastLiveStepsLen = 0;
+        ps.lastRefreshReqAt = 0;
+      }
       ps.lastSnap = null;
       const hasInlineData = Boolean(SHOW_USAGE_STATS && m && m.hasData && m.inlineHtml);
       let pill = document.getElementById(pillId);
-      if (hasInlineData && !pill) {
-        pill = ensureMetricsPillForPane(pane, false, false);
+      if (hasInlineData && (!pill || !pill.isConnected || !inputBox.contains(pill))) {
+        pill = ensureMetricsPillForPane(pane, Boolean(pill), false);
       }
       if (pill) {
         const nextDisplay = hasInlineData ? 'inline-flex' : 'none';
@@ -890,16 +1196,21 @@
         const usageAria = '用量统计 · 悬停或点击查看明细与官方配额';
         if (pill.getAttribute('aria-label') !== usageAria) pill.setAttribute('aria-label', usageAria);
       }
+      const stKindOnly = m && m.status && m.status.pendingKind ? String(m.status.pendingKind) : 'idle';
+      const nowExecOnly = Boolean(
+        stKindOnly !== 'idle' ||
+          (live &&
+            live.matched &&
+            (live.stopBtnActive || (live.hasProvider && (Number(live.effRunStatus) === 2 || live.execCase === 'modelRequest'))))
+      );
+      trackPaneRefreshEdges(ps, pane, now, nowExecOnly, live && live.totalStepsLen ? live.totalStepsLen : 0, m);
       return null;
     }
 
     const st = m && m.status ? m.status : null;
-    const live =
-      typeof readLiveCascadeRuntimeState === 'function'
-        ? readLiveCascadeRuntimeState(curCid, inputBox, container)
-        : null;
 
     if (ps.cid !== curCid) {
+      clearPanePostTurnTimers(ps);
       ps.cid = curCid;
       ps.unconnStartMs = 0;
       ps.waitStartMs = 0;
@@ -907,6 +1218,9 @@
       ps.lastSteps = 0;
       ps.lastGens = 0;
       ps.lastStreamLen = 0;
+      ps.wasExecuting = false;
+      ps.lastLiveStepsLen = 0;
+      ps.lastRefreshReqAt = 0;
     }
 
     const isUnconnNow = Boolean(
@@ -967,13 +1281,21 @@
       curModel: typeof getSelectedModelLabel === 'function' ? getSelectedModelLabel(inputBox) : ''
     });
     ps.lastSnap = snap;
+    trackPaneRefreshEdges(
+      ps,
+      pane,
+      now,
+      Boolean(snap.isExecuting || activeProbe),
+      live && live.totalStepsLen ? live.totalStepsLen : 0,
+      m
+    );
 
     const routeVisible =
       isMetricsRouteActive(pane) || snap.visualState === 'error' || snap.visualState === 'slow' || snap.isExecuting;
 
     let pill = document.getElementById(pillId);
-    if (routeVisible && !pill) {
-      pill = ensureMetricsPillForPane(pane, false, false);
+    if (routeVisible && (!pill || !pill.isConnected || !inputBox.contains(pill))) {
+      pill = ensureMetricsPillForPane(pane, Boolean(pill), false);
     }
 
     if (pill) {
@@ -1390,6 +1712,14 @@
         const turn = matchTurnForToolbar(turns, meta);
         if (!turn) {
           if (badge) badge.remove();
+          if (tbCid && getWatchedCascadeIds().includes(tbCid)) {
+            requestMetricsFromDaemon({
+              force: true,
+              bypassCache: true,
+              reason: 'missing_turn_badge',
+              minIntervalMs: 2500
+            });
+          }
           continue;
         }
         const { html, tooltipHtml } = formatTurnBadgeData(turn);
@@ -1446,7 +1776,7 @@
       for (let i = 0; i < mutations.length; i++) {
         const m = mutations[i];
         if (m.type === 'attributes') {
-          if (m.attributeName === 'data-cascade-id') {
+          if (m.attributeName === 'data-cascade-id' || m.attributeName === 'data-selected') {
             hitPane = true;
             break;
           }
@@ -1492,30 +1822,60 @@
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['data-cascade-id']
+        attributeFilter: ['data-cascade-id', 'data-selected']
       });
     } catch (e) {}
   }
 
+  let postGenQuotaTimer = null;
   window.__ag_render_metrics = function (payload) {
     window.__ag_last_daemon_hb = Date.now();
-    if (!payload || typeof payload !== 'object') return;
+    if (!payload || typeof payload !== 'object') return { applied: false, reason: 'invalid_payload' };
     const payloadCid = String(payload.cid || payload.cascadeId || '').trim();
     const watched = getWatchedCascadeIds();
-    if (!payloadCid || !watched.includes(payloadCid)) return;
+    if (!payloadCid || !watched.includes(payloadCid)) {
+      return { applied: false, reason: 'not_watched' };
+    }
 
-    storeMetricsPayload(payloadCid, payload);
+    const prevPayload = metricsByCid[payloadCid] || null;
+    const prevGens = prevPayload && prevPayload.status ? Number(prevPayload.status.totalGenerations || 0) : 0;
+    const nextGens = payload.status ? Number(payload.status.totalGenerations || 0) : 0;
+    const stampedPayload = Object.assign({}, payload, { __agAppliedAt: Date.now() });
+
+    storeMetricsPayload(payloadCid, stampedPayload);
     const mainCid = extractCascadeId();
     if (payloadCid === mainCid) {
-      window.__ag_last_metrics = payload;
+      window.__ag_last_metrics = stampedPayload;
     }
-    if (!HAS_TELEMETRY_UI) return;
+    if (!HAS_TELEMETRY_UI) return { applied: false, reason: 'disabled' };
+
+    if (SHOW_USAGE_STATS && prevGens > 0 && nextGens > prevGens) {
+      if (typeof markOfficialQuotaDirty === 'function') {
+        markOfficialQuotaDirty();
+      }
+      const openTt = document.getElementById('ag-live-metrics-tooltip');
+      if (openTt && openTt.getAttribute('data-visible') === '1' && !document.hidden) {
+        if (postGenQuotaTimer) clearTimeout(postGenQuotaTimer);
+        postGenQuotaTimer = setTimeout(() => {
+          postGenQuotaTimer = null;
+          const curTt = document.getElementById('ag-live-metrics-tooltip');
+          if (curTt && curTt.getAttribute('data-visible') === '1' && !document.hidden) {
+            syncOfficialQuotaIntoTooltip(curTt, {
+              forceRefresh: false,
+              allowBackgroundForce: true,
+              staleTtlMs: 30000
+            });
+          }
+        }, 1500);
+      }
+    }
 
     const panes = discoverConversationPanes();
     pruneStalePills(panes);
     for (let i = 0; i < panes.length; i++) {
       const pane = panes[i];
       if (pane.cid !== payloadCid) continue;
+      ensureQuotaStoreSubscription(pane.inputBox);
       const pill = ensureMetricsPillForPane(pane, false, false);
       if (SHOW_USAGE_STATS && pill && payload.inlineHtml) {
         const textEl = pill.querySelector('.ag-live-metrics-text');
@@ -1529,13 +1889,16 @@
         const tt = ensureMetricsTooltipEl();
         if (tt) {
           if (tt.classList) tt.classList.remove('ag-tt-is-status-only');
-          if (tt.getAttribute('data-ag-raw-tt') !== payload.tooltipHtml) {
-            tt.setAttribute('data-ag-raw-tt', payload.tooltipHtml);
-            tt.innerHTML = payload.tooltipHtml;
-            syncOfficialQuotaIntoTooltip(tt, { forceRefresh: false, scopeEl: pane.inputBox });
-            if (pill && tt.getAttribute('data-visible') === '1') {
-              positionMetricsTooltip(pill, tt, pane.inputBox);
-            }
+          const mode = applyUsageTooltipHtml(tt, payload.tooltipHtml);
+          if (mode === 'full') {
+            syncOfficialQuotaIntoTooltip(tt, {
+              forceRefresh: false,
+              allowBackgroundForce: true,
+              scopeEl: pane.inputBox
+            });
+          }
+          if (mode && pill && tt.getAttribute('data-visible') === '1') {
+            positionMetricsTooltip(pill, tt, pane.inputBox);
           }
         }
       }
@@ -1544,6 +1907,7 @@
     ensureTurnMetricsObserver();
     renderTurnMetrics();
     applyPendingWaitVisuals();
+    return { applied: true, cid: payloadCid, sig: String(payload.dataSig || payload.sig || '') };
   };
 
   function checkRouteAndMountMetrics() {
@@ -1556,16 +1920,17 @@
     const watchedSig = watchedIds.join(',');
     window.__ag_watched_cascade_id = mainCid || '';
     if (window.__ag_last_watched_sig !== watchedSig) {
-      window.__ag_last_watched_sig = watchedSig;
-      if (typeof window.__agRequestMetrics === 'function') {
-        try { window.__agRequestMetrics(watchedSig); } catch (e) {}
-      }
+      requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'route', minIntervalMs: 0 });
+    }
+    if (SHOW_USAGE_STATS && panes.length > 0) {
+      ensureQuotaStoreSubscription(panes[0].inputBox);
     }
 
     for (let i = 0; i < panes.length; i++) {
       const pane = panes[i];
       const ps = getOrCreatePaneState(pane.key);
       if (ps.cid !== pane.cid) {
+        clearPanePostTurnTimers(ps);
         ps.cid = pane.cid;
         ps.unconnStartMs = 0;
         ps.waitStartMs = 0;
@@ -1573,6 +1938,9 @@
         ps.lastSteps = 0;
         ps.lastGens = 0;
         ps.lastStreamLen = 0;
+        ps.wasExecuting = false;
+        ps.lastLiveStepsLen = 0;
+        ps.lastRefreshReqAt = 0;
         if (pane.key === 'main') {
           window.__ag_last_metrics = pane.cid && metricsByCid[pane.cid] ? metricsByCid[pane.cid] : null;
         }
@@ -1638,10 +2006,26 @@
   }
 
   const _onPopState = () => setTimeout(() => checkRouteAndMountMetrics(), 40);
+  const _onFocusIn = () => checkRouteAndMountMetrics();
+  const _onWindowFocus = () => {
+    if (document.hidden) return;
+    window.__ag_visible_since = Date.now();
+    checkRouteAndMountMetrics();
+    requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'focus', minIntervalMs: 2000 });
+    const tt = document.getElementById('ag-live-metrics-tooltip');
+    if (SHOW_USAGE_STATS && tt && tt.getAttribute('data-visible') === '1') {
+      syncOfficialQuotaIntoTooltip(tt, { forceRefresh: false, allowBackgroundForce: true, staleTtlMs: 30000 });
+    }
+  };
   const _onVisibility = () => {
     if (!document.hidden) {
       window.__ag_visible_since = Date.now();
-      applyPendingWaitVisuals();
+      checkRouteAndMountMetrics();
+      requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'visibility', minIntervalMs: 2000 });
+      const tt = document.getElementById('ag-live-metrics-tooltip');
+      if (SHOW_USAGE_STATS && tt && tt.getAttribute('data-visible') === '1') {
+        syncOfficialQuotaIntoTooltip(tt, { forceRefresh: false, allowBackgroundForce: true, staleTtlMs: 30000 });
+      }
     }
   };
   const _onNetworkChange = () => applyPendingWaitVisuals();
@@ -1704,6 +2088,8 @@
   window.__ag_last_watched_sig = '';
 
   window.addEventListener('popstate', _onPopState);
+  window.addEventListener('focus', _onWindowFocus);
+  document.addEventListener('focusin', _onFocusIn, true);
   document.addEventListener('visibilitychange', _onVisibility);
   window.addEventListener('online', _onNetworkChange);
   window.addEventListener('offline', _onNetworkChange);
@@ -1721,6 +2107,18 @@
     window.__ag_live_probe_timer = setInterval(() => {
       if (!document.hidden) applyPendingWaitVisuals();
     }, 1000);
+    if (SHOW_USAGE_STATS) {
+      window.__ag_quota_tick_timer = setInterval(() => {
+        if (document.hidden) return;
+        const tt = document.getElementById('ag-live-metrics-tooltip');
+        if (!tt || tt.getAttribute('data-visible') !== '1') return;
+        syncOfficialQuotaIntoTooltip(tt, {
+          forceRefresh: false,
+          allowBackgroundForce: true,
+          staleTtlMs: 60000
+        });
+      }, 30000);
+    }
   } else {
     try {
       hideTurnMetricsTooltip(true);
@@ -1743,6 +2141,8 @@
 
   window.__ag_cleanup_fns.push(() => {
     window.removeEventListener('popstate', _onPopState);
+    window.removeEventListener('focus', _onWindowFocus);
+    document.removeEventListener('focusin', _onFocusIn, true);
     document.removeEventListener('visibilitychange', _onVisibility);
     window.removeEventListener('online', _onNetworkChange);
     window.removeEventListener('offline', _onNetworkChange);
@@ -1751,6 +2151,14 @@
     document.removeEventListener('mouseover', _onTurnMouseOver, true);
     document.removeEventListener('mouseout', _onTurnMouseOut, true);
     window.removeEventListener('scroll', _onTurnScroll, true);
+    if (typeof quotaStoreUnsub === 'function') {
+      try { quotaStoreUnsub(); } catch (e) {}
+      quotaStoreUnsub = null;
+    }
+    if (postGenQuotaTimer) {
+      clearTimeout(postGenQuotaTimer);
+      postGenQuotaTimer = null;
+    }
     clearTurnTooltipTimers();
     activeTurnBadgeEl = null;
     window.__ag_tt_pinned = false;
@@ -1760,6 +2168,7 @@
     } catch (e) {}
     for (const k of Object.keys(paneStates)) {
       const ps = paneStates[k];
+      clearPanePostTurnTimers(ps);
       if (ps && ps.roRaf && typeof cancelAnimationFrame === 'function') {
         try { cancelAnimationFrame(ps.roRaf); } catch (e) {}
         ps.roRaf = 0;
@@ -1781,6 +2190,10 @@
     if (window.__ag_live_probe_timer) {
       clearInterval(window.__ag_live_probe_timer);
       window.__ag_live_probe_timer = null;
+    }
+    if (window.__ag_quota_tick_timer) {
+      clearInterval(window.__ag_quota_tick_timer);
+      window.__ag_quota_tick_timer = null;
     }
     if (window.__ag_tt_show_timer) {
       clearTimeout(window.__ag_tt_show_timer);
