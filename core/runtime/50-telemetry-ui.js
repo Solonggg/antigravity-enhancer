@@ -29,6 +29,7 @@
   } catch (e) {}
 
   const AG_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const IS_ZH = MODULES.i18n !== false;
   const SHOW_SESSION_STATUS = typeof MODULES.sessionStatus === 'boolean' ? MODULES.sessionStatus : Boolean(MODULES.metrics);
   const SHOW_USAGE_STATS = typeof MODULES.usageStats === 'boolean' ? MODULES.usageStats : Boolean(MODULES.metrics);
   const HAS_TELEMETRY_UI = Boolean(SHOW_SESSION_STATUS || SHOW_USAGE_STATS);
@@ -343,19 +344,23 @@
 
   function buildStatusOnlyTooltipHtml(snap) {
     const chipClass = snap && snap.chipClass ? ' ' + snap.chipClass : '';
-    const chipText = snap && snap.chipText ? escapeStatusHtml(snap.chipText) : '就绪';
+    const chipText = snap && snap.chipText ? escapeStatusHtml(snap.chipText) : IS_ZH ? '就绪' : 'Ready';
     const noteClass = snap && snap.noteClass ? ' ' + snap.noteClass : '';
     const noteHtml = snap && snap.noteHtml ? snap.noteHtml : '';
     const descText =
       snap && snap.visualState === 'running'
-        ? snap.dotTitle || '会话正在执行中。'
+        ? snap.dotTitle || (IS_ZH ? '会话正在执行中。' : 'Session is running.')
         : snap && (snap.visualState === 'slow' || snap.visualState === 'error')
         ? ''
-        : '会话连接正常，随时可继续对话。';
+        : IS_ZH
+        ? '会话连接正常，随时可继续对话。'
+        : 'Connected and ready.';
     return (
       '<div class="ag-tt-wrap ag-tt-status-only">' +
       '<div class="ag-tt-hdr">' +
-      '<span class="ag-tt-hdr-left">实时会话状态</span>' +
+      '<span class="ag-tt-hdr-left">' +
+      escapeStatusHtml(IS_ZH ? '实时会话状态' : 'Session Status') +
+      '</span>' +
       '<span class="ag-tt-hdr-right"><span class="ag-tt-live-chip' +
       chipClass +
       '">' +
@@ -381,18 +386,18 @@
   }
 
   function renderOfficialQuotaSectionHtml(state, isZh) {
-    const title = isZh ? '模型配额' : 'Model Quota';
-    const refreshLbl = isZh ? '刷新配额' : 'Refresh quota';
+    const title = isZh ? '用量' : 'Usage';
+    const refreshLbl = isZh ? '刷新用量' : 'Refresh usage';
     const loading = Boolean(state && state.loading);
     const groups = state && Array.isArray(state.groups) ? state.groups : [];
 
     let bodyHtml = '';
     if (loading && groups.length === 0) {
-      bodyHtml = '<div class="ag-tt-quota-empty">' + escapeStatusHtml(isZh ? '正在读取配额…' : 'Loading quota…') + '</div>';
+      bodyHtml = '<div class="ag-tt-quota-empty">' + escapeStatusHtml(isZh ? '正在读取用量…' : 'Loading usage…') + '</div>';
     } else if (groups.length === 0) {
       bodyHtml =
         '<div class="ag-tt-quota-empty">' +
-        escapeStatusHtml(isZh ? '暂无配额信息' : 'No quota info') +
+        escapeStatusHtml(isZh ? '暂无用量信息' : 'No usage info') +
         '</div>';
     } else {
       const itemsHtml = [];
@@ -408,7 +413,7 @@
           const rowLabel =
             winPrefix && shortGroup
               ? winPrefix + ' · ' + shortGroup
-              : shortGroup || winPrefix || (isZh ? '配额' : 'Quota');
+              : shortGroup || winPrefix || (isZh ? '用量' : 'Usage');
 
           const hasPct = !b.disabled && typeof b.remainingPct === 'number' && Number.isFinite(b.remainingPct);
           const usedPct = hasPct ? Math.max(0, Math.min(100, 100 - b.remainingPct)) : null;
@@ -417,7 +422,9 @@
           const usedText = b.disabled
             ? isZh ? '未启用' : 'Off'
             : usedPct !== null
-            ? (isZh ? '已用 ' : 'Used ') + usedPct + '%'
+            ? isZh
+              ? '已用 ' + usedPct + '%'
+              : usedPct + '% used'
             : '—';
           const metaParts = [];
           if (resetTxt) metaParts.push('<span class="ag-tt-qbar-reset">' + escapeStatusHtml(resetTxt) + '</span>');
@@ -645,7 +652,7 @@
     }
     const chipEl = tt.querySelector('.ag-tt-live-chip');
     if (chipEl) {
-      const chipDisplay = snap.chipText || '就绪';
+      const chipDisplay = snap.chipText || (IS_ZH ? '就绪' : 'Ready');
       if (chipEl.textContent !== chipDisplay) chipEl.textContent = chipDisplay;
       const runMod = !snap.chipClass && snap.visualState === 'running' ? ' is-running' : '';
       const targetChipClass = 'ag-tt-live-chip' + (snap.chipClass ? ' ' + snap.chipClass : runMod);
@@ -669,7 +676,12 @@
         statusDescEl.hidden = true;
       } else {
         statusDescEl.hidden = false;
-        const txt = snap.visualState === 'running' ? snap.dotTitle || '会话正在执行中。' : '会话连接正常，随时可继续对话。';
+        const txt =
+          snap.visualState === 'running'
+            ? snap.dotTitle || (IS_ZH ? '会话正在执行中。' : 'Session is running.')
+            : IS_ZH
+            ? '会话连接正常，随时可继续对话。'
+            : 'Connected and ready.';
         if (statusDescEl.textContent !== txt) statusDescEl.textContent = txt;
       }
     }
@@ -702,22 +714,6 @@
         if (window.__ag_tt_hide_timer) {
           clearTimeout(window.__ag_tt_hide_timer);
           window.__ag_tt_hide_timer = null;
-        }
-        const refreshAllBtn = e.target && e.target.closest ? e.target.closest('.ag-tt-hdr-refresh') : null;
-        if (refreshAllBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (refreshAllBtn.classList) {
-            refreshAllBtn.classList.add('is-loading');
-            setTimeout(() => {
-              if (refreshAllBtn && refreshAllBtn.classList) refreshAllBtn.classList.remove('is-loading');
-            }, 650);
-          }
-          requestMetricsFromDaemon({ force: true, bypassCache: true, reason: 'manual', minIntervalMs: 0 });
-          if (SHOW_USAGE_STATS) {
-            syncOfficialQuotaIntoTooltip(tt, { forceRefresh: true });
-          }
-          return;
         }
         const refreshQuotaBtn = e.target && e.target.closest ? e.target.closest('.ag-tt-quota-refresh') : null;
         if (refreshQuotaBtn) {
@@ -1204,7 +1200,7 @@
           ensureMetricsPillForPane(pane, false, false);
         }
         if (pill.hasAttribute('title')) pill.removeAttribute('title');
-        const usageAria = '用量统计 · 悬停或点击查看明细与官方配额';
+        const usageAria = IS_ZH ? '用量统计 · 悬停或点击查看明细' : 'Usage stats · Hover or click for details';
         if (pill.getAttribute('aria-label') !== usageAria) pill.setAttribute('aria-label', usageAria);
       }
       const stKindOnly = m && m.status && m.status.pendingKind ? String(m.status.pendingKind) : 'idle';
@@ -1289,7 +1285,8 @@
       documentHidden: Boolean(document.hidden),
       navigatorOnline: typeof navigator === 'undefined' ? true : navigator.onLine !== false,
       hasConversation: Boolean(curCid),
-      curModel: typeof getSelectedModelLabel === 'function' ? getSelectedModelLabel(inputBox) : ''
+      curModel: typeof getSelectedModelLabel === 'function' ? getSelectedModelLabel(inputBox) : '',
+      isZh: IS_ZH
     });
     ps.lastSnap = snap;
     trackPaneRefreshEdges(
@@ -1327,12 +1324,14 @@
       } else if (textEl && !hasInlineData && showPill) {
         const fallbackLabel =
           snap.visualState === 'error'
-            ? (snap.chipText || '连接异常')
+            ? snap.chipText || (IS_ZH ? '连接异常' : 'Error')
             : snap.visualState === 'slow'
-            ? (snap.chipText || '等待响应...')
+            ? snap.chipText || (IS_ZH ? '等待响应...' : 'Waiting…')
             : snap.isExecuting
-            ? (snap.chipText || '生成中...')
-            : '就绪';
+            ? snap.chipText || (IS_ZH ? '生成中...' : 'Running…')
+            : IS_ZH
+            ? '就绪'
+            : 'Ready';
         const fallbackHtml =
           '<span class="ag-ctx-pending-dot ag-dot-idle"></span><span>' +
           escapeStatusHtml(fallbackLabel) +
@@ -1517,50 +1516,83 @@
         '">(' +
         escapeStatusHtml(String(t.ctxPct)) +
         '%)</span></span>';
-      rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">当前上下文</span><span class="ag-tmt-val">' + ctxVal + '</span></div>');
+      rows.push(
+        '<div class="ag-tmt-row"><span class="ag-tmt-lbl">' +
+          (IS_ZH ? '当前上下文' : 'Context') +
+          '</span><span class="ag-tmt-val">' +
+          ctxVal +
+          '</span></div>'
+      );
     }
     if (t.outTok > 0) {
       const outVal =
         '<span class="ag-tmt-nowrap">' +
         escapeStatusHtml(t.outTok.toLocaleString('en-US')) +
-        '</span> <span class="ag-tmt-nowrap ag-tmt-sub">(思考 ' +
+        '</span> <span class="ag-tmt-nowrap ag-tmt-sub">(' +
+        (IS_ZH ? '思考 ' : 'Think ') +
         escapeStatusHtml(t.thinkTok.toLocaleString('en-US')) +
-        ' + 正文/工具 ' +
+        (IS_ZH ? ' + 正文/工具 ' : ' + Reply ') +
         escapeStatusHtml(t.respTok.toLocaleString('en-US')) +
         ')</span>';
-      rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">本轮输出</span><span class="ag-tmt-val">' + outVal + '</span></div>');
+      rows.push(
+        '<div class="ag-tmt-row"><span class="ag-tmt-lbl">' +
+          (IS_ZH ? '本轮输出' : 'Turn Output') +
+          '</span><span class="ag-tmt-val">' +
+          outVal +
+          '</span></div>'
+      );
     }
     const promptSum = t.inTok + t.cacheWrite + t.cacheRead;
     if (promptSum > 0) {
       const inVal =
-        '<span class="ag-tmt-nowrap">新增 ' +
+        '<span class="ag-tmt-nowrap">' +
+        (IS_ZH ? '新增 ' : 'New ') +
         escapeStatusHtml(t.inTok.toLocaleString('en-US')) +
         '</span>' +
         (t.cacheWrite > 0
-          ? ' <span class="ag-tmt-nowrap">+ 写缓存 ' + escapeStatusHtml(t.cacheWrite.toLocaleString('en-US')) + '</span>'
+          ? ' <span class="ag-tmt-nowrap">+ ' +
+            (IS_ZH ? '写缓存 ' : 'Write ') +
+            escapeStatusHtml(t.cacheWrite.toLocaleString('en-US')) +
+            '</span>'
           : '') +
-        ' <span class="ag-tmt-nowrap">+ 读缓存 ' +
+        ' <span class="ag-tmt-nowrap">+ ' +
+        (IS_ZH ? '读缓存 ' : 'Cache ') +
         escapeStatusHtml(t.cacheRead.toLocaleString('en-US')) +
-        '</span> <span class="ag-tmt-nowrap ag-tmt-sub">(命中率 ' +
+        '</span> <span class="ag-tmt-nowrap ag-tmt-sub">(' +
+        (IS_ZH ? '命中率 ' : 'Hit ') +
         escapeStatusHtml(t.cacheRate) +
         ')</span>';
-      rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">本轮累计输入</span><span class="ag-tmt-val">' + inVal + '</span></div>');
+      rows.push(
+        '<div class="ag-tmt-row"><span class="ag-tmt-lbl">' +
+          (IS_ZH ? '本轮累计输入' : 'Turn Input') +
+          '</span><span class="ag-tmt-val">' +
+          inVal +
+          '</span></div>'
+      );
     }
     if (t.tps > 0 || t.totDur > 0) {
       const spdVal =
         (t.tps > 0
           ? '<span class="ag-tmt-nowrap">' +
             escapeStatusHtml(String(t.tps)) +
-            ' tok/s <span class="ag-tmt-sub">(端到端 ' +
+            ' tok/s <span class="ag-tmt-sub">(' +
+            (IS_ZH ? '端到端 ' : 'E2E ') +
             escapeStatusHtml(String(t.e2eTps)) +
             ' tok/s)</span></span> · '
           : '') +
-        '<span class="ag-tmt-nowrap">流式 ' +
+        '<span class="ag-tmt-nowrap">' +
+        (IS_ZH ? '流式 ' : 'Stream ') +
         escapeStatusHtml(String(t.streamDur)) +
-        's / 总计 ' +
+        (IS_ZH ? 's / 总计 ' : 's / Total ') +
         escapeStatusHtml(String(t.totDur)) +
         's</span>';
-      rows.push('<div class="ag-tmt-row"><span class="ag-tmt-lbl">速度与耗时</span><span class="ag-tmt-val">' + spdVal + '</span></div>');
+      rows.push(
+        '<div class="ag-tmt-row"><span class="ag-tmt-lbl">' +
+          (IS_ZH ? '速度与耗时' : 'Speed & Time') +
+          '</span><span class="ag-tmt-val">' +
+          spdVal +
+          '</span></div>'
+      );
     }
 
     const hdrHtml = t.model
@@ -1568,7 +1600,8 @@
         escapeStatusHtml(t.model) +
         '</span><span class="ag-tmt-chip">' +
         escapeStatusHtml(String(t.steps || 1)) +
-        ' 步</span></div>'
+        (IS_ZH ? ' 步' : ' steps') +
+        '</span></div>'
       : '';
     const tooltipHtml = hdrHtml || rows.length > 0 ? hdrHtml + '<div class="ag-tmt-grid">' + rows.join('') + '</div>' : '';
     return { html, tooltipHtml };
@@ -1982,7 +2015,7 @@
             textEl.removeAttribute('data-ag-raw-html');
             textEl.innerHTML =
               '<span class="ag-ctx-pending-dot ag-dot-idle"></span><span>' +
-              (SHOW_USAGE_STATS && pane.cid ? '读取中...' : '就绪') +
+              (SHOW_USAGE_STATS && pane.cid ? (IS_ZH ? '读取中...' : 'Loading…') : IS_ZH ? '就绪' : 'Ready') +
               '</span>';
           } else {
             textEl.removeAttribute('data-ag-raw-html');

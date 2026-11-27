@@ -980,10 +980,36 @@ test('Official quota tooltip renders horizontal used-% bars without plan/credits
   const tt = env.doc.getElementById('ag-live-metrics-tooltip');
   const slot = tt.querySelector('[data-ag-quota-slot="1"]');
   assert.ok(slot.innerHTML.includes('ag-tt-qbar-list'), 'should render horizontal bar list');
+  assert.ok(slot.innerHTML.includes('>用量<'), 'should title quota card as 用量 in zh-CN');
   assert.ok(slot.innerHTML.includes('5h · Gemini'), 'should shorten Gemini Models to Gemini');
   assert.ok(slot.innerHTML.includes('已用 15%'), 'should display used-% (100 - 85 = 15%)');
   assert.ok(slot.innerHTML.includes('width:15%'), 'bar fill width should reflect used-%');
   assert.ok(!slot.innerHTML.includes('点数'), 'must omit credits label');
   assert.ok(!slot.innerHTML.includes('Google AI Pro'), 'must omit plan label');
   assert.ok(!slot.innerHTML.includes('已用比例'), 'must omit redundant mode label');
+
+  // Verify pure English mode (i18n: false) renders Usage & "15% used" with zero Chinese text
+  const enBody = new MiniElement('BODY');
+  enBody._isRoot = true;
+  const enView = makeConversationView(cid);
+  enView.box.__reactFiber$test = view.box.__reactFiber$test;
+  enBody.appendChild(enView.view);
+  const enEnv = mountRuntimeWithTimers(enBody, {
+    pathname: '/c/' + cid,
+    bootOverrides: { modules: { i18n: false, metrics: true, sessionStatus: true, usageStats: true } }
+  });
+  enEnv.win.__ag_on_route_change();
+  enEnv.win.__ag_render_metrics({
+    cid,
+    hasData: true,
+    dataSig: 'q-en-1',
+    inlineHtml: '<span>120 tok/s</span>',
+    tooltipHtml:
+      '<div class="ag-tt-wrap ag-tt-dash"><div class="ag-tt-col-usage"><span>Usage</span></div><div class="ag-tt-col-quota" data-ag-quota-slot="1"></div></div>'
+  });
+  await new Promise((r) => setTimeout(r, 20));
+  const enSlot = enEnv.doc.getElementById('ag-live-metrics-tooltip').querySelector('[data-ag-quota-slot="1"]');
+  assert.ok(enSlot.innerHTML.includes('>Usage<'), 'should title quota card as Usage in English');
+  assert.ok(enSlot.innerHTML.includes('15% used'), 'should display English used-% format');
+  assert.ok(!/[\u4e00-\u9fff]/.test(enSlot.innerHTML), 'English usage card must contain zero Chinese characters');
 });

@@ -84,6 +84,7 @@
     navigatorOnline = true,
     hasConversation = true,
     curModel = '',
+    isZh = true,
     limits = WAIT_DEFAULTS
   } = {}) {
     const cfg = Object.assign({}, WAIT_DEFAULTS, limits || {});
@@ -145,10 +146,16 @@
     const unconnDurSec = Math.max(0, Math.floor(Number(unconnSec) || 0));
     const waitDurSec = Math.max(0, Math.floor(Number(waitSec) || 0));
 
-    const offlineProblem = !navigatorOnline ? '当前网络已断开（离线），无法连接到模型服务' : '';
+    const offlineProblem = !navigatorOnline
+      ? isZh
+        ? '当前网络已断开（离线），无法连接到模型服务'
+        : 'Network offline — unable to reach model service'
+      : '';
     const unconnProblem =
       isStreamUnconnected && unconnDurSec >= cfg.UNCONN_ERROR_SEC
-        ? '会话流未连接或重连超时（已等待 ' + fmtWaitDuration(unconnDurSec) + '）'
+        ? isZh
+          ? '会话流未连接或重连超时（已等待 ' + fmtWaitDuration(unconnDurSec) + '）'
+          : 'Session stream disconnected or reconnect timed out (' + fmtWaitDuration(unconnDurSec) + ')'
         : '';
     const unconnSlow = Boolean(
       isStreamUnconnected && unconnDurSec >= cfg.UNCONN_WARN_SEC && unconnDurSec < cfg.UNCONN_ERROR_SEC
@@ -165,7 +172,9 @@
       hbMs > 0 &&
       now - hbMs > cfg.HEARTBEAT_STALE_MS &&
       (visMs === 0 || now - visMs >= cfg.VISIBLE_GRACE_MS)
-        ? '后台统计服务响应超时（超过 ' + fmtWaitDuration((now - hbMs) / 1000) + ' 未收到心跳）'
+        ? isZh
+          ? '后台统计服务响应超时（超过 ' + fmtWaitDuration((now - hbMs) / 1000) + ' 未收到心跳）'
+          : 'Background telemetry service timed out (no heartbeat for ' + fmtWaitDuration((now - hbMs) / 1000) + ')'
         : '';
 
     const curModelDisplay = _formatDisplayModelLabel(curModel);
@@ -190,107 +199,143 @@
 
     let chipText = '';
     let chipClass = '';
-    let dotTitle = '会话状态：就绪';
+    let dotTitle = isZh ? '会话状态：就绪' : 'Session status: Ready';
     let noteHtml = '';
     let noteClass = '';
 
     if (visualState === 'error') {
-      const errDetail = hardErrMsg || daemonProblem || '请求或连接出现异常';
+      const errDetail = hardErrMsg || daemonProblem || (isZh ? '请求或连接出现异常' : 'Request or connection error');
       chipClass = 'is-error';
       if (offlineProblem) {
-        chipText = '网络离线';
+        chipText = isZh ? '网络离线' : 'Offline';
       } else if (unconnProblem) {
-        chipText = '未连接 · ' + fmtWaitDuration(unconnDurSec);
+        chipText = (isZh ? '未连接 · ' : 'Disconnected · ') + fmtWaitDuration(unconnDurSec);
       } else if (apiErrMsg) {
-        chipText = '执行报错';
+        chipText = isZh ? '执行报错' : 'Error';
       } else {
-        chipText = '后台断连';
+        chipText = isZh ? '后台断连' : 'Service lost';
       }
-      dotTitle = '会话状态：异常 · ' + errDetail;
+      dotTitle = (isZh ? '会话状态：异常 · ' : 'Session status: Error · ') + errDetail;
       noteClass = 'is-visible is-error';
-      noteHtml = '<strong>连接 / 执行异常</strong><br/>' + escapeStatusHtml(errDetail);
+      noteHtml = (isZh ? '<strong>连接 / 执行异常</strong><br/>' : '<strong>Connection / Execution Error</strong><br/>') + escapeStatusHtml(errDetail);
     } else if (visualState === 'slow') {
       chipClass = 'is-slow';
       if (unconnSlow) {
-        chipText = '重连中 · ' + fmtWaitDuration(unconnDurSec);
-        dotTitle = '会话状态：等待或重试 · 正在建立会话流连接（已等待 ' + fmtWaitDuration(unconnDurSec) + '）';
+        chipText = (isZh ? '重连中 · ' : 'Reconnecting · ') + fmtWaitDuration(unconnDurSec);
+        dotTitle = isZh
+          ? '会话状态：等待或重试 · 正在建立会话流连接（已等待 ' + fmtWaitDuration(unconnDurSec) + '）'
+          : 'Session status: Reconnecting (' + fmtWaitDuration(unconnDurSec) + ')';
         noteClass = 'is-visible';
-        noteHtml =
-          '<strong>会话连接中 (' +
-          escapeStatusHtml(fmtWaitDuration(unconnDurSec)) +
-          ')</strong><br/>当前窗口暂未完成数据流同步；若网络受限将转为红灯脉冲提示。';
+        noteHtml = isZh
+          ? '<strong>会话连接中 (' +
+            escapeStatusHtml(fmtWaitDuration(unconnDurSec)) +
+            ')</strong><br/>当前窗口暂未完成数据流同步；若网络受限将转为红灯脉冲提示。'
+          : '<strong>Connecting (' +
+            escapeStatusHtml(fmtWaitDuration(unconnDurSec)) +
+            ')</strong><br/>Waiting for session stream sync; turns red if connection fails.';
       } else if (isRetrying) {
         const retryBrief =
           (loadingRetryMatch && loadingRetryMatch[0]) ||
           (st && st.retryReason) ||
           (live && live.execAttempt && live.execMaxAttempts
-            ? '正在重试连接 (attempt ' + live.execAttempt + '/' + live.execMaxAttempts + ')'
-            : '正在自动重试模型连接');
+            ? (isZh ? '正在重试连接 (attempt ' : 'Retrying connection (attempt ') + live.execAttempt + '/' + live.execMaxAttempts + ')'
+            : isZh
+            ? '正在自动重试模型连接'
+            : 'Automatically retrying model connection');
         let countdownSuffix = '';
         if (hasProvider && live.execRetryAtMs && live.execRetryAtMs > now) {
           const leftSec = Math.max(1, Math.ceil((live.execRetryAtMs - now) / 1000));
           countdownSuffix = ' · ' + leftSec + 's';
         }
-        chipText = '重试连接中' + countdownSuffix;
-        dotTitle = '会话状态：等待或重试 · ' + retryBrief;
+        chipText = (isZh ? '重试连接中' : 'Retrying') + countdownSuffix;
+        dotTitle = (isZh ? '会话状态：等待或重试 · ' : 'Session status: Retrying · ') + retryBrief;
         noteClass = 'is-visible';
-        noteHtml = '<strong>模型自动重试中</strong><br/>' + escapeStatusHtml(retryBrief);
+        noteHtml = (isZh ? '<strong>模型自动重试中</strong><br/>' : '<strong>Model Auto-Retrying</strong><br/>') + escapeStatusHtml(retryBrief);
       } else {
         const waitStr = fmtWaitDuration(waitDurSec);
         if (effKind === 'compact') {
-          chipText = '压缩中 · ' + waitStr;
-          dotTitle = '会话状态：等待或重试 · 上下文压缩中（已等待 ' + waitStr + '）';
+          chipText = (isZh ? '压缩中 · ' : 'Compacting · ') + waitStr;
+          dotTitle = isZh
+            ? '会话状态：等待或重试 · 上下文压缩中（已等待 ' + waitStr + '）'
+            : 'Session status: Compacting context (' + waitStr + ')';
           noteClass = 'is-visible';
-          noteHtml =
-            '<strong>正在执行 /compact 上下文压缩（' +
-            escapeStatusHtml(waitStr) +
-            '）</strong>' +
-            (modelSwitched
-              ? '<br/>检测到模型已从 <code>' +
-                escapeStatusHtml(lastModelDisplay) +
-                '</code> 切换为 <code>' +
-                escapeStatusHtml(curModelDisplay) +
-                '</code>，无法复用原 KV 缓存，全量重算耗时较长属正常现象。建议下次保持原模型压缩后再切换模型。'
-              : '<br/>系统正在汇总长对话历史，生成检查点后将自动恢复蓝色常亮。');
+          noteHtml = isZh
+            ? '<strong>正在执行 /compact 上下文压缩（' +
+              escapeStatusHtml(waitStr) +
+              '）</strong>' +
+              (modelSwitched
+                ? '<br/>检测到模型已从 <code>' +
+                  escapeStatusHtml(lastModelDisplay) +
+                  '</code> 切换为 <code>' +
+                  escapeStatusHtml(curModelDisplay) +
+                  '</code>，无法复用原 KV 缓存，全量重算耗时较长属正常现象。建议下次保持原模型压缩后再切换模型。'
+                : '<br/>系统正在汇总长对话历史，生成检查点后将自动恢复蓝色常亮。')
+            : '<strong>Compacting context (' +
+              escapeStatusHtml(waitStr) +
+              ')</strong>' +
+              (modelSwitched
+                ? '<br/>Model switched from <code>' +
+                  escapeStatusHtml(lastModelDisplay) +
+                  '</code> to <code>' +
+                  escapeStatusHtml(curModelDisplay) +
+                  '</code>; full prefill without KV cache reuse takes longer.'
+                : '<br/>Summarizing conversation history into a checkpoint.');
         } else if (effKind === 'tool') {
-          chipText = '工具等待 · ' + waitStr;
-          dotTitle = '会话状态：等待或重试 · 工具执行等待中（已等待 ' + waitStr + '）';
+          chipText = (isZh ? '工具等待 · ' : 'Tool wait · ') + waitStr;
+          dotTitle = isZh
+            ? '会话状态：等待或重试 · 工具执行等待中（已等待 ' + waitStr + '）'
+            : 'Session status: Waiting for tool (' + waitStr + ')';
           noteClass = 'is-visible';
-          noteHtml =
-            '<strong>工具步执行等待中（' +
-            escapeStatusHtml(waitStr) +
-            '）</strong><br/>本地命令、文件检索或子任务尚未返回结果，请稍候。';
+          noteHtml = isZh
+            ? '<strong>工具步执行等待中（' +
+              escapeStatusHtml(waitStr) +
+              '）</strong><br/>本地命令、文件检索或子任务尚未返回结果，请稍候。'
+            : '<strong>Waiting on tool step (' +
+              escapeStatusHtml(waitStr) +
+              ')</strong><br/>Waiting for command, search, or subagent result.';
         } else {
-          chipText = '首字等待 · ' + waitStr;
-          dotTitle = '会话状态：等待或重试 · 等待模型响应（已等待 ' + waitStr + '）';
+          chipText = (isZh ? '首字等待 · ' : 'Waiting · ') + waitStr;
+          dotTitle = isZh
+            ? '会话状态：等待或重试 · 等待模型响应（已等待 ' + waitStr + '）'
+            : 'Session status: Waiting for model (' + waitStr + ')';
           noteClass = 'is-visible';
-          noteHtml =
-            '<strong>等待模型首字输出（' +
-            escapeStatusHtml(waitStr) +
-            '）</strong>' +
-            (modelSwitched
-              ? '<br/>模型已切换为 <code>' +
-                escapeStatusHtml(curModelDisplay) +
-                '</code>（原 <code>' +
-                escapeStatusHtml(lastModelDisplay) +
-                '</code>），当前正在冷启动预填充上下文，完成后即可恢复高速输出。'
-              : '<br/>长上下文预填充或后端排队耗时较长，连接仍处于激活状态。');
+          noteHtml = isZh
+            ? '<strong>等待模型首字输出（' +
+              escapeStatusHtml(waitStr) +
+              '）</strong>' +
+              (modelSwitched
+                ? '<br/>模型已切换为 <code>' +
+                  escapeStatusHtml(curModelDisplay) +
+                  '</code>（原 <code>' +
+                  escapeStatusHtml(lastModelDisplay) +
+                  '</code>），当前正在冷启动预填充上下文，完成后即可恢复高速输出。'
+                : '<br/>长上下文预填充或后端排队耗时较长，连接仍处于激活状态。')
+            : '<strong>Waiting for first token (' +
+              escapeStatusHtml(waitStr) +
+              ')</strong>' +
+              (modelSwitched
+                ? '<br/>Model switched to <code>' +
+                  escapeStatusHtml(curModelDisplay) +
+                  '</code> (from <code>' +
+                  escapeStatusHtml(lastModelDisplay) +
+                  '</code>); cold context prefill is in progress.'
+                : '<br/>Long context prefill or backend queueing in progress; connection is active.');
         }
       }
     } else if (visualState === 'running') {
       if (effKind === 'compact') {
-        chipText = '正在压缩...';
-        dotTitle = '会话状态：执行中 · 正在压缩上下文历史';
+        chipText = isZh ? '正在压缩...' : 'Compacting…';
+        dotTitle = isZh ? '会话状态：执行中 · 正在压缩上下文历史' : 'Session status: Compacting context';
       } else if (effKind === 'tool') {
-        chipText = '工具执行中...';
-        dotTitle = '会话状态：执行中 · 正在执行工具调用';
+        chipText = isZh ? '工具执行中...' : 'Running tool…';
+        dotTitle = isZh ? '会话状态：执行中 · 正在执行工具调用' : 'Session status: Running tool';
       } else {
-        chipText = '新步执行中...';
-        dotTitle = '会话状态：执行中 · 模型推理与输出中';
+        chipText = isZh ? '新步执行中...' : 'Running…';
+        dotTitle = isZh ? '会话状态：执行中 · 模型推理与输出中' : 'Session status: Model generating';
       }
     } else {
       chipText = '';
-      dotTitle = '会话状态：就绪';
+      dotTitle = isZh ? '会话状态：就绪' : 'Session status: Ready';
     }
 
     return {

@@ -328,8 +328,36 @@ test('telemetry renderer splits sessionStatus and usageStats independently and e
   assert.ok(bothTt.includes('ag-tt-ctx-grid'));
   assert.ok(bothTt.includes('工具结果'));
   assert.ok(bothTt.includes('ag-tt-sess-grid'));
-  assert.ok(bothTt.includes('ag-tt-hdr-refresh'));
+  assert.ok(!bothTt.includes('ag-tt-hdr-refresh'), 'session header must not render redundant refresh button');
   assert.ok(bothTt.includes('data-ag-quota-slot="1"'));
+
+  const enTt = buildMetricsTooltipHtml({
+    ...baseTooltip,
+    isZh: false,
+    modelName: 'Gemini 4 Neon (Extra High)',
+    avgTps: 150.5,
+    avgTtft: 1.35,
+    contextBreakdown: {
+      totalTokens: 50000,
+      items: [
+        { key: 'tool_results', label: '工具结果', tokens: 28000 },
+        { key: 'assistant', label: '模型回复', tokens: 12000 },
+        { key: 'system_prompt', label: '系统提示词', tokens: 6000 },
+        { key: 'skills', label: 'Skill', tokens: 4000 }
+      ]
+    },
+    showSessionStatus: true,
+    showUsageStats: true
+  });
+  assert.ok(enTt.includes('Ready'));
+  assert.ok(enTt.includes('Speed'));
+  assert.ok(enTt.includes('Cache Hit'));
+  assert.ok(enTt.includes('Context Window'));
+  assert.ok(enTt.includes('Tool Results'));
+  assert.ok(enTt.includes('Model Replies'));
+  assert.ok(enTt.includes('Session Totals'));
+  assert.ok(enTt.includes('New In'));
+  assert.ok(!/[\u4e00-\u9fff]/.test(enTt), 'English mode tooltip must contain zero Chinese characters');
 });
 
 test('extractContextBreakdownFromGenData decodes exact native ctxMeta breakdown groups and tool splits', () => {

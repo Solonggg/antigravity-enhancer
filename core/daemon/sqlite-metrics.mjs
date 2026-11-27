@@ -186,6 +186,7 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
     const telemetryLayout = cfg.telemetryLayout === 'detailed' ? 'detailed' : 'compact';
     const telemetryCacheMode = cfg.telemetryCacheMode === 'step' ? 'step' : 'session';
     const rawMods = cfg.modules || {};
+    const isZh = rawMods.i18n !== false;
     const legacyMetrics = rawMods.metrics !== false;
     const showSessionStatus =
       typeof rawMods.sessionStatus === 'boolean' ? rawMods.sessionStatus : legacyMetrics;
@@ -194,7 +195,7 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
     const lsLogFile = extraOpts && typeof extraOpts.lsLogFile === 'string' ? extraOpts.lsLogFile : '';
     const lsSig = extraOpts && typeof extraOpts.lsSig === 'string' ? extraOpts.lsSig : '';
     const bypassCache = Boolean(extraOpts && extraOpts.bypassCache);
-    const configSig = `lim:${manualLim}:${fallbackLim}|ly:${telemetryLayout}:${telemetryCacheMode}|m:${showSessionStatus ? 1 : 0}:${showUsageStats ? 1 : 0}${lsSig ? `|ls:${lsSig}` : ''}`;
+    const configSig = `lim:${manualLim}:${fallbackLim}|ly:${telemetryLayout}:${telemetryCacheMode}|m:${showSessionStatus ? 1 : 0}:${showUsageStats ? 1 : 0}|l:${isZh ? 1 : 0}${lsSig ? `|ls:${lsSig}` : ''}`;
     const sig = `${rawDbSig}|${configSig}`;
 
     const cached = metricsCache.get(dbPath);
@@ -602,8 +603,8 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
             : statusLevel === 'running'
             ? 'ag-ctx-pending-dot ag-dot-running'
             : 'ag-ctx-pending-dot ag-dot-idle';
-        const statusTitle =
-          statusLevel === 'error'
+        const statusTitle = isZh
+          ? statusLevel === 'error'
             ? `会话状态：异常 · ${lastErrorMsg.slice(0, 120)}`
             : statusLevel === 'retrying'
             ? `会话状态：等待或重试（第 ${pendingRetryCount} 次${pendingRetryReason ? `：${pendingRetryReason.slice(0, 100)}` : ''}）`
@@ -611,12 +612,22 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
             ? '会话状态：执行中 · 上下文压缩中…'
             : generatingPending
             ? '会话状态：执行中 · 新一步执行中'
-            : '会话状态：就绪 · 悬停或点击查看统计';
+            : '会话状态：就绪 · 悬停或点击查看统计'
+          : statusLevel === 'error'
+          ? `Session status: Error · ${lastErrorMsg.slice(0, 120)}`
+          : statusLevel === 'retrying'
+          ? `Session status: Retrying (attempt ${pendingRetryCount}${pendingRetryReason ? `: ${pendingRetryReason.slice(0, 100)}` : ''})`
+          : compactingNow
+          ? 'Session status: Compacting context…'
+          : generatingPending
+          ? 'Session status: Running…'
+          : 'Session status: Ready · Hover or click for usage';
         const safeDotTitle = statusTitle.replace(/"/g, '&quot;');
         const statusDotHtml = `<span class="${statusDotClass}" aria-label="${safeDotTitle}"></span>`;
 
-        const turns = showUsageStats ? buildTurnSummaries(valid, userStepIdxs, manualLim, fallbackLim) : [];
+        const turns = showUsageStats ? buildTurnSummaries(valid, userStepIdxs, manualLim, fallbackLim, isZh) : [];
         const inlineHtml = buildInlineTelemetryHtml({
+          isZh,
           telemetryLayout,
           telemetryCacheMode,
           showSessionStatus,
@@ -637,6 +648,7 @@ export function createMetricsReader({ getDatabaseSync, getConfig }) {
         const streamTpsValid = streamTps > 0 && streamTps <= MAX_SANITY_STREAM_TPS;
         const contextBreakdown = inc.lastContextBreakdown || null;
         const tooltipHtml = buildMetricsTooltipHtml({
+          isZh,
           showSessionStatus,
           showUsageStats,
           genIdx: last.idx + 1,

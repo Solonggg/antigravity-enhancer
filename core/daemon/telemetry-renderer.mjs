@@ -65,7 +65,22 @@ export function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+const CTX_BUCKET_I18N = Object.freeze({
+  tool_results: { zh: '工具结果', en: 'Tool Results' },
+  assistant: { zh: '模型回复', en: 'Model Replies' },
+  system_tools: { zh: '系统工具', en: 'System Tools' },
+  system_prompt: { zh: '系统提示词', en: 'System Prompt' },
+  checkpoint: { zh: '压缩摘要', en: 'Summary' },
+  skills: { zh: 'Skill', en: 'Skills' },
+  subagent: { zh: '子代理', en: 'Subagents' },
+  system_msg: { zh: '系统消息', en: 'System Msg' },
+  rules: { zh: '用户规则', en: 'User Rules' },
+  mcp_tools: { zh: 'MCP 工具', en: 'MCP Tools' },
+  user_msg: { zh: '用户消息', en: 'User Prompt' }
+});
+
 export function buildInlineTelemetryHtml({
+  isZh = true,
   telemetryLayout = 'compact',
   telemetryCacheMode = 'session',
   showSessionStatus = true,
@@ -87,9 +102,11 @@ export function buildInlineTelemetryHtml({
     return dotPart;
   }
 
+  const compactedLabel = isZh ? 'Ctx 已压缩' : 'Ctx Compacted';
+
   if (telemetryLayout === 'detailed') {
     const inlineCtxHtml = compactedPending
-      ? '<span class="ag-ctx-compacted">Ctx 已压缩</span>'
+      ? `<span class="ag-ctx-compacted">${compactedLabel}</span>`
       : `<span>Ctx ${fmtTok(lastCtx)}/${limitKStr} <span class="${ctxClass}">(${ctxPct}%)</span></span>`;
     return (
       dotPart +
@@ -107,7 +124,7 @@ export function buildInlineTelemetryHtml({
 
   const cacheVal = telemetryCacheMode === 'step' ? lastCacheRate : sessionCacheRate;
   const compactCtxHtml = compactedPending
-    ? '<span class="ag-ctx-compacted">Ctx 已压缩</span>'
+    ? `<span class="ag-ctx-compacted">${compactedLabel}</span>`
     : `<span>Ctx <span class="${ctxClass}">${ctxPct}%</span></span>`;
 
   return (
@@ -123,6 +140,7 @@ export function buildInlineTelemetryHtml({
 }
 
 export function buildMetricsTooltipHtml({
+  isZh = true,
   showSessionStatus = true,
   showUsageStats = true,
   genIdx,
@@ -171,11 +189,28 @@ export function buildMetricsTooltipHtml({
     : 'ag-tt-ok';
   const mainTpsVal = streamTpsValid ? streamTps : e2eTps;
   const effAvgTps = avgTps > 0 ? avgTps : e2eTps;
-  const speedSub = avgTps > 0 ? `均速 ${effAvgTps.toFixed(1)}` : streamTpsValid ? `端到端 ${e2eTps.toFixed(1)}` : '端到端均值';
+  const speedSub = isZh
+    ? avgTps > 0
+      ? `均速 ${effAvgTps.toFixed(1)}`
+      : streamTpsValid
+      ? `端到端 ${e2eTps.toFixed(1)}`
+      : '端到端均值'
+    : avgTps > 0
+    ? `Avg ${effAvgTps.toFixed(1)}`
+    : streamTpsValid
+    ? `E2E ${e2eTps.toFixed(1)}`
+    : 'E2E Avg';
   const effAvgTtft = avgTtft > 0 ? avgTtft : Number(last.ttft || 0);
-  const ttftSub = avgTtft > 0 ? `均 ${effAvgTtft.toFixed(2)}s` : `流式 ${Number(last.stream || 0).toFixed(1)}s`;
+  const ttftSub = isZh
+    ? avgTtft > 0
+      ? `均 ${effAvgTtft.toFixed(2)}s`
+      : `流式 ${Number(last.stream || 0).toFixed(1)}s`
+    : avgTtft > 0
+    ? `Avg ${effAvgTtft.toFixed(2)}s`
+    : `Stream ${Number(last.stream || 0).toFixed(1)}s`;
   const hasSessionCache = parseFloat(sessionCacheRate) > 0;
   const effTotalTokens = totalAllTokens > 0 ? totalAllTokens : totalPrompt + totalOut;
+  const turnsCallsText = isZh ? `${userStepsCount} 轮 · ${validCount} 次` : `${userStepsCount}T · ${validCount} calls`;
   const liveChipClass =
     lastErrorMsg && !compactingNow && !generatingPending && !pendingRetrying
       ? ' is-error'
@@ -184,8 +219,8 @@ export function buildMetricsTooltipHtml({
       : compactingNow || generatingPending
       ? ' is-running'
       : '';
-  const liveChipText =
-    lastErrorMsg && !compactingNow && !generatingPending && !pendingRetrying
+  const liveChipText = isZh
+    ? lastErrorMsg && !compactingNow && !generatingPending && !pendingRetrying
       ? '执行报错'
       : pendingRetrying
       ? '重试连接中…'
@@ -193,7 +228,16 @@ export function buildMetricsTooltipHtml({
       ? '压缩中…'
       : generatingPending
       ? '生成中…'
-      : '就绪';
+      : '就绪'
+    : lastErrorMsg && !compactingNow && !generatingPending && !pendingRetrying
+    ? 'Error'
+    : pendingRetrying
+    ? 'Retrying…'
+    : compactingNow
+    ? 'Compacting…'
+    : generatingPending
+    ? 'Running…'
+    : 'Ready';
   const liveDotClass =
     lastErrorMsg && !compactingNow && !generatingPending && !pendingRetrying
       ? ' is-error'
@@ -212,15 +256,16 @@ export function buildMetricsTooltipHtml({
     if (!showSessionStatus) return '';
     return `<div class="ag-tt-wrap ag-tt-status-only">
     <div class="ag-tt-hdr">
-      <span class="ag-tt-hdr-left-wrap">${liveDotHtml}<span class="ag-tt-hdr-left">实时会话状态</span></span>
+      <span class="ag-tt-hdr-left-wrap">${liveDotHtml}<span class="ag-tt-hdr-left">${isZh ? '实时会话状态' : 'Session Status'}</span></span>
       <span class="ag-tt-hdr-right">${liveChipHtml}</span>
     </div>
     ${waitNoteHtml}
-    <div class="ag-tt-status-desc" data-ag-status-desc="1">会话连接正常，随时可继续对话。</div>
+    <div class="ag-tt-status-desc" data-ag-status-desc="1">${isZh ? '会话连接正常，随时可继续对话。' : 'Connected and ready.'}</div>
   </div>`;
   }
 
-  const headerTitle = String(modelName || (last && last.modelName) || '').trim() || '会话用量';
+  const headerTitle =
+    String(modelName || (last && last.modelName) || '').trim() || (isZh ? '会话用量' : 'Session Usage');
   const ctxUsedTargetPct = contextLimitTokens > 0 ? Math.min(100, (last.ctx / contextLimitTokens) * 100) : 0;
   const bdItems =
     !compactedPending && contextBreakdown && Array.isArray(contextBreakdown.items) && contextBreakdown.items.length > 0
@@ -244,10 +289,11 @@ export function buildMetricsTooltipHtml({
       )
       .join('');
     ctxBreakdownGridHtml = `<div class="ag-tt-ctx-grid">${bdItems
-      .map(
-        (it) =>
-          `<div class="ag-tt-ctx-row"><span class="ag-tt-ctx-lbl"><span class="ag-tt-dot ag-tt-ctx-k-${escapeHtml(it.key)}"></span><span class="ag-tt-ctx-name">${escapeHtml(it.label)}</span></span><span class="ag-tt-ctx-val">${fmtTok(it.tokens)}</span></div>`
-      )
+      .map((it) => {
+        const mapped = CTX_BUCKET_I18N[it.key];
+        const lbl = mapped ? (isZh ? mapped.zh : mapped.en) : it.label || it.key;
+        return `<div class="ag-tt-ctx-row"><span class="ag-tt-ctx-lbl"><span class="ag-tt-dot ag-tt-ctx-k-${escapeHtml(it.key)}"></span><span class="ag-tt-ctx-name">${escapeHtml(lbl)}</span></span><span class="ag-tt-ctx-val">${fmtTok(it.tokens)}</span></div>`;
+      })
       .join('')}</div>`;
   } else {
     const hasStepWrite = last.cacheWrite > 0;
@@ -260,18 +306,30 @@ export function buildMetricsTooltipHtml({
   }
 
   const ctxBarTopMetaHtml = compactedPending
-    ? `<strong class="ag-tt-compacted-val">已完成压缩</strong>${compactSummaryKb > 0 ? ` · 摘要 ${compactSummaryKb} KB` : ''}`
+    ? isZh
+      ? `<strong class="ag-tt-compacted-val">已完成压缩</strong>${compactSummaryKb > 0 ? ` · 摘要 ${compactSummaryKb} KB` : ''}`
+      : `<strong class="ag-tt-compacted-val">Compacted</strong>${compactSummaryKb > 0 ? ` · ${compactSummaryKb} KB` : ''}`
     : `<strong>${fmtTok(last.ctx)}</strong> / ${limitKStr} <span class="ag-tt-pill">(${ctxPct}%)</span>`;
 
   const turnRightFootHtml =
     turnSteps > 1
-      ? `<span class="ag-tt-ctx-foot-right">本轮 ${turnSteps} 步 · 输 <strong>${fmtTok(turnOut)}</strong></span>`
-      : `<span class="ag-tt-ctx-foot-right">余 <strong>${fmtTok(remainCtx)}</strong></span>`;
+      ? isZh
+        ? `<span class="ag-tt-ctx-foot-right">本轮 ${turnSteps} 步 · 输 <strong>${fmtTok(turnOut)}</strong></span>`
+        : `<span class="ag-tt-ctx-foot-right">Turn ${turnSteps}s · Out <strong>${fmtTok(turnOut)}</strong></span>`
+      : isZh
+      ? `<span class="ag-tt-ctx-foot-right">余 <strong>${fmtTok(remainCtx)}</strong></span>`
+      : `<span class="ag-tt-ctx-foot-right">Left <strong>${fmtTok(remainCtx)}</strong></span>`;
   const ctxFootLeftHtml = compactedPending
-    ? `<span class="ag-tt-ctx-foot-left">压缩前 ${fmtTok(last.ctx)} (${ctxPct}%) · 下步刷新</span>`
+    ? isZh
+      ? `<span class="ag-tt-ctx-foot-left">压缩前 ${fmtTok(last.ctx)} (${ctxPct}%) · 下步刷新</span>`
+      : `<span class="ag-tt-ctx-foot-left">Before ${fmtTok(last.ctx)} (${ctxPct}%) · Updates next step</span>`
     : turnSteps > 1
-    ? `<span class="ag-tt-ctx-foot-left">新增 ${fmtTok(last.inTok)} · 缓存 ${fmtTok(last.cacheRead)} · 余 ${fmtTok(remainCtx)}</span>`
-    : `<span class="ag-tt-ctx-foot-left">新增 ${fmtTok(last.inTok)}${last.cacheWrite > 0 ? ` · 写 ${fmtTok(last.cacheWrite)}` : ''} · 缓存 ${fmtTok(last.cacheRead)}</span>`;
+    ? isZh
+      ? `<span class="ag-tt-ctx-foot-left">新增 ${fmtTok(last.inTok)} · 缓存 ${fmtTok(last.cacheRead)} · 余 ${fmtTok(remainCtx)}</span>`
+      : `<span class="ag-tt-ctx-foot-left">New ${fmtTok(last.inTok)} · Cache ${fmtTok(last.cacheRead)} · Left ${fmtTok(remainCtx)}</span>`
+    : isZh
+    ? `<span class="ag-tt-ctx-foot-left">新增 ${fmtTok(last.inTok)}${last.cacheWrite > 0 ? ` · 写 ${fmtTok(last.cacheWrite)}` : ''} · 缓存 ${fmtTok(last.cacheRead)}</span>`
+    : `<span class="ag-tt-ctx-foot-left">New ${fmtTok(last.inTok)}${last.cacheWrite > 0 ? ` · Write ${fmtTok(last.cacheWrite)}` : ''} · Cache ${fmtTok(last.cacheRead)}</span>`;
 
   const totalNewWithWrite = totalIn + totalCacheWrite;
   const totalInNewPct = effTotalTokens > 0 ? ((totalNewWithWrite / effTotalTokens) * 100).toFixed(1) : '0.0';
@@ -286,17 +344,12 @@ export function buildMetricsTooltipHtml({
           ${liveDotHtml}
           <span class="ag-tt-hdr-left" title="${escapeHtml(headerTitle)}">${escapeHtml(headerTitle)}</span>
         </span>
-        <span class="ag-tt-hdr-right">
-          ${liveChipHtml}
-          <button type="button" class="ag-tt-quota-btn ag-tt-hdr-refresh" aria-label="刷新用量与配额" title="刷新用量与配额">
-            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.67M13.5 2.5v2.8h-2.8"/></svg>
-          </button>
-        </span>
+        <span class="ag-tt-hdr-right">${liveChipHtml}</span>
       </div>
       ${waitNoteHtml}
       <div class="ag-tt-bento">
         <div class="ag-tt-bento-cell">
-          <div class="ag-tt-bento-lbl">输出速度</div>
+          <div class="ag-tt-bento-lbl">${isZh ? '输出速度' : 'Speed'}</div>
           <div class="ag-tt-bento-val-row">
             <span class="ag-tt-bento-val">${mainTpsVal.toFixed(1)}</span>
             <span class="ag-tt-bento-unit">t/s</span>
@@ -304,7 +357,7 @@ export function buildMetricsTooltipHtml({
           <div class="ag-tt-bento-sub">${speedSub}</div>
         </div>
         <div class="ag-tt-bento-cell">
-          <div class="ag-tt-bento-lbl">首字延迟</div>
+          <div class="ag-tt-bento-lbl">${isZh ? '首字延迟' : 'TTFT'}</div>
           <div class="ag-tt-bento-val-row">
             <span class="ag-tt-bento-val">${Number(last.ttft || 0).toFixed(2)}</span>
             <span class="ag-tt-bento-unit">s</span>
@@ -312,23 +365,23 @@ export function buildMetricsTooltipHtml({
           <div class="ag-tt-bento-sub">${ttftSub}</div>
         </div>
         <div class="ag-tt-bento-cell">
-          <div class="ag-tt-bento-lbl">缓存命中</div>
+          <div class="ag-tt-bento-lbl">${isZh ? '缓存命中' : 'Cache Hit'}</div>
           <div class="ag-tt-bento-val-row">
             <span class="ag-tt-bento-val${hasSessionCache ? ' ag-tt-val-accent' : ''}">${sessionCacheRate}%</span>
           </div>
-          <div class="ag-tt-bento-sub">本步 ${lastCacheRate}%</div>
+          <div class="ag-tt-bento-sub">${isZh ? `本步 ${lastCacheRate}%` : `Step ${lastCacheRate}%`}</div>
         </div>
         <div class="ag-tt-bento-cell">
-          <div class="ag-tt-bento-lbl">会话总量</div>
+          <div class="ag-tt-bento-lbl">${isZh ? '会话总量' : 'Session'}</div>
           <div class="ag-tt-bento-val-row">
             <span class="ag-tt-bento-val">${fmtTok(effTotalTokens)}</span>
           </div>
-          <div class="ag-tt-bento-sub">${userStepsCount} 轮 · ${validCount} 次</div>
+          <div class="ag-tt-bento-sub">${turnsCallsText}</div>
         </div>
       </div>
       <div class="ag-tt-card ag-tt-ctx-card">
         <div class="ag-tt-bar-top">
-          <span class="ag-tt-bar-name">上下文窗口</span>
+          <span class="ag-tt-bar-name">${isZh ? '上下文窗口' : 'Context Window'}</span>
           <span class="ag-tt-bar-meta">${ctxBarTopMetaHtml}</span>
         </div>
         <div class="ag-tt-track">${ctxSegsHtml}</div>
@@ -340,22 +393,22 @@ export function buildMetricsTooltipHtml({
       </div>
       <div class="ag-tt-card ag-tt-sess-card">
         <div class="ag-tt-bar-top">
-          <span class="ag-tt-bar-name">当前会话累计</span>
-          <span class="ag-tt-bar-meta">${userStepsCount} 轮 · ${validCount} 次 · <strong>${fmtTok(effTotalTokens)}</strong></span>
+          <span class="ag-tt-bar-name">${isZh ? '当前会话累计' : 'Session Totals'}</span>
+          <span class="ag-tt-bar-meta">${turnsCallsText} · <strong>${fmtTok(effTotalTokens)}</strong></span>
         </div>
         <div class="ag-tt-sess-grid">
           <div class="ag-tt-sess-col">
-            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-in-new"></span>新输入</span><span class="ag-tt-sess-pct">${totalInNewPct}%</span></div>
+            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-in-new"></span>${isZh ? '新输入' : 'New In'}</span><span class="ag-tt-sess-pct">${totalInNewPct}%</span></div>
             <div class="ag-tt-sess-val">${fmtTok(totalNewWithWrite)}</div>
           </div>
           <div class="ag-tt-sess-col">
-            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-in-cache"></span>缓存读取</span><span class="ag-tt-sess-pct">${totalInCachePct}%</span></div>
+            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-in-cache"></span>${isZh ? '缓存读取' : 'Cache Read'}</span><span class="ag-tt-sess-pct">${totalInCachePct}%</span></div>
             <div class="ag-tt-sess-val">${fmtTok(totalCache)}</div>
           </div>
           <div class="ag-tt-sess-col">
-            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-out"></span>总输出</span><span class="ag-tt-sess-pct">${totalOutPct}%</span></div>
+            <div class="ag-tt-sess-head"><span class="ag-tt-leg"><span class="ag-tt-dot ag-tt-c-out"></span>${isZh ? '总输出' : 'Output'}</span><span class="ag-tt-sess-pct">${totalOutPct}%</span></div>
             <div class="ag-tt-sess-val">${fmtTok(totalOut)}</div>
-            <div class="ag-tt-sess-sub">思 ${fmtTok(totalThink)} · 正 ${fmtTok(totalResp)}</div>
+            <div class="ag-tt-sess-sub">${isZh ? `思 ${fmtTok(totalThink)} · 正 ${fmtTok(totalResp)}` : `Think ${fmtTok(totalThink)} · Reply ${fmtTok(totalResp)}`}</div>
           </div>
         </div>
         <div class="ag-tt-track ag-tt-track-xs">
@@ -387,7 +440,7 @@ export function formatTurnModelName(gens) {
   return last && last !== first ? `${first} → ${last}` : first;
 }
 
-export function buildTurnSummaries(valid, userStepIdxs, manualLim, fallbackLim) {
+export function buildTurnSummaries(valid, userStepIdxs, manualLim, fallbackLim, isZh = true) {
   if (!valid || valid.length === 0 || !valid.some((it) => it.maxStepIdx >= 0)) {
     return [];
   }
@@ -484,7 +537,9 @@ export function buildTurnSummaries(valid, userStepIdxs, manualLim, fallbackLim) 
       `<span>Cache ${cacheRate}</span>`
     ].join('');
 
-    const badgeTitle = `Ctx ${ctxStr}/${limitStr} (${ctxPct}%) · ${gens.length} 步 · 耗时 ${totDurSum.toFixed(1)}s`;
+    const badgeTitle = isZh
+      ? `Ctx ${ctxStr}/${limitStr} (${ctxPct}%) · ${gens.length} 步 · 耗时 ${totDurSum.toFixed(1)}s`
+      : `Ctx ${ctxStr}/${limitStr} (${ctxPct}%) · ${gens.length} steps · ${totDurSum.toFixed(1)}s`;
 
     turns.push({
       turnIndex: k >= 0 ? k + 1 : 0,

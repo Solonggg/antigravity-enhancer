@@ -801,8 +801,7 @@
   color: var(--ag-tt-ink) !important;
 }
 
-#ag-live-metrics-tooltip .ag-tt-quota-refresh.is-loading svg,
-#ag-live-metrics-tooltip .ag-tt-hdr-refresh.is-loading svg {
+#ag-live-metrics-tooltip .ag-tt-quota-refresh.is-loading svg {
   animation: agQuotaSpin 0.65s linear infinite;
 }
 
